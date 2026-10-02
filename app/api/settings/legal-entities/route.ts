@@ -23,7 +23,7 @@ export async function GET() {
     const [{ data: entities }, sellers] = await Promise.all([
         supabase
             .from('legal_entities')
-            .select('id, short_name, full_name, inn, kind, active, site_code, vat_percent, signer_name, signer_title, note')
+            .select('id, short_name, full_name, inn, kind, active, site_code, vat_percent, signer_name, signer_title, seal_place, note')
             .order('sort_order', { ascending: true }),
         sellerOptions().catch(() => []),
     ]);
@@ -37,6 +37,7 @@ const saveSchema = z.object({
     site_code: z.string().trim().max(100).nullable().optional(),
     signer_name: z.string().trim().max(200).nullable().optional(),
     signer_title: z.string().trim().max(200).nullable().optional(),
+    seal_place: z.string().trim().max(200).nullable().optional(),
 });
 
 /** Подписанты из ЕГРЮЛ: руководителя по ИНН отдаёт Dadata. */

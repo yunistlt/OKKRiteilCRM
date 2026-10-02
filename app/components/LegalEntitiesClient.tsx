@@ -14,6 +14,7 @@ type Entity = {
     site_code: string | null;
     vat_percent: number | null;
     signer_name: string | null;
+    seal_place: string | null;
     signer_title: string | null;
 };
 
@@ -85,6 +86,7 @@ export default function LegalEntitiesClient() {
                     site_code: entity.site_code,
                     signer_name: entity.signer_name,
                     signer_title: entity.signer_title,
+                    seal_place: entity.seal_place,
                 }),
             });
             const payload = await response.json();
@@ -190,6 +192,21 @@ export default function LegalEntitiesClient() {
                                 />
                             </label>
                         </div>
+
+                        <label className="mt-3 block">
+                            <span className="mb-1 block text-[11px] uppercase tracking-wide text-gray-500">Место на печати</span>
+                            <input
+                                value={entity.seal_place ?? ''}
+                                onChange={(e) => change(entity.id, { seal_place: e.target.value })}
+                                placeholder="Россия, Самарская область, город Тольятти"
+                                className="w-full border border-gray-300 px-2 py-1"
+                            />
+                            <span className="mt-1 block text-[11px] text-gray-500">
+                                {entity.kind === 'ip'
+                                    ? 'ИП работает без печати — у этого юрлица печать на счёт не ставится, только подпись.'
+                                    : 'Идёт по нижней дуге печати. Из ЕГРЮЛ приходит заготовка, поправьте, если на вашей печати написано иначе.'}
+                            </span>
+                        </label>
                     </div>
                 ))}
             </div>

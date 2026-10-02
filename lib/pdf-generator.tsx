@@ -337,6 +337,10 @@ export interface InvoiceData {
     seller_ogrn?: string;
     /** Полное наименование продавца — по кольцу печати. */
     seller_full_name?: string | null;
+    /** Страна, регион и город — по нижней дуге печати. */
+    seller_seal_place?: string | null;
+    /** Ставить ли печать: ИП работает без печати, только подпись. */
+    seller_has_seal?: boolean;
     /** Менеджер заказа — вторая подпись в счёте. */
     manager_name?: string | null;
     /** Срок изготовления в днях — из заказа. */
@@ -577,16 +581,20 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                     </View>
                     {/* Печать организации — своя на каждое юрлицо, рисуется по
                         его реквизитам (решение владельца 02.10.2026). */}
-                    <View style={invStyles.sealCol}>
-                        <OrganizationSeal
-                            fullName={data.seller_full_name || seller.name}
-                            shortName={sealShortName(seller.name)}
-                            inn={seller.inn}
-                            kpp={seller.kpp}
-                            ogrn={data.seller_ogrn}
-                            place={sealPlace(seller.address)}
-                        />
-                    </View>
+                    {/* ИП работает без печати — только подпись (указание
+                        владельца 02.10.2026). */}
+                    {data.seller_has_seal === false ? null : (
+                        <View style={invStyles.sealCol}>
+                            <OrganizationSeal
+                                fullName={data.seller_full_name || seller.name}
+                                shortName={sealShortName(seller.name)}
+                                inn={seller.inn}
+                                kpp={seller.kpp}
+                                ogrn={data.seller_ogrn}
+                                place={data.seller_seal_place || sealPlace(seller.address)}
+                            />
+                        </View>
+                    )}
                 </View>
 
                 <View style={invStyles.footer} fixed>

@@ -60,8 +60,15 @@ export type OrderDocumentData = {
     signerTitle: string | null;
     /** Менеджер заказа: вторая подпись в счёте (решение владельца 02.10.2026). */
     managerName: string | null;
-    /** Полное наименование продавца и его адрес — для оттиска печати. */
+    /** Полное наименование продавца — по кольцу печати. */
     sellerFullName: string | null;
+    /** Страна, регион и город — по нижней дуге печати. */
+    sellerSealPlace: string | null;
+    /**
+     * Ставить ли печать. ИП работает без печати — только подпись
+     * (указание владельца 02.10.2026).
+     */
+    sellerHasSeal: boolean;
     total: number;
 };
 
@@ -255,7 +262,7 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
         vatPercent: await vatPercentForSite(sellerCode || (order as any).site),
         productionDays: Number(customFields.srok_izgot) > 0 ? Number(customFields.srok_izgot) : null,
         managerName: await managerNameOf((order as any).manager_id),
-        sellerFullName: await sellerFullNameOf(seller),
+        ...(await sellerSealOf(seller)),
         shippingTerms: await shippingTermsText(delivery),
         ...(await signerOf(sellerCode || (order as any).site, seller)),
         total: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
@@ -327,20 +334,28 @@ async function managerNameOf(managerId: unknown): Promise<string | null> {
 }
 
 /**
- * Полное наименование юрлица — для оттиска печати: на печати стоит
- * «ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "…"», а не короткое имя.
- * Берём из нашего справочника юрлиц (RetailCRM отдаёт только короткое).
+ * Что печатается на оттиске: полное наименование («ОБЩЕСТВО С ОГРАНИЧЕННОЙ
+ * ОТВЕТСТВЕННОСТЬЮ "…"») и место («Россия, Республика Татарстан, город
+ * Елабуга»). И то, и другое ведётся в нашем справочнике юрлиц и заполняется
+ * из ЕГРЮЛ: RetailCRM отдаёт только короткое имя и банковский адрес.
  */
-async function sellerFullNameOf(seller: Seller | null): Promise<string | null> {
+async function sellerSealOf(seller: Seller | null): Promise<{ sellerFullName: string | null; sellerSealPlace: string | null; sellerHasSeal: boolean }> {
     const inn = seller?.inn?.trim();
-    if (!inn) return null;
+    if (!inn) return { sellerFullName: null, sellerSealPlace: null, sellerHasSeal: false };
 
     const { data } = await supabase
         .from('legal_entities')
-        .select('full_name, short_name')
+        .select('full_name, short_name, seal_place, kind')
         .eq('inn', inn)
         .maybeSingle();
 
     const row = data as any;
-    return row?.full_name || row?.short_name || null;
+    // ИП печати не имеет: подпись предпринимателя сама по себе достаточна.
+    const soleTrader = String(row?.kind ?? '').toLowerCase() === 'ip' || inn.length === 12;
+
+    return {
+        sellerFullName: row?.full_name || row?.short_name || null,
+        sellerSealPlace: row?.seal_place || null,
+        sellerHasSeal: !soleTrader,
+    };
 }

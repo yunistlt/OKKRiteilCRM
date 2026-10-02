@@ -30,6 +30,16 @@ export type OrderMailEntry = {
     source: 'incoming' | 'outgoing';
     /** От кого или кому — чтобы письмо читалось без открытия. */
     party: string | null;
+    /** Тема отдельно: в ленте она заголовок, а не часть текста. */
+    subject: string | null;
+    /**
+     * Письмо целиком. Евгения 02.10.2026: «как посмотреть письмо, которое я
+     * отправила? видна только тема, внутрь никак не попасть» — поэтому тело
+     * едет вместе с лентой и раскрывается по щелчку.
+     */
+    body: string | null;
+    /** Сколько вложений — их открывают через «Файлы» заказа. */
+    attachments: number;
 };
 
 const preview = (value: unknown, limit = 600): string => {
@@ -64,7 +74,7 @@ export async function loadOrderMail(params: {
         incomingFilters.length
             ? supabase
                 .from('incoming_emails')
-                .select('id, subject, from_email, from_name, body_text, received_at, created_at')
+                .select('id, subject, from_email, from_name, body_text, received_at, created_at, attachments_meta')
                 .or(incomingFilters.join(','))
                 .order('received_at', { ascending: false })
                 .limit(limit)
@@ -72,7 +82,7 @@ export async function loadOrderMail(params: {
         number || Number.isFinite(orderId)
             ? supabase
                 .from('order_email_sends')
-                .select('id, subject, to_email, created_at, order_number, order_id')
+                .select('id, subject, to_email, created_at, order_number, order_id, message_id')
                 .or([
                     number ? `order_number.eq.${number}` : null,
                     Number.isFinite(orderId) ? `order_id.eq.${orderId}` : null,
@@ -84,7 +94,7 @@ export async function loadOrderMail(params: {
         number
             ? supabase
                 .from('outgoing_emails')
-                .select('id, subject, to_email, sent_at, body_text')
+                .select('id, subject, to_email, sent_at, body_text, message_id, attachments_meta')
                 .or(`order_number.eq.${number},subject.ilike.%/${number}]%`)
                 .order('sent_at', { ascending: false })
                 .limit(limit)
@@ -95,31 +105,60 @@ export async function loadOrderMail(params: {
     if (outgoing.error) console.warn('[order-mail] исходящие не прочитались:', outgoing.error.message);
     if (sent.error) console.warn('[order-mail] «Отправленные» не прочитались:', sent.error.message);
 
+    /**
+     * Текст письма, отправленного из карточки: сама запись об отправке тела не
+     * хранит, но это же письмо лежит в папке «Отправленные» — там и берём
+     * (связь по message_id, иначе по теме).
+     */
+    const sentRows = ((sent.data ?? []) as any[]);
+    const bodyByMessageId = new Map<string, any>();
+    for (const row of sentRows) {
+        if (row.message_id) bodyByMessageId.set(String(row.message_id), row);
+    }
+
+    const countAttachments = (meta: unknown) => (Array.isArray(meta) ? meta.length : 0);
+
     const entries: OrderMailEntry[] = [
         ...((incoming.data ?? []) as any[]).map((row) => ({
             id: `in-${row.id}`,
             date: row.received_at || row.created_at || null,
             type: 'Входящее письмо',
             party: row.from_name || row.from_email || null,
+            subject: row.subject || null,
+            body: row.body_text ? String(row.body_text).replace(/\u00a0/g, ' ').trim() : null,
+            attachments: countAttachments(row.attachments_meta),
             text: [row.subject ? `Тема: ${row.subject}` : null, preview(row.body_text)].filter(Boolean).join('\n\n'),
             source: 'incoming' as const,
         })),
-        ...((outgoing.data ?? []) as any[]).map((row) => ({
-            id: `out-${row.id}`,
-            date: row.created_at || null,
-            type: 'Исходящее письмо',
-            party: row.to_email || null,
-            text: row.subject ? `Тема: ${row.subject}` : 'Письмо отправлено',
-            source: 'outgoing' as const,
-        })),
-        ...((sent.data ?? []) as any[]).map((row) => ({
-            id: `sent-${row.id}`,
-            date: row.sent_at || null,
-            type: 'Исходящее письмо',
-            party: row.to_email || null,
-            text: [row.subject ? `Тема: ${row.subject}` : null, preview(row.body_text)].filter(Boolean).join('\n\n'),
-            source: 'outgoing' as const,
-        })),
+        ...((outgoing.data ?? []) as any[]).map((row) => {
+            const twin = row.message_id ? bodyByMessageId.get(String(row.message_id)) : null;
+            const body = twin?.body_text ?? null;
+            return {
+                id: `out-${row.id}`,
+                date: row.created_at || null,
+                type: 'Исходящее письмо',
+                party: row.to_email || null,
+                subject: row.subject || null,
+                body: body ? String(body).replace(/\u00a0/g, ' ').trim() : null,
+                attachments: countAttachments(twin?.attachments_meta),
+                text: row.subject ? `Тема: ${row.subject}` : 'Письмо отправлено',
+                source: 'outgoing' as const,
+            };
+        }),
+        ...sentRows
+            // Если письмо уже показано записью об отправке, второй раз не выводим.
+            .filter((row) => !((outgoing.data ?? []) as any[]).some((send: any) => send.message_id && String(send.message_id) === String(row.message_id)))
+            .map((row) => ({
+                id: `sent-${row.id}`,
+                date: row.sent_at || null,
+                type: 'Исходящее письмо',
+                party: row.to_email || null,
+                subject: row.subject || null,
+                body: row.body_text ? String(row.body_text).replace(/\u00a0/g, ' ').trim() : null,
+                attachments: countAttachments(row.attachments_meta),
+                text: [row.subject ? `Тема: ${row.subject}` : null, preview(row.body_text)].filter(Boolean).join('\n\n'),
+                source: 'outgoing' as const,
+            })),
     ];
 
     return entries

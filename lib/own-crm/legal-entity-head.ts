@@ -13,6 +13,51 @@
 import { supabase } from '@/utils/supabase';
 import { companyByInn, isDadataConfigured } from '@/lib/sales-rop/dadata';
 
+/**
+ * Страна, регион и город для нижней дуги печати: «Россия, Республика
+ * Татарстан, город Елабуга». Берём из ЕГРЮЛ, а не из адреса продавца — у ЗВТО
+ * это Татарстан, а банковский адрес ведёт в Самарскую область.
+ */
+export function sealPlaceFrom(region: string | null | undefined, city: string | null | undefined): string | null {
+    /**
+     * Сокращения ЕГРЮЛ разворачиваем вручную по словам: в JS `\b` и `\w` с
+     * кириллицей не работают (своя грабля, закон про регулярки), поэтому
+     * границу слова не ищем — разбираем строку на слова и заменяем целиком.
+     */
+    const WORDS: Record<string, string> = {
+        'респ': 'Республика',
+        'респ.': 'Республика',
+        'обл': 'область',
+        'обл.': 'область',
+        'кр': 'край',
+        'кр.': 'край',
+        'г': 'город',
+        'г.': 'город',
+        'тер': 'территория',
+        'тер.': 'территория',
+        'с': 'село',
+        'с.': 'село',
+        'пгт': 'посёлок',
+        'пгт.': 'посёлок',
+        'д': 'деревня',
+        'д.': 'деревня',
+    };
+
+    const full = (value: string) => value
+        .trim()
+        .split(/\s+/)
+        .map((word) => WORDS[word.toLowerCase()] ?? word)
+        .join(' ')
+        .trim();
+
+    const parts = ['Россия'];
+    if (region?.trim()) parts.push(full(region));
+    if (city?.trim() && !String(region ?? '').toLowerCase().includes(String(city).toLowerCase())) {
+        parts.push(full(city));
+    }
+    return parts.length > 1 ? parts.join(', ') : null;
+}
+
 export type HeadUpdate = {
     inn: string;
     entity: string;
@@ -82,8 +127,16 @@ export async function refreshSignersFromEgrul(): Promise<HeadUpdate[]> {
             : info?.managerName?.trim() || null;
         const title = soleTrader ? 'Индивидуальный предприниматель' : humanTitle(info?.managerTitle);
 
-        if (info?.fullName) {
-            await supabase.from('legal_entities').update({ full_name: info.fullName }).eq('id', row.id);
+        const place = sealPlaceFrom(info?.region, info?.city);
+
+        if (info?.fullName || place) {
+            await supabase
+                .from('legal_entities')
+                .update({
+                    ...(info?.fullName ? { full_name: info.fullName } : {}),
+                    ...(place ? { seal_place: place } : {}),
+                })
+                .eq('id', row.id);
         }
 
         if (!name) {
@@ -105,6 +158,7 @@ export async function refreshSignersFromEgrul(): Promise<HeadUpdate[]> {
                 signer_name: name,
                 signer_title: title,
                 ...(info?.fullName ? { full_name: info.fullName } : {}),
+                ...(place ? { seal_place: place } : {}),
             })
             .eq('id', row.id);
         if (saveError) throw new Error(`${row.short_name}: ${saveError.message}`);

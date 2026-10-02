@@ -70,6 +70,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
             seller_address: data.seller?.address,
             seller_ogrn: data.seller?.ogrn,
             seller_full_name: data.sellerFullName,
+            seller_seal_place: data.sellerSealPlace,
+            seller_has_seal: data.sellerHasSeal,
             manager_name: data.managerName,
             production_days: data.productionDays,
             shipping_terms: data.shippingTerms,

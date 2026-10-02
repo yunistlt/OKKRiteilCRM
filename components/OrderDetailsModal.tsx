@@ -366,6 +366,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
     // Реквизиты заказчика: хозяин — клиент, в заказ подтягиваются.
     const [requisites, setRequisites] = useState<any | null>(null);
+    // Какие письма раскрыты: письмо читается целиком в самой ленте.
+    const [openedEmails, setOpenedEmails] = useState<Set<string>>(new Set());
     // Смена заказчика: заказ бывает заведён не на то юрлицо (требование
     // владельца 02.10.2026, как в RetailCRM — заказчика меняют тут же).
     const [customerPicker, setCustomerPicker] = useState(false);
@@ -807,7 +809,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         const logisticReceiver = pickValue(customFields.naimenovanie_gruzopoluchatelya);
         const dsDocument = pickValue(customFields.datacheta);
         const marginValue = pickValue(customFields.marzha);
-        const expectedAmountValue = toNumber(pickValue(customFields.ozhidaemaya_summa, customFields.expected_amount, payload.totalSumm));
         const priorityNumber = pickValue(customFields.prioriry_number);
         const contractBasis = names.field('osnovanie_podpisi', pickValue(customFields.osnovanie_podpisi));
         const changeManager = pickValue(customFields.change_name_manager);
@@ -884,8 +885,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 onChange={(v) => setField('cf.typ_customer_margin', v)}
                             />
                             <InfoField label="Сегмент покупателя" value={sphere || 'Требуется уточнить'} />
-                            <InfoField label="Сумма" value={formatCurrency(totalSummValue)} />
-                            <InfoField label="Ожидаемая сумма" value={expectedAmountValue !== null ? formatCurrency(expectedAmountValue) : '—'} />
                         </div>
                     </div>
                 </section>
@@ -1467,28 +1466,82 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         )}
                         {data.emails && data.emails.length > 0 ? (
                             <div className="space-y-3">
-                                {data.emails.map((email) => (
-                                    <div key={email.id || email.date} className="border border-gray-200 p-4 bg-white">
-                                        <div className="flex items-center justify-between gap-2 text-xs text-gray-500 mb-2">
-                                            <span>{email.date ? new Date(email.date).toLocaleString('ru-RU') : 'Без даты'}</span>
-                                            {/* Значок направления: сразу видно, письмо нам или от нас. */}
-                                            <span
-                                                className={`flex items-center gap-1.5 px-2 py-0.5 font-semibold ${
-                                                    email.source === 'incoming'
-                                                        ? 'bg-green-50 text-green-800'
-                                                        : email.source === 'outgoing'
-                                                            ? 'bg-blue-50 text-blue-800'
-                                                            : 'bg-gray-100'
-                                                }`}
+                                {data.emails.map((email) => {
+                                    const key = String(email.id || email.date);
+                                    const open = openedEmails.has(key);
+
+                                    return (
+                                        <div key={key} className="border border-gray-200 p-4 bg-white">
+                                            <div className="flex items-center justify-between gap-2 text-xs text-gray-500 mb-2">
+                                                <span>{email.date ? new Date(email.date).toLocaleString('ru-RU') : 'Без даты'}</span>
+                                                {/* Значок направления: сразу видно, письмо нам или от нас. */}
+                                                <span
+                                                    className={`flex items-center gap-1.5 px-2 py-0.5 font-semibold ${
+                                                        email.source === 'incoming'
+                                                            ? 'bg-green-50 text-green-800'
+                                                            : email.source === 'outgoing'
+                                                                ? 'bg-blue-50 text-blue-800'
+                                                                : 'bg-gray-100'
+                                                    }`}
+                                                >
+                                                    {email.source === 'incoming' && <span aria-hidden>↓</span>}
+                                                    {email.source === 'outgoing' && <span aria-hidden>↑</span>}
+                                                    {email.type}
+                                                    {email.party ? ` · ${email.party}` : ''}
+                                                </span>
+                                            </div>
+
+                                            {/* Письмо открывается целиком: до этого была видна одна
+                                                тема, и внутрь попасть было нельзя (замечание Евгении
+                                                02.10.2026). */}
+                                            <button
+                                                type="button"
+                                                onClick={() => setOpenedEmails((prev) => {
+                                                    const next = new Set(prev);
+                                                    if (next.has(key)) next.delete(key); else next.add(key);
+                                                    return next;
+                                                })}
+                                                className="block w-full text-left"
                                             >
-                                                {email.source === 'incoming' && <span aria-hidden>↓</span>}
-                                                {email.source === 'outgoing' && <span aria-hidden>↑</span>}
-                                                {email.type}
-                                            </span>
+                                                <p className="text-sm font-semibold text-gray-900">
+                                                    {email.subject || 'Без темы'}
+                                                </p>
+                                                {!open && (
+                                                    <p className="mt-1 text-xs text-gray-500">
+                                                        {email.body
+                                                            ? `${String(email.body).slice(0, 160)}${String(email.body).length > 160 ? '…' : ''}`
+                                                            : 'Текст письма не сохранён'}
+                                                        <span className="ml-2 font-semibold text-blue-700">открыть</span>
+                                                    </p>
+                                                )}
+                                            </button>
+
+                                            {open && (
+                                                <div className="mt-2 border-t border-gray-100 pt-2">
+                                                    <p className="whitespace-pre-line text-sm text-gray-800">
+                                                        {email.body || 'Текст этого письма у нас не сохранён — в ленте есть только факт отправки.'}
+                                                    </p>
+                                                    {email.attachments > 0 && (
+                                                        <p className="mt-2 text-xs text-gray-500">
+                                                            Вложений: {email.attachments} — они в разделе «Файлы» заказа.
+                                                        </p>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setOpenedEmails((prev) => {
+                                                            const next = new Set(prev);
+                                                            next.delete(key);
+                                                            return next;
+                                                        })}
+                                                        className="mt-2 text-xs font-semibold text-gray-500 hover:underline"
+                                                    >
+                                                        свернуть
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
-                                        <p className="text-sm text-gray-800 whitespace-pre-line">{email.text}</p>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         ) : (
                             <p className="text-sm text-gray-500">
