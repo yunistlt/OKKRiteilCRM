@@ -821,7 +821,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <InfoField label="Когда нужно оборудование" value={logisticNeedBy || '—'} />
                             <InfoField label="Для кого закупка" value={logisticBuyerType || '—'} />
                             <EditField label="Адрес фактический" value={fieldValue('cf.adres_fakt', customFields.adres_fakt || logisticAddress || '')} onChange={(v) => setField('cf.adres_fakt', v)} />
-                            <InfoField label="Комментарий клиента" value={clientComment || '—'} />
                         </div>
                     </div>
                 </section>
@@ -845,12 +844,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                     </div>
 
-                    <div className="bg-white border border-gray-200 p-4">
-                        <h4 className="text-sm font-semibold text-gray-900 mb-4">Комментарии менеджера</h4>
-                        <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 p-4 min-h-[120px]">
-                            {operatorComment || 'Комментариев нет.'}
-                        </div>
-                    </div>
                 </section>
 
                 <section id="order-list">
