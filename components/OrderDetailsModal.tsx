@@ -359,6 +359,39 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         if (isOpen && orderId) loadCalculations();
     }, [isOpen, orderId, loadCalculations]);
 
+    // Реквизиты заказчика: хозяин — клиент, в заказ подтягиваются.
+    const [requisites, setRequisites] = useState<any | null>(null);
+    const [requisitesBusy, setRequisitesBusy] = useState(false);
+
+    const loadRequisites = useCallback(async () => {
+        if (!orderId) return;
+        try {
+            const res = await fetch(`/api/orders/${orderId}/requisites`);
+            setRequisites(await res.json());
+        } catch {
+            setRequisites(null);
+        }
+    }, [orderId]);
+
+    useEffect(() => {
+        if (isOpen && orderId) loadRequisites();
+    }, [isOpen, orderId, loadRequisites]);
+
+    const pullRequisites = async () => {
+        setRequisitesBusy(true);
+        try {
+            const res = await fetch(`/api/orders/${orderId}/requisites`, { method: 'POST' });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось подставить реквизиты');
+            await fetchDetails();
+            await loadRequisites();
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setRequisitesBusy(false);
+        }
+    };
+
     // Крошка в шапке — человеческим номером заказа («Заказ #1021А»), а не
     // внутренним идентификатором: у своих заказов он вида 900000021 и человека
     // только путает (поймано 02.10.2026).
@@ -551,11 +584,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         Object.entries(draftFields)
                             .filter(([key]) => key.startsWith('delivery.'))
                             .map(([key, value]) => [key.slice('delivery.'.length), value]),
-                    ),
-                    contragent: Object.fromEntries(
-                        Object.entries(draftFields)
-                            .filter(([key]) => key.startsWith('contragent.'))
-                            .map(([key, value]) => [key.slice('contragent.'.length), value]),
                     ),
                 }),
             });
@@ -932,77 +960,48 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 </section>
 
                 <section id="order-requisites" className="space-y-3">
-                    {/* Реквизиты заказчика живут на ЗАКАЗЕ, как в RetailCRM
-                        (`contragent`): у покупателя они почти всегда пусты, а в
-                        счёт и КП идут именно эти. Вносятся здесь — Евгения
-                        02.10.2026: «не могу найти, куда внести реквизиты». */}
+                    {/* Хозяин реквизитов — клиент (решение владельца 02.10.2026):
+                        правятся они в его карточке, а в заказ подтягиваются.
+                        Здесь показываем, что подтянется, и чем печатается счёт. */}
                     <div className="bg-white border border-gray-200 p-4">
-                        <h3 className="text-base font-semibold text-gray-900 mb-2">Реквизиты заказчика</h3>
-                        <div className="grid md:grid-cols-2 gap-2">
-                            <EditField
-                                label="Тип контрагента"
-                                value={fieldValue('contragent.contragentType', payload.contragent?.contragentType || '')}
-                                options={names.enumOptions('contragentType')}
-                                onChange={(v) => setField('contragent.contragentType', v)}
-                            />
-                            <EditField
-                                label="Юридическое название"
-                                value={fieldValue('contragent.legalName', payload.contragent?.legalName || '')}
-                                onChange={(v) => setField('contragent.legalName', v)}
-                            />
-                            <EditField
-                                label="ИНН"
-                                value={fieldValue('contragent.INN', payload.contragent?.INN || '')}
-                                onChange={(v) => setField('contragent.INN', v)}
-                            />
-                            <EditField
-                                label="КПП"
-                                value={fieldValue('contragent.KPP', payload.contragent?.KPP || '')}
-                                onChange={(v) => setField('contragent.KPP', v)}
-                            />
-                            <EditField
-                                label="ОГРН"
-                                value={fieldValue('contragent.OGRN', payload.contragent?.OGRN || '')}
-                                onChange={(v) => setField('contragent.OGRN', v)}
-                            />
-                            <EditField
-                                label="ОГРНИП"
-                                value={fieldValue('contragent.OGRNIP', payload.contragent?.OGRNIP || '')}
-                                onChange={(v) => setField('contragent.OGRNIP', v)}
-                            />
-                            <EditField
-                                label="Юридический адрес"
-                                value={fieldValue('contragent.legalAddress', payload.contragent?.legalAddress || '')}
-                                onChange={(v) => setField('contragent.legalAddress', v)}
-                            />
-                            <EditField
-                                label="Банк"
-                                value={fieldValue('contragent.bank', payload.contragent?.bank || '')}
-                                onChange={(v) => setField('contragent.bank', v)}
-                            />
-                            <EditField
-                                label="Расчётный счёт"
-                                value={fieldValue('contragent.bankAccount', payload.contragent?.bankAccount || '')}
-                                onChange={(v) => setField('contragent.bankAccount', v)}
-                            />
-                            <EditField
-                                label="БИК"
-                                value={fieldValue('contragent.BIK', payload.contragent?.BIK || '')}
-                                onChange={(v) => setField('contragent.BIK', v)}
-                            />
-                            <EditField
-                                label="Корреспондентский счёт"
-                                value={fieldValue('contragent.corrAccount', payload.contragent?.corrAccount || '')}
-                                onChange={(v) => setField('contragent.corrAccount', v)}
-                            />
-                            <EditField
-                                label="Адрес банка"
-                                value={fieldValue('contragent.bankAddress', payload.contragent?.bankAddress || '')}
-                                onChange={(v) => setField('contragent.bankAddress', v)}
-                            />
+                        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                            <h3 className="text-base font-semibold text-gray-900">Реквизиты заказчика</h3>
+                            <div className="flex items-center gap-3 text-xs">
+                                {customer.id && (
+                                    <a href={`/clients/${customer.id}`} className="text-blue-700 hover:underline">
+                                        править в карточке клиента
+                                    </a>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={pullRequisites}
+                                    disabled={requisitesBusy}
+                                    className="border border-gray-300 px-2 py-1 font-semibold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                                >
+                                    {requisitesBusy ? 'Подставляем…' : 'Подставить в заказ'}
+                                </button>
+                            </div>
                         </div>
+
+                        <div className="grid md:grid-cols-2 gap-2">
+                            <InfoField label="Тип контрагента" value={names.resolve('contragentType', requisites?.client?.contragentType || requisites?.inOrder?.contragentType) || '—'} />
+                            <InfoField label="Юридическое название" value={requisites?.client?.legalName || requisites?.inOrder?.legalName || '—'} />
+                            <InfoField label="ИНН" value={requisites?.client?.inn || requisites?.inOrder?.inn || '—'} />
+                            <InfoField label="КПП" value={requisites?.client?.kpp || requisites?.inOrder?.kpp || '—'} />
+                            <InfoField label="ОГРН / ОГРНИП" value={requisites?.client?.ogrn || requisites?.client?.ogrnip || requisites?.inOrder?.ogrn || requisites?.inOrder?.ogrnip || '—'} />
+                            <InfoField label="Юридический адрес" value={requisites?.client?.legalAddress || requisites?.inOrder?.legalAddress || '—'} />
+                            <InfoField label="Банк" value={requisites?.client?.bank || requisites?.inOrder?.bank || '—'} />
+                            <InfoField label="Расчётный счёт" value={requisites?.client?.bankAccount || requisites?.inOrder?.bankAccount || '—'} />
+                            <InfoField label="БИК" value={requisites?.client?.bik || requisites?.inOrder?.bik || '—'} />
+                            <InfoField label="Корреспондентский счёт" value={requisites?.client?.corrAccount || requisites?.inOrder?.corrAccount || '—'} />
+                        </div>
+
                         <p className="mt-2 text-xs text-gray-500">
-                            Эти реквизиты идут в счёт и коммерческое предложение по этому заказу.
+                            {requisites?.client?.source === 'client'
+                                ? 'Из карточки клиента. Счёт и КП печатаются по реквизитам заказа — нажмите «Подставить в заказ», если правили их в карточке.'
+                                : requisites?.client?.source === 'order'
+                                    ? `В карточке клиента реквизитов ещё нет — показаны из заказа №${requisites?.client?.fromOrderNumber ?? '—'}. Внесите их в карточку клиента, чтобы они подставлялись сами.`
+                                    : 'Реквизитов нет ни в карточке клиента, ни в заказе. Внесите их в карточке клиента.'}
                         </p>
                     </div>
                 </section>

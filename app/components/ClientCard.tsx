@@ -9,11 +9,23 @@ import { formatIntRu, formatRub } from '@/lib/format';
 import { isReseller } from '@/lib/own-crm/okved';
 
 type Requisites = {
+    contragentType?: string | null;
     inn: string | null;
     kpp: string | null;
+    ogrn?: string | null;
+    ogrnip?: string | null;
     legalName: string | null;
     legalAddress: string | null;
+    bank?: string | null;
+    bankAccount?: string | null;
+    bik?: string | null;
+    corrAccount?: string | null;
+    bankAddress?: string | null;
+    /** Откуда показаны: карточка клиента, последний заказ или ничего. */
+    source?: 'client' | 'order' | 'none';
     fromOrderNumber: string | null;
+    updatedAt?: string | null;
+    updatedBy?: string | null;
 };
 
 type Relation = {
@@ -104,6 +116,12 @@ export default function ClientCard({ clientId }: { clientId: string }) {
     const router = useRouter();
     const [client, setClient] = useState<any>(null);
     const [requisites, setRequisites] = useState<Requisites | null>(null);
+    // Реквизиты правятся здесь: они принадлежат заказчику, а в заказ
+    // подтягиваются (решение владельца 02.10.2026).
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState<Requisites | null>(null);
+    const [savingRequisites, setSavingRequisites] = useState(false);
+    const [requisitesNote, setRequisitesNote] = useState<string | null>(null);
     const [relation, setRelation] = useState<Relation | null>(null);
     const [related, setRelated] = useState<Related[]>([]);
     const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -113,6 +131,53 @@ export default function ClientCard({ clientId }: { clientId: string }) {
     const [contacts, setContacts] = useState<ContactRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // Реквизиты читаем отдельно: их хозяин — клиент, и правятся они здесь.
+    const loadRequisites = useCallback(async () => {
+        try {
+            const res = await fetch(`/api/clients/${clientId}/requisites`);
+            const payload = await res.json();
+            if (res.ok) setRequisites(payload.requisites);
+        } catch {
+            // Молча: карточка и без реквизитов полезна, а ошибку покажем при правке.
+        }
+    }, [clientId]);
+
+    const saveRequisites = async () => {
+        if (!draft) return;
+        setSavingRequisites(true);
+        setRequisitesNote(null);
+        try {
+            const res = await fetch(`/api/clients/${clientId}/requisites`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    legalName: draft.legalName ?? '',
+                    inn: draft.inn ?? '',
+                    kpp: draft.kpp ?? '',
+                    ogrn: draft.ogrn ?? '',
+                    ogrnip: draft.ogrnip ?? '',
+                    legalAddress: draft.legalAddress ?? '',
+                    bank: draft.bank ?? '',
+                    bankAccount: draft.bankAccount ?? '',
+                    bik: draft.bik ?? '',
+                    corrAccount: draft.corrAccount ?? '',
+                    bankAddress: draft.bankAddress ?? '',
+                    contragentType: draft.contragentType ?? '',
+                }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось сохранить реквизиты');
+            setRequisites(payload.requisites);
+            void loadRequisites();
+            setEditing(false);
+            setDraft(null);
+        } catch (e: any) {
+            setRequisitesNote(e.message);
+        } finally {
+            setSavingRequisites(false);
+        }
+    };
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -179,16 +244,86 @@ export default function ClientCard({ clientId }: { clientId: string }) {
 
             <div className="grid min-h-0 flex-1 grid-cols-1 gap-px overflow-auto bg-gray-200 lg:grid-cols-3">
                 <div className="bg-white text-xs">
-                    <div className="border-b border-gray-200 bg-gray-100 px-4 py-2 font-bold uppercase tracking-wide text-gray-700">
-                        Реквизиты
+                    <div className="flex items-center justify-between border-b border-gray-200 bg-gray-100 px-4 py-2 font-bold uppercase tracking-wide text-gray-700">
+                        <span>Реквизиты</span>
+                        {editing ? (
+                            <span className="flex items-center gap-2">
+                                <button
+                                    onClick={saveRequisites}
+                                    disabled={savingRequisites}
+                                    className="text-[11px] font-bold normal-case text-blue-700 hover:underline disabled:text-gray-400"
+                                >
+                                    {savingRequisites ? 'Сохраняем…' : 'Сохранить'}
+                                </button>
+                                <button
+                                    onClick={() => { setEditing(false); setDraft(null); }}
+                                    className="text-[11px] font-bold normal-case text-gray-500 hover:underline"
+                                >
+                                    Отменить
+                                </button>
+                            </span>
+                        ) : (
+                            <button
+                                onClick={() => { setDraft({ ...(requisites ?? {}) } as Requisites); setEditing(true); }}
+                                className="text-[11px] font-bold normal-case text-blue-700 hover:underline"
+                            >
+                                Править
+                            </button>
+                        )}
                     </div>
-                    <Field label="Юридическое название" value={requisites?.legalName} />
-                    <Field label="ИНН" value={requisites?.inn} />
-                    <Field label="КПП" value={requisites?.kpp} />
-                    <Field label="Юридический адрес" value={requisites?.legalAddress} />
-                    {requisites?.fromOrderNumber && (
+
+                    {editing && draft ? (
+                        <div className="divide-y divide-gray-100">
+                            {([
+                                ['legalName', 'Юридическое название'],
+                                ['inn', 'ИНН'],
+                                ['kpp', 'КПП'],
+                                ['ogrn', 'ОГРН'],
+                                ['ogrnip', 'ОГРНИП'],
+                                ['legalAddress', 'Юридический адрес'],
+                                ['bank', 'Банк'],
+                                ['bankAccount', 'Расчётный счёт'],
+                                ['bik', 'БИК'],
+                                ['corrAccount', 'Корреспондентский счёт'],
+                                ['bankAddress', 'Адрес банка'],
+                            ] as Array<[keyof Requisites, string]>).map(([key, label]) => (
+                                <label key={String(key)} className="flex items-center gap-2 px-4 py-1.5">
+                                    <span className="w-40 shrink-0 text-gray-500">{label}</span>
+                                    <input
+                                        value={String(draft[key] ?? '')}
+                                        onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
+                                        className="w-full border border-gray-300 px-2 py-1"
+                                    />
+                                </label>
+                            ))}
+                        </div>
+                    ) : (
+                        <>
+                            <Field label="Юридическое название" value={requisites?.legalName} />
+                            <Field label="ИНН" value={requisites?.inn} />
+                            <Field label="КПП" value={requisites?.kpp} />
+                            <Field label="ОГРН / ОГРНИП" value={requisites?.ogrn || requisites?.ogrnip} />
+                            <Field label="Юридический адрес" value={requisites?.legalAddress} />
+                            <Field label="Банк" value={requisites?.bank} />
+                            <Field label="Расчётный счёт" value={requisites?.bankAccount} />
+                            <Field label="БИК" value={requisites?.bik} />
+                            <Field label="Корреспондентский счёт" value={requisites?.corrAccount} />
+                        </>
+                    )}
+
+                    {requisitesNote && (
+                        <div className="px-4 py-2 text-[11px] text-amber-800">{requisitesNote}</div>
+                    )}
+                    {!editing && requisites?.source === 'order' && requisites?.fromOrderNumber && (
                         <div className="px-4 py-2 text-[11px] text-gray-500">
-                            Реквизиты взяты из заказа №{requisites.fromOrderNumber}: в RetailCRM они хранятся на заказе, а не в карточке клиента.
+                            Показаны из заказа №{requisites.fromOrderNumber} — в карточке их ещё нет.
+                            Нажмите «Править» и сохраните: дальше они будут подтягиваться в каждый новый заказ.
+                        </div>
+                    )}
+                    {!editing && requisites?.source === 'client' && requisites?.updatedAt && (
+                        <div className="px-4 py-2 text-[11px] text-gray-500">
+                            Обновлены {new Date(requisites.updatedAt).toLocaleDateString('ru-RU')}
+                            {requisites.updatedBy ? ` · ${requisites.updatedBy}` : ''}
                         </div>
                     )}
 
