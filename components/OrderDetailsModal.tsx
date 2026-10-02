@@ -229,6 +229,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     // экрана, а менеджеру при работе с полями нужны только номер, сумма и дата.
     const [compactHeader, setCompactHeader] = useState(false);
     const [printOpen, setPrintOpen] = useState(false);
+    // Договор по заказу: окно с условиями, которые менеджер пишет словами.
+    const [contractOpen, setContractOpen] = useState(false);
+    const [contractTerms, setContractTerms] = useState('');
+    const [contractSaving, setContractSaving] = useState(false);
+    const [contractNote, setContractNote] = useState<string | null>(null);
     // Карточка заказа редактируемая сразу: режима «только просмотр» у нас нет.
     // Правка копится в состоянии и уходит в CRM одной кнопкой сверху.
     // Разовая скидка на заказ — рублями и процентом, как в RetailCRM.
@@ -1452,6 +1457,71 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 </div>
                             </div>
                         )}
+                        {contractOpen && (
+                            <div
+                                className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/40 p-6"
+                                onClick={() => setContractOpen(false)}
+                            >
+                                <div className="w-full max-w-2xl bg-white p-4 shadow-none" onClick={(e) => e.stopPropagation()}>
+                                    <div className="mb-3 flex items-center justify-between border-b border-gray-200 pb-2">
+                                        <h3 className="text-lg font-semibold text-gray-900">
+                                            Договор по заказу №{String(data.order?.number ?? orderId)}
+                                        </h3>
+                                        <button
+                                            onClick={() => setContractOpen(false)}
+                                            className="px-2 text-xl leading-none text-gray-400 hover:text-gray-900"
+                                            title="Закрыть"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                    <p className="mb-2 text-sm text-gray-600">
+                                        Напишите условия своими словами — например «70 предоплата, 30 перед отгрузкой».
+                                        Остальное подставится из заказа: реквизиты, предмет, сроки изготовления.
+                                        Готовый договор уйдёт юристу на согласование.
+                                    </p>
+                                    <textarea
+                                        value={contractTerms}
+                                        onChange={(e) => setContractTerms(e.target.value)}
+                                        rows={5}
+                                        placeholder="70 предоплата в течение 5 банковских дней, 30 перед отгрузкой"
+                                        className="w-full border border-gray-200 px-3 py-2 text-sm"
+                                    />
+                                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                                        <button
+                                            disabled={contractSaving || !contractTerms.trim()}
+                                            onClick={async () => {
+                                                setContractSaving(true);
+                                                setContractNote(null);
+                                                try {
+                                                    const res = await fetch(`/api/orders/${encodeURIComponent(String(data.order?.number ?? orderId))}/contract`, {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify({
+                                                            terms: contractTerms.trim(),
+                                                            seller: sellerCode || null,
+                                                            orderId: Number(orderId),
+                                                        }),
+                                                    });
+                                                    const payload = await res.json();
+                                                    if (!res.ok) throw new Error(payload.error || 'Договор не составился');
+                                                    setContractNote(payload.note || 'Договор отправлен юристу.');
+                                                    setContractTerms('');
+                                                } catch (e: any) {
+                                                    setContractNote(e.message);
+                                                } finally {
+                                                    setContractSaving(false);
+                                                }
+                                            }}
+                                            className="bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                                        >
+                                            {contractSaving ? 'Составляю…' : 'Составить и отправить юристу'}
+                                        </button>
+                                        {contractNote && <span className="text-sm text-gray-700">{contractNote}</span>}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         {/* Письма, которые отправляла и получала сама RetailCRM
                             (её модуль «Коммуникации»), через API недоступны —
                             в 191 методе их нет. Поэтому даём прямую ссылку на
@@ -2090,6 +2160,14 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             >
                                 Счёт на оплату
                             </a>
+                            {/* Договор собирается по нашему шаблону и уходит юристу на
+                                согласование — менеджер пишет только условия словами. */}
+                            <button
+                                onClick={() => setContractOpen(true)}
+                                className="shrink-0 whitespace-nowrap border border-gray-200 text-gray-700 hover:bg-gray-50"
+                            >
+                                Составить договор
+                            </button>
                             <div className="relative">
                                 <button
                                     onClick={() => setPrintOpen((v) => !v)}

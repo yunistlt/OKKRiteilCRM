@@ -83,6 +83,8 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/legal', label: 'Юридический отдел', description: 'Реестр исполнительных производств (ИП ФССП).', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },
     { prefix: '/legal/helpdesk', label: 'Юридический помощник', description: 'Дарья (helpdesk по базе знаний) и загрузка договоров на анализ.', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager', 'jurist'] },
     { prefix: '/legal/matters', label: 'Претензионно-исковая работа', description: 'Реестр дел: претензии, переговоры, суды и взыскание как стадии одного спора.', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },
+    { prefix: '/legal/approvals', label: 'Документы на согласовании', description: 'Договоры по заказам: юрист читает, правит и согласовывает.', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },
+    { prefix: '/api/legal/contracts/approvals', label: 'API согласования договоров', description: 'Список документов на согласовании и решения юриста.', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },
     { prefix: '/legal/enforcement', label: 'Исполнительные производства', description: 'Карточки ИП ФССП: документы, разбор ботом, связь с платежами.', category: 'Юридический отдел', allowed: ['admin'] },
     { prefix: '/api/legal/enforcement', label: 'API исполнительных производств', description: 'Серверные методы карточек ИП: загрузка документов, разбор, подтверждение полей.', category: 'Юридический отдел', allowed: ['admin'] },
     { prefix: '/api/legal', label: 'API юридического модуля', description: 'Серверные методы юротдела. Только админ и юрист — как и реестр ИП на /legal.', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },

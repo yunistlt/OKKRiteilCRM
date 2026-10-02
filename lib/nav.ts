@@ -62,6 +62,7 @@ export const NAV_GROUPS: NavGroup[] = [
         {
             title: 'Юридический отдел',
             items: [
+                { name: 'Документы на согласовании', href: '/legal/approvals', icon: '📝', allowed: ['admin', 'jurist'] },
                 { name: 'Претензионно-исковая работа', href: '/legal/matters', icon: '⚖️', allowed: ['admin', 'jurist'] },
                 { name: 'Юридический отдел', href: '/legal', icon: '📑', allowed: ['admin', 'okk', 'rop', 'manager', 'jurist'] },
             ]
