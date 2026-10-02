@@ -13,6 +13,61 @@ import { getOpenAIClient } from '@/utils/openai';
 
 const openai = getOpenAIClient();
 
+/**
+ * Файлы, приложенные клиентом в чате, переносим в файлы заказа.
+ *
+ * Бинарь уже лежит в том же бакете `okk-assets` (виджет кладёт его в
+ * `chat-attachments/…`), поэтому копию не делаем — заводим строку в
+ * `order_files` на существующий путь. Иначе менеджер видит в заявке
+ * «прикреплён файл», а вкладка «Файлы» пуста: она смотрит только на письма
+ * и на ручные загрузки.
+ */
+async function attachChatFilesToOrder(
+    orderNumber: string,
+    sessionId: string,
+    messages: Array<{ file_url?: string | null; file_name?: string | null }>,
+): Promise<number> {
+    const BUCKET = 'okk-assets';
+    const files = (messages || []).filter((m) => m.file_url && m.file_name);
+    if (!files.length) return 0;
+
+    const { data: already } = await supabase
+        .from('order_files')
+        .select('storage_path')
+        .eq('order_number', orderNumber)
+        .is('deleted_at', null);
+    const known = new Set(((already || []) as any[]).map((row) => row.storage_path));
+
+    const rows = files
+        .map((file) => {
+            // publicUrl вида …/storage/v1/object/public/okk-assets/chat-attachments/…
+            const marker = `/${BUCKET}/`;
+            const at = String(file.file_url).indexOf(marker);
+            if (at < 0) return null;
+            const storagePath = decodeURIComponent(String(file.file_url).slice(at + marker.length));
+            if (!storagePath || known.has(storagePath)) return null;
+            known.add(storagePath);
+            return {
+                order_number: orderNumber,
+                file_name: file.file_name,
+                storage_bucket: BUCKET,
+                storage_path: storagePath,
+                uploaded_by: 'Елена (чат на сайте)',
+                note: `Приложено клиентом в чате (сессия ${sessionId})`,
+            };
+        })
+        .filter(Boolean) as any[];
+
+    if (!rows.length) return 0;
+
+    const { error } = await supabase.from('order_files').insert(rows);
+    if (error) {
+        console.error('[lead-catcher] файлы чата не доехали до заказа', orderNumber, error);
+        return 0;
+    }
+    return rows.length;
+}
+
 function mapPurchaseForm(raw?: string): string {
     if (!raw) return 'trebuetsya-utochnit';
     const val = raw.toLowerCase();
@@ -78,7 +133,9 @@ export async function GET(req: Request) {
         for (const session of sessions) {
             const { data: messages, error: msgsError } = await supabase
                 .from('widget_messages')
-                .select('role, content, created_at')
+                // Файлы берём вместе с перепиской: клиент прикладывает ТЗ прямо в чат,
+                // и без них менеджер видит «прикреплён файл», а в заказе пусто.
+                .select('role, content, created_at, file_url, file_name')
                 .eq('session_id', session.id)
                 .order('created_at', { ascending: true });
 
@@ -351,6 +408,11 @@ ${chatLog.split('\n').slice(-10).join('\n')}`;
                     }
 
                     if (updateError) throw updateError;
+
+                    const attached = await attachChatFilesToOrder(orderNumber, session.id, messages as any[]);
+                    if (attached) {
+                        console.log(`[lead-catcher] заказ ${orderNumber}: приложено файлов из чата — ${attached}`);
+                    }
 
                     await supabase.from('widget_messages').insert([
                         {
