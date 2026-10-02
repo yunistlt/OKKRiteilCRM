@@ -11,6 +11,8 @@ interface OrderReplyFormProps {
 
 interface ThreadState {
     to: string | null;
+    /** Подпись менеджера заказа — подставляется в пустое письмо. */
+    signature?: string | null;
     subjectText: string;
     hasThread: boolean;
     thread: Array<{ from: string | null; fromName: string | null; receivedAt: string | null; preview: string }>;
@@ -70,6 +72,8 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                 setThread(data);
                 setTo(data.to || '');
                 setSubject(data.subjectText || `По заказу №${orderNumber}`);
+                // Подпись ставим сразу: менеджер дописывает письмо над ней, как в RetailCRM.
+                if (data.signature) setBody(`\n\n${data.signature}`);
 
                 const tplRes = await fetch('/api/settings/templates?kind=email&active=true');
                 const tplData = await tplRes.json();
@@ -117,7 +121,10 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
             }
             setSubject(data.subject || '');
             // Тело приходит готовым HTML — в поле показываем текстом, разметку уберём при отправке.
-            setBody(htmlToPlainText(data.html || ''));
+            // Подпись дописываем, если шаблон её не содержит: письмо без подписи не уходит.
+            const templateBody = htmlToPlainText(data.html || '');
+            const sign = thread?.signature;
+            setBody(sign && !templateBody.includes('С уважением') ? `${templateBody}\n\n${sign}` : templateBody);
             // Письмо от ИИ читает человек: он отвечает за то, что уйдёт клиенту.
             setDraftNote(data.byAi ? 'Письмо написал ИИ по данным заказа — прочитайте и поправьте перед отправкой.' : null);
         } catch (e) {

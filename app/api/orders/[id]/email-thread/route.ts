@@ -71,17 +71,45 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         const last = thread[0] || null;
 
         // Адресат из заказа — на случай, когда клиент ещё не писал.
+        // Ищем по НОМЕРУ заказа: в маршрут приходит именно он («1038А»), а не
+        // числовой order_id. Раньше условие стояло на order_id, заказ не находился,
+        // и у заявки без переписки поле «Кому» оставалось пустым.
         const { data: order } = await supabase
             .from('orders')
-            .select('raw_payload')
-            .eq('order_id', orderNumber)
+            .select('email, manager_id, raw_payload')
+            .eq('number', orderNumber)
             .maybeSingle();
 
         const payload = (order?.raw_payload ?? {}) as any;
-        const orderEmail = payload.email || payload.contact?.email || payload.customer?.email || null;
+        const orderEmail =
+            (order as any)?.email || payload.email || payload.contact?.email || payload.customer?.email || null;
+
+        // Подпись менеджера — та же, что в RetailCRM: имя из справочника менеджеров,
+        // добавочный — из его настроек Телфина (там, где он уже заполнен).
+        const { data: manager } = (order as any)?.manager_id
+            ? await supabase
+                  .from('managers')
+                  .select('first_name, last_name, telphin_extension')
+                  .eq('id', (order as any).manager_id)
+                  .maybeSingle()
+            : { data: null };
+
+        const managerName = [manager?.last_name, manager?.first_name].filter(Boolean).join(' ').trim();
+        const extension = manager?.telphin_extension ? String(manager.telphin_extension).trim() : '';
+        const signature = managerName
+            ? [
+                  'С уважением,',
+                  managerName,
+                  'Менеджер по продажам',
+                  'Завод Металлических Конструкций',
+                  `+7(499)350-44-90${extension ? `, ${extension}` : ''}`,
+                  'https://zmktlt.ru/',
+              ].join('\n')
+            : null;
 
         return NextResponse.json({
             to: last?.from_email || orderEmail || null,
+            signature,
             toName: last?.from_name || null,
             subjectText: stripOrderThreadTag(last?.subject || '') || `По заказу №${orderNumber}`,
             hasThread: conversation.length > 0,
