@@ -4,6 +4,7 @@ import { supabase } from '@/utils/supabase';
 import { formatEventValue, MAIL_FEED_FIELD_PATTERNS } from '@/lib/order-events';
 import { buildFieldLabelResolver } from '@/lib/order-field-labels';
 import { loadOrderCalls } from '@/lib/own-crm/order-calls';
+import { loadOrderMail } from '@/lib/own-crm/order-mail';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,17 +44,34 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             .order('occurred_at', { ascending: false })
             .limit(10);
 
-        // Normalize events for frontend. Тип — русская подпись поля (ЗАКОН «только
-        // человеческий язык»), код поля остаётся в fieldCode.
+        // Лента «Письма и сообщения»: настоящая переписка из своих таблиц
+        // (входящие Катерины и письма, отправленные из карточки) плюс
+        // email-события истории RetailCRM. Комментарии менеджера сюда не
+        // попадают — у них своё поле (замечания Евгении 02.10.2026).
         const fieldLabel = await buildFieldLabelResolver();
-        const emails = events?.map(e => ({
-            id: e.occurred_at, // use timestamp as id
-            date: e.occurred_at,
-            type: fieldLabel(e.field),
-            fieldCode: e.field,
-            text: formatEventValue(e.new_value),
-            source: 'retailcrm'
-        })) || [];
+        const mail = await loadOrderMail({
+            orderNumber: String(order.number ?? order.order_id),
+            orderId: order.order_id,
+        });
+
+        const emails = [
+            ...mail.map((entry) => ({
+                id: entry.id,
+                date: entry.date,
+                type: entry.party ? `${entry.type} · ${entry.party}` : entry.type,
+                fieldCode: entry.source,
+                text: entry.text,
+                source: entry.source,
+            })),
+            ...((events ?? []).map((e) => ({
+                id: `history-${e.occurred_at}-${e.field}`,
+                date: e.occurred_at,
+                type: fieldLabel(e.field),
+                fieldCode: e.field,
+                text: formatEventValue(e.new_value),
+                source: 'retailcrm',
+            }))),
+        ].sort((left, right) => String(right.date ?? '').localeCompare(String(left.date ?? '')));
 
         // 4. История изменений заказа — канонический order_history_log
         const { data: rawHistory } = await supabase
