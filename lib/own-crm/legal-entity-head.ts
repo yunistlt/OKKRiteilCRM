@@ -69,19 +69,27 @@ export async function refreshSignersFromEgrul(): Promise<HeadUpdate[]> {
 
     for (const row of ((data ?? []) as any[])) {
         const info = await companyByInn(String(row.inn));
-        const name = info?.managerName?.trim() || null;
-        const title = humanTitle(info?.managerTitle);
+
+        /**
+         * У ИП подписант — сам предприниматель (указание владельца
+         * 02.10.2026). В ЕГРИП руководителя нет и быть не может, но ФИО есть в
+         * названии: «Индивидуальный предприниматель Теренков Андрей
+         * Анатольевич».
+         */
+        const soleTrader = !info?.managerName && String(info?.fullName ?? '').toLowerCase().includes('индивидуальный предприниматель');
+        const name = soleTrader
+            ? String(info?.fullName ?? '').replace(/^индивидуальный предприниматель\s*/i, '').trim() || null
+            : info?.managerName?.trim() || null;
+        const title = soleTrader ? 'Индивидуальный предприниматель' : humanTitle(info?.managerTitle);
 
         if (!name) {
-            // У ИП руководителя в ЕГРИП нет — подписывает сам предприниматель;
-            // выдумывать за владельца не будем, скажем прямо.
             results.push({
                 inn: String(row.inn),
                 entity: row.short_name,
                 name: null,
                 title: null,
                 note: info
-                    ? 'ЕГРЮЛ не называет руководителя (у ИП его и нет) — впишите подписанта руками'
+                    ? 'ЕГРЮЛ не называет руководителя — впишите подписанта руками'
                     : 'Не удалось получить данные ЕГРЮЛ по этому ИНН',
             });
             continue;
