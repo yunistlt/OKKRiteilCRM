@@ -31,9 +31,16 @@ for (;;) {
         ${c.isContact ?? null}, ${c.createdAt ?? null}, ${c.ordersCount ?? null}, ${c.totalSumm ?? null},
         ${c.averageSumm ?? null}, ${c.personalDiscount ?? null}, ${sql.json(c.segments ?? [])},
         ${sql.json(c.customFields ?? {})}, ${sql.json(c)}, now())
-      on conflict ("id") do update set "externalId"=excluded."externalId", "firstName"=excluded."firstName",
-        "lastName"=excluded."lastName", "patronymic"=excluded."patronymic", "email"=excluded."email",
-        "phones"=excluded."phones", "site"=excluded."site", "managerId"=excluded."managerId",
+      on conflict ("id") do update set "externalId"=excluded."externalId",
+        -- ФИО, телефоны и почту правят в ОКК и в RetailCRM не отправляют
+        -- (решение владельца 02.10.2026), поэтому у правленных строк
+        -- (okk_edited_at) свои значения остаются.
+        "firstName"=case when customers.okk_edited_at is null then excluded."firstName" else customers."firstName" end,
+        "lastName"=case when customers.okk_edited_at is null then excluded."lastName" else customers."lastName" end,
+        "patronymic"=case when customers.okk_edited_at is null then excluded."patronymic" else customers."patronymic" end,
+        "email"=case when customers.okk_edited_at is null then excluded."email" else customers."email" end,
+        "phones"=case when customers.okk_edited_at is null then excluded."phones" else customers."phones" end,
+        "site"=excluded."site", "managerId"=excluded."managerId",
         "vip"=excluded."vip", "bad"=excluded."bad", "isContact"=excluded."isContact",
         "ordersCount"=excluded."ordersCount", "totalSumm"=excluded."totalSumm",
         "averageSumm"=excluded."averageSumm", "personalDiscount"=excluded."personalDiscount",

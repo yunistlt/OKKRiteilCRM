@@ -57,6 +57,15 @@ type ContactRow = {
     lastOrderAt: string | null;
 };
 
+/** Правка человека: ФИО, телефон и почта правятся в ОКК (решение владельца 02.10.2026). */
+type PersonDraft = {
+    lastName: string;
+    firstName: string;
+    patronymic: string;
+    email: string;
+    phone: string;
+};
+
 type CallRow = {
     at: string;
     direction: string;
@@ -129,6 +138,11 @@ export default function ClientCard({ clientId }: { clientId: string }) {
     const [emails, setEmails] = useState<EmailRow[]>([]);
     const [phone, setPhone] = useState<string | null>(null);
     const [contacts, setContacts] = useState<ContactRow[]>([]);
+    // Правка человека: открыт один контакт за раз.
+    const [personEditId, setPersonEditId] = useState<number | null>(null);
+    const [personDraft, setPersonDraft] = useState<PersonDraft | null>(null);
+    const [personSaving, setPersonSaving] = useState(false);
+    const [personNote, setPersonNote] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -176,6 +190,60 @@ export default function ClientCard({ clientId }: { clientId: string }) {
             setRequisitesNote(e.message);
         } finally {
             setSavingRequisites(false);
+        }
+    };
+
+    const startPersonEdit = async (contact: ContactRow) => {
+        setPersonNote(null);
+        setPersonEditId(contact.id);
+        // ФИО в списке склеено, а правим по полям — берём их с сервера.
+        try {
+            const res = await fetch(`/api/clients/${clientId}/contacts/${contact.id}`);
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось открыть данные человека');
+            setPersonDraft({
+                lastName: payload.person.lastName || '',
+                firstName: payload.person.firstName || '',
+                patronymic: payload.person.patronymic || '',
+                email: payload.person.email || '',
+                phone: (payload.person.phones || [])[0] || '',
+            });
+        } catch (e: any) {
+            setPersonNote(e.message);
+            setPersonEditId(null);
+        }
+    };
+
+    const savePerson = async () => {
+        if (!personDraft || personEditId === null) return;
+        setPersonSaving(true);
+        setPersonNote(null);
+        try {
+            const res = await fetch(`/api/clients/${clientId}/contacts/${personEditId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lastName: personDraft.lastName,
+                    firstName: personDraft.firstName,
+                    patronymic: personDraft.patronymic,
+                    email: personDraft.email,
+                    phones: personDraft.phone ? [personDraft.phone] : [],
+                }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось сохранить');
+
+            const person = payload.person;
+            const name = [person.lastName, person.firstName, person.patronymic].filter(Boolean).join(' ').trim();
+            setContacts((list) => list.map((row) => (row.id === person.id
+                ? { ...row, name: name || null, email: person.email, phones: person.phones }
+                : row)));
+            setPersonEditId(null);
+            setPersonDraft(null);
+        } catch (e: any) {
+            setPersonNote(e.message);
+        } finally {
+            setPersonSaving(false);
         }
     };
 
@@ -337,17 +405,66 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                             <Field label="Почта" value={client?.email || client?.contact_email} />
                         </>
                     )}
+                    {personNote && (
+                        <div className="px-4 py-2 text-[11px] text-amber-800">{personNote}</div>
+                    )}
                     {contacts.map((person) => (
                         <div key={person.id} className="border-b border-gray-100 px-4 py-3">
-                            <div className="font-semibold text-gray-900">{person.name || 'Без имени'}</div>
-                            <div className="text-[11px] text-gray-500">
-                                {person.phones[0] || 'телефон неизвестен'}
-                                {person.email ? ` · ${person.email}` : ''}
-                            </div>
-                            <div className="text-[11px] text-gray-500">
-                                заказов с ним: {formatIntRu(person.ordersCount)}
-                                {person.lastOrderAt ? ` · последний ${new Date(person.lastOrderAt).toLocaleDateString('ru-RU')}` : ''}
-                            </div>
+                            {personEditId === person.id && personDraft ? (
+                                <div className="space-y-1.5">
+                                    {([
+                                        ['lastName', 'Фамилия'],
+                                        ['firstName', 'Имя'],
+                                        ['patronymic', 'Отчество'],
+                                        ['phone', 'Телефон'],
+                                        ['email', 'Почта'],
+                                    ] as Array<[keyof PersonDraft, string]>).map(([key, label]) => (
+                                        <label key={key} className="flex items-center gap-2">
+                                            <span className="w-24 shrink-0 text-gray-500">{label}</span>
+                                            <input
+                                                value={personDraft[key]}
+                                                onChange={(e) => setPersonDraft({ ...personDraft, [key]: e.target.value })}
+                                                className="w-full border border-gray-300 px-2 py-1"
+                                            />
+                                        </label>
+                                    ))}
+                                    <div className="flex items-center gap-3 pt-1">
+                                        <button
+                                            onClick={savePerson}
+                                            disabled={personSaving}
+                                            className="text-[11px] font-bold text-blue-700 hover:underline disabled:text-gray-400"
+                                        >
+                                            {personSaving ? 'Сохраняем…' : 'Сохранить'}
+                                        </button>
+                                        <button
+                                            onClick={() => { setPersonEditId(null); setPersonDraft(null); }}
+                                            className="text-[11px] font-bold text-gray-500 hover:underline"
+                                        >
+                                            Отменить
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="flex items-baseline justify-between gap-2">
+                                        <div className="font-semibold text-gray-900">{person.name || 'Без имени'}</div>
+                                        <button
+                                            onClick={() => startPersonEdit(person)}
+                                            className="text-[11px] font-bold text-blue-700 hover:underline"
+                                        >
+                                            Править
+                                        </button>
+                                    </div>
+                                    <div className="text-[11px] text-gray-500">
+                                        {person.phones[0] || 'телефон неизвестен'}
+                                        {person.email ? ` · ${person.email}` : ''}
+                                    </div>
+                                    <div className="text-[11px] text-gray-500">
+                                        заказов с ним: {formatIntRu(person.ordersCount)}
+                                        {person.lastOrderAt ? ` · последний ${new Date(person.lastOrderAt).toLocaleDateString('ru-RU')}` : ''}
+                                    </div>
+                                </>
+                            )}
                         </div>
                     ))}
                 </div>
