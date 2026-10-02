@@ -1930,14 +1930,14 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 style={{ backgroundColor: tintFromColor(data?.statusColor, 0.07) || '#ffffff' }}
             >
                 <header
-                    className={`border-b transition-all ${compactHeader ? 'px-4 py-1 md:px-6' : 'px-4 py-4 md:px-6 md:py-5'}`}
+                    className={`border-b transition-all ${compactHeader ? 'px-4 py-1 md:px-6' : 'px-4 py-2.5 md:px-6 md:py-3'}`}
                     style={{ backgroundColor: tintFromColor(data?.statusColor, 0.14) || '#ffffff' }}
                 >
                     <div className={`flex flex-wrap justify-between gap-2 md:gap-6 ${compactHeader ? 'items-center' : 'items-start'}`}>
                         <div className="min-w-0">
-                            {!compactHeader && <p className="text-xs uppercase text-gray-400 mb-1">Заявка</p>}
-                            <div className="flex flex-wrap items-center gap-3">
-                                <h2 className={compactHeader ? 'text-base font-bold text-gray-900' : 'text-2xl font-semibold text-gray-900'}>
+                            {!compactHeader && <p className="text-[10px] uppercase tracking-wide text-gray-400">Заявка</p>}
+                            <div className="flex flex-wrap items-center gap-2">
+                                <h2 className={compactHeader ? 'text-base font-bold text-gray-900' : 'text-xl font-semibold text-gray-900'}>
                                     Заказ #{data?.order?.number ?? orderId}
                                 </h2>
                                 {/* В ужатом виде — то же, что у RetailCRM: номер, сумма, дата. */}
@@ -1952,13 +1952,13 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 {/* Свой заказ ведётся только у нас — менеджер должен это видеть:
                                     в RetailCRM его нет, и искать там нечего. */}
                                 {data?.order?.is_own && (
-                                    <span className="bg-gray-900 px-3 py-1 text-xs font-black uppercase tracking-widest text-white">
+                                    <span className="bg-gray-900 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-white">
                                         Наша база
                                     </span>
                                 )}
                                 {data?.statusName && (
                                     <span
-                                        className="px-3 py-1 text-xs font-semibold text-gray-900"
+                                        className="px-2 py-0.5 text-[11px] font-semibold text-gray-900"
                                         style={{ backgroundColor: data.statusColor || '#e5e7eb' }}
                                     >
                                         {data.statusName}
@@ -1966,7 +1966,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 )}
                             </div>
                             {data?.order && !compactHeader && (
-                                <div className="flex flex-wrap gap-4 text-sm text-gray-600 mt-2">
+                                <div className="mt-0.5 flex flex-wrap gap-3 text-xs text-gray-600">
                                     <span>Сумма: <strong>{formatCurrency(data.order.totalsumm)}</strong></span>
                                     <span>Поступил: {formatDateTime(data.order.created_at)}</span>
                                     <span>Менеджер: {data.order.manager_name || '—'}</span>
@@ -1974,15 +1974,15 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             )}
                             {/* Блок светофора по контрагенту */}
                             {compactHeader ? null : counterpartyScoreLoading ? (
-                                <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">Проверка контрагента...</div>
+                                <div className="mt-1 flex items-center gap-2 text-[11px] text-gray-500">Проверка контрагента...</div>
                             ) : counterpartyScore ? (
-                                <div className="mt-2 flex items-center gap-2">
-                                    <span className={`inline-block w-3 h-3 ${
+                                <div className="mt-1 flex items-center gap-2">
+                                    <span className={`inline-block w-2.5 h-2.5 ${
                                         counterpartyScore.risk_score === 'red' ? 'bg-red-500' :
                                         counterpartyScore.risk_score === 'yellow' ? 'bg-yellow-400' :
                                         'bg-green-500'
                                     }`}></span>
-                                    <span className="text-xs font-semibold">
+                                    <span className="text-[11px] font-semibold">
                                         {counterpartyScore.summary}
                                     </span>
                                 </div>
@@ -1990,18 +1990,18 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
 
                         {/* Deal Score Header Block */}
-                        <div className={`flex items-center gap-4 ml-auto mr-4 group relative ${compactHeader ? 'hidden' : ''}`}>
+                        <div className={`flex items-center gap-3 ml-auto mr-3 group relative ${compactHeader ? 'hidden' : ''}`}>
                             <div className="text-right">
-                                <p className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-0.5">Deal Score</p>
+                                <p className="text-[9px] uppercase tracking-widest font-black text-gray-400">Deal Score</p>
                                 {qualityScoreLoading ? (
-                                    <div className="h-9 w-16 bg-gray-100 animate-pulse ml-auto"></div>
+                                    <div className="h-6 w-12 bg-gray-100 animate-pulse ml-auto"></div>
                                 ) : (
                                     <>
-                                        <p className="text-3xl font-black text-blue-600 leading-none">
+                                        <p className="text-2xl font-black text-blue-600 leading-none">
                                             {qualityScore?.deal_score_pct !== undefined && qualityScore?.deal_score_pct !== null ? `${qualityScore.deal_score_pct}%` : '—'}
                                         </p>
                                         {qualityScore?.deal_score !== undefined && qualityScore?.deal_score !== null && (
-                                            <p className="text-xs text-gray-500 mt-0.5">({qualityScore.deal_score}/100)</p>
+                                            <p className="text-[10px] text-gray-500">({qualityScore.deal_score}/100)</p>
                                         )}
                                     </>
                                 )}
@@ -2012,7 +2012,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             высоту рабочей области (требование владельца
                             02.10.2026). Поэтому панель не переносится, а на
                             узком экране прокручивается по горизонтали. */}
-                        <div className={`flex flex-nowrap items-center overflow-x-auto ${compactHeader ? 'gap-1 [&_a]:px-2 [&_a]:py-0.5 [&_a]:text-[11px] [&_button]:px-2 [&_button]:py-0.5 [&_button]:text-[11px] [&_select]:px-2 [&_select]:py-0.5 [&_select]:text-[11px]' : 'gap-1.5 [&_a]:px-2 [&_a]:py-1 [&_a]:text-xs [&_button]:px-2 [&_button]:py-1 [&_button]:text-xs [&_select]:px-2 [&_select]:py-1 [&_select]:text-xs'}`}>
+                        <div className={`flex flex-nowrap items-center overflow-x-auto ${compactHeader ? 'gap-1 [&_a]:px-2 [&_a]:py-0.5 [&_a]:text-[11px] [&_button]:px-2 [&_button]:py-0.5 [&_button]:text-[11px] [&_select]:px-2 [&_select]:py-0.5 [&_select]:text-[11px]' : 'mt-1 gap-1 [&_a]:px-2 [&_a]:py-0.5 [&_a]:text-[11px] [&_button]:px-2 [&_button]:py-0.5 [&_button]:text-[11px] [&_select]:px-2 [&_select]:py-0.5 [&_select]:text-[11px]'}`}>
                             {/* КП и счёт собираются из самого заказа: позиции, плательщик из
                                 контрагента, продавец из реквизитов магазина в RetailCRM.
                                 Ничего не вводится руками — документ всегда совпадает с заказом. */}
@@ -2113,9 +2113,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     </div>
                     {/* Пометки клиента — рядом со статусом, одной строкой. */}
                     {headerBadges.length > 0 && (
-                        <div className={`flex flex-wrap items-center gap-2 text-xs font-semibold ${compactHeader ? 'hidden' : 'mt-2'}`}>
+                        <div className={`flex flex-wrap items-center gap-1.5 text-[11px] font-semibold ${compactHeader ? 'hidden' : 'mt-1'}`}>
                             {headerBadges.map(badge => (
-                                <span key={badge.label} className={`px-3 py-1 ${badge.className}`}>
+                                <span key={badge.label} className={`px-2 py-0.5 ${badge.className}`}>
                                     {badge.label}
                                 </span>
                             ))}
@@ -2142,7 +2142,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <button
                                 key={tab.id}
                                 onClick={() => setViewTab(tab.id)}
-                                className={`${compactHeader ? 'py-1 text-[13px]' : 'py-4'} px-4 border-b-2 -mb-px transition-colors ${viewTab === tab.id ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
+                                className={`${compactHeader ? 'py-1 text-[13px]' : 'py-2.5 text-sm'} px-4 border-b-2 -mb-px transition-colors ${viewTab === tab.id ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
                             >
                                 {tab.label}
                             </button>
