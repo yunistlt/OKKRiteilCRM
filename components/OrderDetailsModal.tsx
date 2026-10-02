@@ -51,7 +51,11 @@ interface InfoFieldProps {
 
 const viewTabs = [
     { id: 'card', label: 'Карточка заказа' },
-    { id: 'quality', label: 'Качество заявки' }
+    { id: 'quality', label: 'Качество заявки' },
+    // Поля, которые менеджеру в работе не нужны, живут отдельно: на основном
+    // экране должно быть максимум данных по заказу и ничего лишнего
+    // (требование владельца 02.10.2026).
+    { id: 'tech', label: 'Технические данные' }
 ] as const;
 
 const sectionNavItems = [
@@ -794,9 +798,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         const cancelDate = pickValue(payload.cancelledAt, customFields.data_otmeny);
         const purchaseForm = names.field('typ_customer_margin', pickValue(customFields.typ_customer_margin, customFields.purchase_form, customFields.forma_zakupki));
         const sphere = names.field('sfera_deiatelnosti', pickValue(customFields.sfera_deiatelnosti, customFields.sfera_deyatelnosti, customFields.sphere_of_activity) || payload.industry);
-        const invoiceValidDays = pickValue(customFields.schiot_deistvitelen_v_techenie_dnei);
-        const docFlow = customFields.dokumentooborot_cherez_edo;
-        const documentsViaEDO = formatBooleanYesNo(docFlow);
+        // Документооборот (не ЭДО) остаётся в блоке клиента; «через ЭДО»,
+        // «счёт действителен» и Roistat уехали во вкладку «Технические данные».
+        const documentsViaEDO = formatBooleanYesNo(customFields.dokumentooborot);
         // Часовой пояс — справочник chasovoi_poias из RetailCRM, не хардкод.
         const timezoneValue = names.field('chasovoi_poias', pickValue(customFields.chasovoi_poias, customFields.timezone)) || null;
         const logisticDeadline = pickValue(customFields.srok_izgot, shipping.productionDays, delivery.productionDays);
@@ -805,7 +809,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         const logisticNeedBy = pickValue(customFields.kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoyalo);
         const logisticBuyerType = pickValue(customFields.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete);
         const logisticReceiver = pickValue(customFields.naimenovanie_gruzopoluchatelya);
-        const roistat = pickValue(customFields.roistat, payload.roistat);
         const dsDocument = pickValue(customFields.datacheta);
         const marginValue = pickValue(customFields.marzha);
         const expectedAmountValue = toNumber(pickValue(customFields.ozhidaemaya_summa, customFields.expected_amount, payload.totalSumm));
@@ -863,18 +866,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <InfoField label="Тип заказа" value={names.resolve('orderType', payload.orderType) || 'Не указан'} />
                             <InfoField label="Менеджер" value={order.manager_name || changeManager || 'Не назначен'} />
                             <InfoField label="Магазин" required value={names.resolve('site', payload.site || order.site || payload.slug) || '—'} />
-                            {/* Справочники — выпадающими списками, как в RetailCRM:
-                                значения тянем из синканутого каталога
-                                (замечание Евгении 02.10.2026: «не работают кнопки»). */}
-                            <EditField
-                                label="Способ оформления"
-                                value={fieldValue('orderMethod', payload.orderMethod || '')}
-                                options={names.enumOptions('orderMethod')}
-                                onChange={(v) => setField('orderMethod', v)}
-                            />
-                            <InfoField label="Дата поступления" value={createdDate} />
-                            <InfoField label="Обновлён" value={statusUpdated} />
-                            <InfoField label="Привилегия" value={privilegeType || '—'} />
                         </div>
                     </div>
 
@@ -898,12 +889,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 onChange={(v) => setField('cf.typ_customer_margin', v)}
                             />
                             <InfoField label="Сегмент покупателя" value={sphere || 'Требуется уточнить'} />
-                            <InfoField label="VIP" value={formatBooleanYesNo(contact.vip || customer.vip)} />
-                            <InfoField label="BAD" value={formatBooleanYesNo(contact.bad || customer.bad)} />
                             <InfoField label="Сумма" value={formatCurrency(totalSummValue)} />
                             <InfoField label="Ожидаемая сумма" value={expectedAmountValue !== null ? formatCurrency(expectedAmountValue) : '—'} />
-                            <InfoField label="Документооборот через ЭДО" value={documentsViaEDO} />
-                            <InfoField label="Счёт действителен (дней)" value={invoiceValidDays || '—'} />
                         </div>
                     </div>
                 </section>
@@ -1065,7 +1052,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     <div className="bg-white border border-gray-200 p-4">
                         <h3 className="text-base font-semibold text-gray-900 mb-2">Дополнительные данные</h3>
                         <div className="grid md:grid-cols-2 gap-2">
-                            <InfoField label="Roistat" value={roistat || '—'} />
                             <InfoField label="Причина отмены" value={names.field('prichiny_otmeny', payload.cancelReason || customFields.prichiny_otmeny) || '—'} />
                             <InfoField label="Плановая дата закупки" value={formatDate(planPurchaseDate)} />
                             <EditField label="Маржа, %" value={fieldValue('cf.marzha', customFields.marzha || '')} onChange={(v) => setField('cf.marzha', v)} />
@@ -1530,7 +1516,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <InfoField label="Дата оплаты" value={formatDate(payload.payment?.date)} />
                             <InfoField label="Комментарий" value={payload.payment?.comment || '—'} />
                             <InfoField label="Приоритет" value={priorityNumber || '—'} />
-                            <InfoField label="Roistat" value={roistat || '—'} />
                             <InfoField label="Дата передачи в производство" value={formatDate(customFields.data_peredachi_v_proizvodstvo || payload.productionDate)} />
                         </div>
                     </div>
@@ -1567,6 +1552,56 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         if (target) {
             target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+    };
+
+    /**
+     * Технические данные: то, что по заказу хранится, но менеджеру в работе не
+     * нужно (требование владельца 02.10.2026 — три поля: документооборот через
+     * ЭДО, счёт действителен, Roistat). Экран менеджера от них свободен, но
+     * данные не спрятаны: открыть можно одной вкладкой.
+     */
+    const renderTechView = () => {
+        const json = data as any;
+        const payload = json?.raw_payload ?? {};
+        const customFields = payload.customFields ?? {};
+
+        const order = json?.order ?? {};
+        const contact = payload.contact ?? {};
+        const customer = payload.customer ?? {};
+        const createdDate = formatDateTime(pickValue(payload.createdAt, order.created_at));
+        const statusUpdated = formatDateTime(pickValue(payload.statusUpdatedAt, order.updated_at));
+        const privilegeType = pickValue(payload.privilegeType);
+        const documentsViaEDO = formatBooleanYesNo(customFields.dokumentooborot_cherez_edo);
+        const invoiceValidDays = pickValue(customFields.schiot_deistvitelen_v_techenie_dnei);
+        const roistat = pickValue(customFields.roistat, payload.roistat);
+
+        return (
+            <div className="bg-white border border-gray-200 p-4">
+                <div className="grid md:grid-cols-2 gap-2">
+                    {/* Справочники — выпадающими списками, как в RetailCRM:
+                        значения тянем из синканутого каталога. */}
+                    <EditField
+                        label="Способ оформления"
+                        value={fieldValue('orderMethod', payload.orderMethod || '')}
+                        options={names.enumOptions('orderMethod')}
+                        onChange={(v) => setField('orderMethod', v)}
+                    />
+                    <InfoField label="VIP" value={formatBooleanYesNo(contact.vip || customer.vip)} />
+                    <InfoField label="BAD" value={formatBooleanYesNo(contact.bad || customer.bad)} />
+                    <InfoField label="Дата поступления" value={createdDate} />
+                    <InfoField label="Обновлён" value={statusUpdated} />
+                    <InfoField label="Привилегия" value={privilegeType || '—'} />
+                    <InfoField label="Документооборот через ЭДО" value={documentsViaEDO} />
+                    <InfoField label="Счёт действителен (дней)" value={invoiceValidDays || '—'} />
+                    <InfoField label="Roistat" value={roistat || '—'} />
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                    Здесь то, что в работе с заказом не нужно: служебные пометки и метка рекламной
+                    системы. Если какое-то из этих полей понадобится в работе — скажите, вернём на
+                    основной экран.
+                </p>
+            </div>
+        );
     };
 
     const renderQualityView = () => {
@@ -2148,6 +2183,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                         </div>
                                         {renderCardContent()}
                                     </>
+                                ) : viewTab === 'tech' ? (
+                                    renderTechView()
                                 ) : (
                                     renderQualityView()
                                 )}
