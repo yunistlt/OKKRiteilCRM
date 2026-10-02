@@ -265,22 +265,27 @@ export default function OrdersClient() {
                 </div>
 
                 <div className="min-w-0 flex-1 overflow-x-auto">
-                    <div className="flex justify-end px-4 pt-2">
-                        <button
-                            onClick={() => setColumnsOpen(true)}
-                            title="Настроить колонки"
-                            className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-400 text-white hover:bg-gray-500"
-                        >
-                            ⚙
-                        </button>
-                    </div>
-
                     <table className="w-full border-collapse text-sm">
                         <thead>
                             <tr className="border-b-2 border-gray-300 bg-gray-100 text-left align-bottom font-bold text-gray-700">
-                                {columns.map((key) => (
+                                {columns.map((key, index) => (
                                     <th key={key} className="px-4 py-3 text-[13px] font-normal">
-                                        {headerFor(key)}
+                                        <span className="flex items-center justify-between gap-2">
+                                            <span className="min-w-0 truncate">{headerFor(key)}</span>
+                                            {/* Настройка колонок живёт в шапке таблицы: своей
+                                                строкой она съедала высоту списка
+                                                (замечание владельца 02.10.2026). */}
+                                            {index === columns.length - 1 && (
+                                                <button
+                                                    onClick={() => setColumnsOpen(true)}
+                                                    title="Настроить колонки"
+                                                    aria-label="Настроить колонки"
+                                                    className="shrink-0 text-gray-500 hover:text-gray-900"
+                                                >
+                                                    ⚙
+                                                </button>
+                                            )}
+                                        </span>
                                     </th>
                                 ))}
                             </tr>
