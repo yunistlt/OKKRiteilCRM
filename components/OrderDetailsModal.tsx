@@ -361,7 +361,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
     // Реквизиты заказчика: хозяин — клиент, в заказ подтягиваются.
     const [requisites, setRequisites] = useState<any | null>(null);
-    const [requisitesBusy, setRequisitesBusy] = useState(false);
 
     const loadRequisites = useCallback(async () => {
         if (!orderId) return;
@@ -376,21 +375,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     useEffect(() => {
         if (isOpen && orderId) loadRequisites();
     }, [isOpen, orderId, loadRequisites]);
-
-    const pullRequisites = async () => {
-        setRequisitesBusy(true);
-        try {
-            const res = await fetch(`/api/orders/${orderId}/requisites`, { method: 'POST' });
-            const payload = await res.json();
-            if (!res.ok) throw new Error(payload.error || 'Не удалось подставить реквизиты');
-            await fetchDetails();
-            await loadRequisites();
-        } catch (e: any) {
-            alert(e.message);
-        } finally {
-            setRequisitesBusy(false);
-        }
-    };
 
     // Крошка в шапке — человеческим номером заказа («Заказ #1021А»), а не
     // внутренним идентификатором: у своих заказов он вида 900000021 и человека
@@ -966,21 +950,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     <div className="bg-white border border-gray-200 p-4">
                         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
                             <h3 className="text-base font-semibold text-gray-900">Реквизиты заказчика</h3>
-                            <div className="flex items-center gap-3 text-xs">
-                                {customer.id && (
-                                    <a href={`/clients/${customer.id}`} className="text-blue-700 hover:underline">
-                                        править в карточке клиента
-                                    </a>
-                                )}
-                                <button
-                                    type="button"
-                                    onClick={pullRequisites}
-                                    disabled={requisitesBusy}
-                                    className="border border-gray-300 px-2 py-1 font-semibold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
-                                >
-                                    {requisitesBusy ? 'Подставляем…' : 'Подставить в заказ'}
-                                </button>
-                            </div>
+                            {customer.id && (
+                                <a href={`/clients/${customer.id}`} className="text-xs text-blue-700 hover:underline">
+                                    править в карточке клиента
+                                </a>
+                            )}
                         </div>
 
                         <div className="grid md:grid-cols-2 gap-2">
@@ -998,7 +972,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
                         <p className="mt-2 text-xs text-gray-500">
                             {requisites?.client?.source === 'client'
-                                ? 'Из карточки клиента. Счёт и КП печатаются по реквизитам заказа — нажмите «Подставить в заказ», если правили их в карточке.'
+                                ? 'Из карточки клиента — в заказ подтягиваются сами, счёт и КП печатаются ими.'
                                 : requisites?.client?.source === 'order'
                                     ? `В карточке клиента реквизитов ещё нет — показаны из заказа №${requisites?.client?.fromOrderNumber ?? '—'}. Внесите их в карточку клиента, чтобы они подставлялись сами.`
                                     : 'Реквизитов нет ни в карточке клиента, ни в заказе. Внесите их в карточке клиента.'}

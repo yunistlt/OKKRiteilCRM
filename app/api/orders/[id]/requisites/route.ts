@@ -1,9 +1,11 @@
 /**
  * Реквизиты заказчика в заказе.
  *
- * Хозяин реквизитов — клиент (решение владельца 02.10.2026), поэтому здесь мы
- * только показываем его реквизиты и по кнопке подставляем их в заказ: счёт и
- * КП печатаются из заказа, и в момент печати реквизиты должны быть в нём.
+ * Хозяин реквизитов — клиент (решение владельца 02.10.2026): правятся они в
+ * его карточке и в заказ подтягиваются сами. Кнопки «подставить» нет — человек
+ * не должен помнить про перенос (замечание владельца 02.10.2026). Переносим
+ * молча при открытии карточки: счёт и КП печатаются из заказа, значит в нём
+ * реквизиты должны лежать свежими.
  */
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
@@ -35,6 +37,20 @@ export async function GET(_request: Request, { params }: { params: { id: string 
     if (!order) return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 });
 
     const clientId = clientIdOf(order);
+    const client = clientId ? await loadClientRequisites(clientId) : null;
+
+    // Реквизиты клиента свежее тех, что лежат в заказе, — переносим.
+    if (client?.source === 'client') {
+        const contragent = toOrderContragent(client);
+        const current = order.raw_payload?.contragent ?? {};
+        const stale = Object.entries(contragent).some(([key, value]) => String((current as any)[key] ?? '') !== String(value ?? ''));
+
+        if (stale && Object.keys(contragent).length) {
+            const result = await editOrder(Number(order.id), { contragent } as any);
+            if (result.ok) order.raw_payload = { ...(order.raw_payload ?? {}), contragent: { ...current, ...contragent } };
+            else console.warn('[requisites] не перенёс реквизиты в заказ:', result.reason);
+        }
+    }
 
     return NextResponse.json({
         ok: true,
@@ -42,38 +58,6 @@ export async function GET(_request: Request, { params }: { params: { id: string 
         /** Что сейчас лежит в самом заказе — его и печатают счёт с КП. */
         inOrder: fromOrderContragent(order.raw_payload?.contragent),
         /** Реквизиты клиента: ими и надо пользоваться. */
-        client: clientId ? await loadClientRequisites(clientId) : null,
+        client,
     });
-}
-
-/** Подставить реквизиты клиента в заказ. */
-export async function POST(_request: Request, { params }: { params: { id: string } }) {
-    const session = await getSession();
-    if (!session?.user) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
-
-    const order = await findOrder(params.id);
-    if (!order) return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 });
-
-    const clientId = clientIdOf(order);
-    if (!clientId) {
-        return NextResponse.json(
-            { error: 'У заказа не указан покупатель — реквизиты брать неоткуда' },
-            { status: 409 },
-        );
-    }
-
-    const client = await loadClientRequisites(clientId);
-    const contragent = toOrderContragent(client);
-
-    if (!Object.keys(contragent).length) {
-        return NextResponse.json(
-            { error: 'В карточке клиента реквизитов нет — внесите их там' },
-            { status: 409 },
-        );
-    }
-
-    const result = await editOrder(Number(order.id), { contragent } as any);
-    if (!result.ok) return NextResponse.json({ error: result.reason }, { status: 409 });
-
-    return NextResponse.json({ ok: true, contragent });
 }
