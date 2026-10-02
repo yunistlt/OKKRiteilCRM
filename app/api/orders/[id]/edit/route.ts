@@ -18,6 +18,9 @@ const itemSchema = z.object({
     discountAmount: z.coerce.number().min(0).optional().nullable(),
     discountPercent: z.coerce.number().min(0).max(100).optional().nullable(),
     xmlId: z.string().trim().optional().nullable(),
+    /** id товара на сайте и артикул — по ним название ведёт на карточку. */
+    siteId: z.string().trim().max(40).optional().nullable(),
+    article: z.string().trim().max(200).optional().nullable(),
 });
 
 const bodySchema = z.object({

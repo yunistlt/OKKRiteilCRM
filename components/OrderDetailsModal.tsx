@@ -9,6 +9,7 @@ import { priceSourceLabel } from '@/lib/format';
 import { orderTotals } from '@/lib/own-crm/discount';
 import { uniquePhones } from '@/lib/own-crm/phones';
 import { useBreadcrumbs } from '@/components/ui/BreadcrumbsContext';
+import { siteSearchUrl } from '@/lib/own-crm/site-link';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { useStatusNames } from '@/components/useStatusNames';
 import { useDictionaryNames } from '@/components/useDictionaryNames';
@@ -229,7 +230,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [draftOrderDiscount, setDraftOrderDiscount] = useState({ amount: 0, percent: 0 });
     // discount — скидка на ЕДИНИЦУ товара, как её считает RetailCRM
     // (item.discountTotal): цена со скидкой = price − discount.
-    const [draftItems, setDraftItems] = useState<Array<{ id?: number | null; name: string; quantity: number; price: number; discount: number; article?: string | null; xmlId?: string | null }>>([]);
+    const [draftItems, setDraftItems] = useState<Array<{ id?: number | null; name: string; quantity: number; price: number; discount: number; article?: string | null; siteId?: string | null; xmlId?: string | null }>>([]);
     // Ссылки на карточки товаров сайта по артикулу: название в составе кликабельно.
     const [catalogLinks, setCatalogLinks] = useState<Record<string, { url: string; name: string }>>({});
     const [draftClientComment, setDraftClientComment] = useState('');
@@ -370,16 +371,18 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         return () => setCrumbs([]);
     }, [isOpen, humanOrderNumber, orderId, onClose, setCrumbs]);
 
-    // Ссылки на карточки товаров сайта — по артикулам позиций этого заказа.
+    // Ссылки на карточки товаров сайта — по id товара на сайте, запасным
+    // ключом по артикулу.
     useEffect(() => {
+        const siteIds = Array.from(new Set(draftItems.map((row) => row.siteId).filter(Boolean))) as string[];
         const articles = Array.from(new Set(draftItems.map((row) => row.article).filter(Boolean))) as string[];
-        if (!articles.length) { setCatalogLinks({}); return; }
+        if (!siteIds.length && !articles.length) { setCatalogLinks({}); return; }
 
         let cancelled = false;
         fetch('/api/catalog/links', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ articles }),
+            body: JSON.stringify({ siteIds, articles }),
         })
             .then((r) => r.json())
             .then((payload) => { if (!cancelled) setCatalogLinks(payload.links || {}); })
@@ -389,7 +392,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         // Зависим от набора артикулов, а не от самих позиций: иначе запрос
         // уходил бы на каждое нажатие в поле количества.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [draftItems.map((row) => row.article).join('|')]);
+    }, [draftItems.map((row) => `${row.siteId ?? ''}/${row.article ?? ''}`).join('|')]);
 
     const takeCalculation = async (item: { type: string; id: string; title: string }) => {
         if (!confirm(`Взять «${item.title}» из калькулятора в состав заказа?`)) return;
@@ -454,6 +457,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 price: Number(item.initialPrice ?? item.price ?? 0),
                 discount: Number(item.discountManualAmount ?? item.discountTotal ?? 0),
                 article: item.offer?.article ?? null,
+                // id товара на сайте: по нему строится ссылка на его карточку.
+                siteId: item.offer?.externalId ? String(item.offer.externalId) : null,
                 xmlId: item.offer?.xmlId ?? null,
             })));
             setDraftOrderDiscount({
@@ -501,7 +506,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
     const addItem = (item?: { id: string; name: string; price: number; article?: string | null }) => {
         if (!item) return; // товары только из каталога: руками названия не вводим
-        setDraftItems((prev) => [...prev, { id: null, name: item.name, quantity: 1, price: item.price, discount: 0, article: item.article ?? null, xmlId: item.id }]);
+        // id из каталога — это id товара на сайте: он же ключ к его карточке.
+        setDraftItems((prev) => [...prev, { id: null, name: item.name, quantity: 1, price: item.price, discount: 0, article: item.article ?? null, siteId: item.id, xmlId: item.id }]);
         setDirty(true);
         setCatalogQuery('');
         setCatalogFound([]);
@@ -523,6 +529,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         price: row.price,
                         discountAmount: row.discount || 0,
                         article: row.article ?? null,
+                        siteId: row.siteId ?? null,
                         xmlId: row.xmlId ?? null,
                     })),
                     discountAmount: draftOrderDiscount.amount || 0,
@@ -1023,23 +1030,40 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     ) : draftItems.map((row, index) => (
                                         <tr key={row.id ?? `new-${index}`} className="hover:bg-gray-50">
                                             <td className="w-8 px-2 py-2 align-top text-gray-500">{index + 1}</td>
-                                            {/* Название не правится: товар берётся из базы.
-                                                Есть артикул и карточка на сайте — название
-                                                ведёт на неё (решение владельца 02.10.2026). */}
+                                            {/* Название не правится: товар берётся из базы сайта.
+                                                Есть его карточка на сайте — название ведёт туда;
+                                                архивного товара на сайте уже нет, тогда даём
+                                                поиск (решение владельца 02.10.2026). */}
                                             <td className="px-3 py-2 align-top">
-                                                {row.article && catalogLinks[row.article]?.url ? (
-                                                    <a
-                                                        href={catalogLinks[row.article].url}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        className="break-words font-medium leading-snug text-blue-700 hover:underline"
-                                                        title="Открыть карточку товара на сайте"
-                                                    >
-                                                        {row.name}
-                                                    </a>
-                                                ) : (
-                                                    <span className="break-words leading-snug text-gray-900">{row.name}</span>
-                                                )}
+                                                {(() => {
+                                                    const link = (row.siteId && catalogLinks[`id:${row.siteId}`])
+                                                        || (row.article && catalogLinks[`art:${row.article}`])
+                                                        || null;
+                                                    return link?.url ? (
+                                                        <a
+                                                            href={link.url}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="break-words font-medium leading-snug text-blue-700 hover:underline"
+                                                            title="Открыть карточку товара на сайте"
+                                                        >
+                                                            {row.name}
+                                                        </a>
+                                                    ) : (
+                                                        <div className="break-words leading-snug text-gray-900">
+                                                            {row.name}
+                                                            <a
+                                                                href={siteSearchUrl(row.name)}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                className="ml-2 whitespace-nowrap text-[11px] font-normal text-blue-700 hover:underline"
+                                                                title="Карточки этого товара на сайте нет — поискать похожий"
+                                                            >
+                                                                найти на сайте
+                                                            </a>
+                                                        </div>
+                                                    );
+                                                })()}
                                                 {row.article && (
                                                     <div className="mt-0.5 font-mono text-[11px] text-gray-400">{row.article}</div>
                                                 )}

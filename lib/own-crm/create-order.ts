@@ -26,8 +26,10 @@ export type NewOrderItem = {
     discountPercent?: number | null;
     /** Артикул с сайта, если позицию выбрали из каталога. */
     article?: string | null;
-    /** Идентификатор товара на сайте — по нему потом сверяем цену. */
+    /** Идентификатор товара на сайте — по нему сверяем цену и строим ссылку. */
     xmlId?: string | null;
+    /** То же id сайта, явно: уходит в `offer.externalId`, как у RetailCRM. */
+    siteId?: string | null;
 };
 
 export type NewOrder = {

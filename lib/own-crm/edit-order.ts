@@ -27,6 +27,10 @@ export type EditableItem = {
     /** Скидка процентом от цены единицы. */
     discountPercent?: number | null;
     xmlId?: string | null;
+    /** id товара на сайте — хранится в `offer.externalId`. */
+    siteId?: string | null;
+    /** Артикул товара. */
+    article?: string | null;
 };
 
 export type OrderEdit = {

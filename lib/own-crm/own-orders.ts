@@ -83,6 +83,9 @@ function itemPayload(item: NewOrderItem, id: number) {
             name: item.name.trim(),
             ...(item.xmlId ? { xmlId: item.xmlId } : {}),
             ...(item.article ? { article: item.article } : {}),
+            // id товара на сайте — по нему состав заказа строит ссылку на его
+            // карточку, как это делает RetailCRM со своим каталогом.
+            ...(item.siteId || item.xmlId ? { externalId: String(item.siteId || item.xmlId) } : {}),
         },
         initialPrice: price,
         price: itemPriceWithDiscount(item),
