@@ -362,6 +362,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
     // Реквизиты заказчика: хозяин — клиент, в заказ подтягиваются.
     const [requisites, setRequisites] = useState<any | null>(null);
+    // Смена заказчика: заказ бывает заведён не на то юрлицо (требование
+    // владельца 02.10.2026, как в RetailCRM — заказчика меняют тут же).
+    const [customerPicker, setCustomerPicker] = useState(false);
+    const [customerQuery, setCustomerQuery] = useState('');
+    const [customerFound, setCustomerFound] = useState<any[]>([]);
+    const [customerBusy, setCustomerBusy] = useState(false);
 
     const loadRequisites = useCallback(async () => {
         if (!orderId) return;
@@ -376,6 +382,47 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     useEffect(() => {
         if (isOpen && orderId) loadRequisites();
     }, [isOpen, orderId, loadRequisites]);
+
+    const searchCustomers = async (query: string) => {
+        setCustomerQuery(query);
+        if (query.trim().length < 3) {
+            setCustomerFound([]);
+            return;
+        }
+        try {
+            const res = await fetch(`/api/clients?q=${encodeURIComponent(query.trim())}&pageSize=20`);
+            const payload = await res.json();
+            setCustomerFound(Array.isArray(payload.clients) ? payload.clients : (payload.rows || payload.items || []));
+        } catch {
+            setCustomerFound([]);
+        }
+    };
+
+    const changeCustomer = async (client: any) => {
+        const name = client.company_name || client.contact_name || `клиент ${client.id}`;
+        if (!confirm(`Передать заказ заказчику «${name}»? Реквизиты подтянутся из его карточки.`)) return;
+
+        setCustomerBusy(true);
+        try {
+            const res = await fetch(`/api/orders/${orderId}/edit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerId: Number(client.id) }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось сменить заказчика');
+
+            setCustomerPicker(false);
+            setCustomerQuery('');
+            setCustomerFound([]);
+            await fetchDetails();
+            await loadRequisites();
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setCustomerBusy(false);
+        }
+    };
 
     // Крошка в шапке — человеческим номером заказа («Заказ #1021А»), а не
     // внутренним идентификатором: у своих заказов он вида 900000021 и человека
@@ -862,8 +909,62 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 </section>
 
                 <section id="order-customer" className="space-y-3">
+                    {/* Клиент и его реквизиты — один блок (требование владельца
+                        02.10.2026: «реквизиты заказчика и клиент — это один блок
+                        данных», как в RetailCRM). Заказчика можно поменять: заказ
+                        бывает заведён не на то юрлицо. */}
                     <div className="bg-white border border-gray-200 p-4">
-                        <h3 className="text-base font-semibold text-gray-900 mb-2">Клиент</h3>
+                        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                            <h3 className="text-base font-semibold text-gray-900">Клиент</h3>
+                            <div className="flex items-center gap-3 text-xs">
+                                {customer.id && (
+                                    <a href={`/clients/${customer.id}`} className="text-blue-700 hover:underline">
+                                        карточка заказчика
+                                    </a>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setCustomerPicker((open) => !open)}
+                                    className="font-semibold text-blue-700 hover:underline"
+                                >
+                                    {customerPicker ? 'отменить' : 'выбрать другого заказчика'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {customerPicker && (
+                            <div className="mb-3 border border-gray-300">
+                                <input
+                                    value={customerQuery}
+                                    onChange={(e) => searchCustomers(e.target.value)}
+                                    placeholder="Название, ИНН, телефон или почта заказчика"
+                                    className="w-full border-b border-gray-200 px-3 py-2 text-xs"
+                                    autoFocus
+                                />
+                                {customerQuery.trim().length > 0 && customerQuery.trim().length < 3 && (
+                                    <div className="px-3 py-2 text-[11px] text-gray-500">Введите хотя бы три знака</div>
+                                )}
+                                {customerFound.map((client: any) => (
+                                    <button
+                                        key={client.id}
+                                        type="button"
+                                        disabled={customerBusy}
+                                        onClick={() => changeCustomer(client)}
+                                        className="block w-full border-b border-gray-100 px-3 py-2 text-left text-xs hover:bg-gray-50 disabled:text-gray-400"
+                                    >
+                                        <span className="font-semibold text-gray-900">{client.company_name || client.contact_name || `Клиент ${client.id}`}</span>
+                                        <span className="ml-2 text-[11px] text-gray-500">
+                                            {[client.inn ? `ИНН ${client.inn}` : null, client.orders_count ? `заказов ${Number(client.orders_count).toLocaleString('ru-RU')}` : null]
+                                                .filter(Boolean).join(' · ')}
+                                        </span>
+                                    </button>
+                                ))}
+                                {customerQuery.trim().length >= 3 && !customerFound.length && (
+                                    <div className="px-3 py-2 text-[11px] text-gray-500">Таких заказчиков не нашли</div>
+                                )}
+                            </div>
+                        )}
+
                         <div className="grid md:grid-cols-2 gap-2">
                             <InfoField label="Тип клиента" value={customer.type === 'customer_corporate' ? 'Юридическое лицо' : 'Клиент'} />
                             <InfoField label="Компания" value={companyName || '—'} />
@@ -895,6 +996,39 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <EditField label="Доп. Email" value={fieldValue('cf.poshta', additionalEmail || '')} onChange={(v) => setField('cf.poshta', v)} />
                             <InfoField label="Диалоги" value={payload.dialogsCount ? `${payload.dialogsCount} открыто` : 'Нет открытых диалогов'} />
                             <InfoField label="Партнёр" value={customer.partner || '—'} />
+                        </div>
+
+                        {/* Реквизиты — того же заказчика, поэтому здесь же.
+                            Хозяин их — карточка клиента, в заказ подтягиваются сами. */}
+                        <div className="mt-4 border-t border-gray-200 pt-3">
+                            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                                <h4 className="text-sm font-semibold text-gray-900">Реквизиты заказчика</h4>
+                                {customer.id && (
+                                    <a href={`/clients/${customer.id}`} className="text-xs text-blue-700 hover:underline">
+                                        править в карточке клиента
+                                    </a>
+                                )}
+                            </div>
+
+                            <div className="grid md:grid-cols-2 gap-2">
+                                <InfoField label="Юридическое название" value={requisites?.client?.legalName || requisites?.inOrder?.legalName || '—'} />
+                                <InfoField label="ИНН" value={requisites?.client?.inn || requisites?.inOrder?.inn || '—'} />
+                                <InfoField label="КПП" value={requisites?.client?.kpp || requisites?.inOrder?.kpp || '—'} />
+                                <InfoField label="ОГРН / ОГРНИП" value={requisites?.client?.ogrn || requisites?.client?.ogrnip || requisites?.inOrder?.ogrn || requisites?.inOrder?.ogrnip || '—'} />
+                                <InfoField label="Юридический адрес" value={requisites?.client?.legalAddress || requisites?.inOrder?.legalAddress || '—'} />
+                                <InfoField label="Банк" value={requisites?.client?.bank || requisites?.inOrder?.bank || '—'} />
+                                <InfoField label="Расчётный счёт" value={requisites?.client?.bankAccount || requisites?.inOrder?.bankAccount || '—'} />
+                                <InfoField label="БИК" value={requisites?.client?.bik || requisites?.inOrder?.bik || '—'} />
+                                <InfoField label="Корреспондентский счёт" value={requisites?.client?.corrAccount || requisites?.inOrder?.corrAccount || '—'} />
+                            </div>
+
+                            <p className="mt-2 text-xs text-gray-500">
+                                {requisites?.client?.source === 'client'
+                                    ? 'Из карточки клиента — в заказ подтягиваются сами, счёт и КП печатаются ими.'
+                                    : requisites?.client?.source === 'order'
+                                        ? `В карточке клиента реквизитов ещё нет — показаны из заказа №${requisites?.client?.fromOrderNumber ?? '—'}. Внесите их в карточку клиента, чтобы они подставлялись сами.`
+                                        : 'Реквизитов нет ни в карточке клиента, ни в заказе. Внесите их в карточке клиента.'}
+                            </p>
                         </div>
                     </div>
 
@@ -940,42 +1074,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                     </div>
 
-                </section>
-
-                <section id="order-requisites" className="space-y-3">
-                    {/* Хозяин реквизитов — клиент (решение владельца 02.10.2026):
-                        правятся они в его карточке, а в заказ подтягиваются.
-                        Здесь показываем, что подтянется, и чем печатается счёт. */}
-                    <div className="bg-white border border-gray-200 p-4">
-                        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                            <h3 className="text-base font-semibold text-gray-900">Реквизиты заказчика</h3>
-                            {customer.id && (
-                                <a href={`/clients/${customer.id}`} className="text-xs text-blue-700 hover:underline">
-                                    править в карточке клиента
-                                </a>
-                            )}
-                        </div>
-
-                        <div className="grid md:grid-cols-2 gap-2">
-                            <InfoField label="Юридическое название" value={requisites?.client?.legalName || requisites?.inOrder?.legalName || '—'} />
-                            <InfoField label="ИНН" value={requisites?.client?.inn || requisites?.inOrder?.inn || '—'} />
-                            <InfoField label="КПП" value={requisites?.client?.kpp || requisites?.inOrder?.kpp || '—'} />
-                            <InfoField label="ОГРН / ОГРНИП" value={requisites?.client?.ogrn || requisites?.client?.ogrnip || requisites?.inOrder?.ogrn || requisites?.inOrder?.ogrnip || '—'} />
-                            <InfoField label="Юридический адрес" value={requisites?.client?.legalAddress || requisites?.inOrder?.legalAddress || '—'} />
-                            <InfoField label="Банк" value={requisites?.client?.bank || requisites?.inOrder?.bank || '—'} />
-                            <InfoField label="Расчётный счёт" value={requisites?.client?.bankAccount || requisites?.inOrder?.bankAccount || '—'} />
-                            <InfoField label="БИК" value={requisites?.client?.bik || requisites?.inOrder?.bik || '—'} />
-                            <InfoField label="Корреспондентский счёт" value={requisites?.client?.corrAccount || requisites?.inOrder?.corrAccount || '—'} />
-                        </div>
-
-                        <p className="mt-2 text-xs text-gray-500">
-                            {requisites?.client?.source === 'client'
-                                ? 'Из карточки клиента — в заказ подтягиваются сами, счёт и КП печатаются ими.'
-                                : requisites?.client?.source === 'order'
-                                    ? `В карточке клиента реквизитов ещё нет — показаны из заказа №${requisites?.client?.fromOrderNumber ?? '—'}. Внесите их в карточку клиента, чтобы они подставлялись сами.`
-                                    : 'Реквизитов нет ни в карточке клиента, ни в заказе. Внесите их в карточке клиента.'}
-                        </p>
-                    </div>
                 </section>
 
                 <section id="order-list">

@@ -49,6 +49,13 @@ export type OrderEdit = {
     delivery?: Record<string, unknown>;
     /** Реквизиты заказчика (ИНН, банк, юрадрес) — на заказе, как в RetailCRM. */
     contragent?: Record<string, unknown>;
+    /**
+     * Другой заказчик: карточка клиента, которой принадлежит заказ.
+     * Менеджер меняет её, когда заказ завели не на то юрлицо (требование
+     * владельца 02.10.2026, как в RetailCRM — там заказчика переключают
+     * прямо в блоке «Клиент»).
+     */
+    customerId?: number | string | null;
 };
 
 export type EditResult =
@@ -66,6 +73,7 @@ export function describeEdit(edit: OrderEdit): string[] {
     if (edit.statusCode) changed.push('статус');
     if (edit.managerId) changed.push('менеджер');
     if (edit.customFields && Object.keys(edit.customFields).length) changed.push('дополнительные поля');
+    if (edit.customerId) changed.push('заказчика');
     if (edit.contact && Object.keys(edit.contact).length) changed.push('контактные данные');
     if (edit.delivery && Object.keys(edit.delivery).length) changed.push('доставку');
     return changed;
@@ -167,6 +175,11 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
             ...(item.discountPercent ? { discountManualPercent: Number(item.discountPercent) } : {}),
             ...(item.xmlId ? { offer: { xmlId: item.xmlId } } : {}),
         }));
+    }
+
+    // Другой заказчик: RetailCRM ждёт карточку клиента объектом `customer`.
+    if (edit.customerId) {
+        orderData.customer = { id: Number(edit.customerId) };
     }
 
     // Реквизиты заказчика: RetailCRM принимает их объектом `contragent`.

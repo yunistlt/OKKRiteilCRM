@@ -180,6 +180,8 @@ export async function editOwnOrder(
         discountPercent?: number | null;
         /** Реквизиты заказчика — на заказе, как в RetailCRM. */
         contragent?: Record<string, unknown>;
+        /** Другой заказчик: карточка клиента, которой принадлежит заказ. */
+        customerId?: number | string | null;
     },
 ): Promise<void> {
     const { data, error } = await supabase
@@ -227,6 +229,25 @@ export async function editOwnOrder(
     }
     for (const [key, value] of Object.entries(edit.contact || {})) {
         if (value !== undefined) payload[key] = value;
+    }
+    if (edit.customerId) {
+        // Клиента карточка заказа читает из `customer.id` — там же, где его
+        // держит RetailCRM (см. закон «клиент из raw_payload->customer->id»).
+        // Вместе с номером кладём название: иначе в блоке «Клиент» осталось бы
+        // имя прежнего заказчика до следующей синхронизации.
+        const { data: client } = await supabase
+            .from('clients')
+            .select('id, company_name, contact_name, is_corporate, contragent_type')
+            .eq('id', edit.customerId)
+            .maybeSingle();
+
+        const row = client as any;
+        payload.customer = {
+            ...(payload.customer || {}),
+            id: Number(edit.customerId),
+            ...(row?.company_name ? { nickName: row.company_name } : {}),
+            ...(row?.is_corporate === false ? {} : { type: 'customer_corporate' }),
+        };
     }
     if (edit.contragent && Object.keys(edit.contragent).length) {
         payload.contragent = { ...(payload.contragent || {}) };

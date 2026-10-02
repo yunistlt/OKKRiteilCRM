@@ -36,6 +36,8 @@ const bodySchema = z.object({
     contact: z.record(z.string(), z.any()).optional(),
     /** Реквизиты заказчика — они живут на заказе, как в RetailCRM. */
     contragent: z.record(z.string(), z.any()).optional(),
+    /** Другой заказчик: карточка клиента, которой принадлежит заказ. */
+    customerId: z.coerce.number().int().positive().optional().nullable(),
     delivery: z.record(z.string(), z.any()).optional(),
 });
 
