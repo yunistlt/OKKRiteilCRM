@@ -226,11 +226,20 @@ async function pushMatchedPaymentToCrm(
 
       await clearPushFailure(row.id).catch(() => undefined);
 
-      // В производство такой заказ передают руками: синхронизации с ЦехУспеха
-      // пока нет (решение владельца 30.09.2026).
+      /**
+       * Свой заказ после оплаты переводим в производство так же, как заказ
+       * RetailCRM. Раньше здесь стоял отказ «передают руками»: механизм умел
+       * только RetailCRM, и оплаченный заказ висел на «Счёт на оплате»
+       * (02.10.2026, заказ 54836).
+       *
+       * Передача в сам ЦехУспех — отдельная работа (раздел E бэклога): туда
+       * заказ пока попадает руками, но статус в нашей базе уже меняется.
+       */
+      const moved = await moveOrderToProductionAfterPayment(row.matched_order_id);
       return {
-        movedToProduction: false,
-        productionNotMovedReason: 'Заказ ведётся в нашей базе — в производство передают руками',
+        movedToProduction: moved.moved,
+        productionStatusName: moved.statusName,
+        productionNotMovedReason: moved.notMovedReason,
       };
     }
   }
