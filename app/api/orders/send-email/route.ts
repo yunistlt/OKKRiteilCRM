@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { sendOrderEmail } from '@/lib/email';
 import { getLastOrderEmailSend, recordOrderEmailSend } from '@/lib/order-email-log';
+import { buildOrderDocumentPdf, loadOrderDocumentData } from '@/lib/own-crm/order-document-pdf';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -37,7 +38,67 @@ const BodySchema = z.object({
         contentType: z.string().max(200).optional(),
         contentBase64: z.string().min(1),
     })).max(10).optional(),
+    /**
+     * Документы по заказу, которые собирает сам сервер: КП и счёт.
+     *
+     * Раньше карточка скачивала PDF в браузер и отправляла его обратно строкой
+     * base64 — вместе с паспортами и сертификатами тело запроса упиралось в
+     * лимит, сервер отвечал текстом «Request Entity Too Large», а менеджер
+     * видел «Unexpected token 'R'… is not valid JSON» (Ирина 02.10.2026).
+     */
+    documents: z.array(z.enum(['proposal', 'invoice'])).max(2).optional(),
+    /** Файлы, которые уже лежат в карточке заказа: берём их из хранилища. */
+    orderFileIds: z.array(z.number().int().positive()).max(10).optional(),
 });
+
+
+/** КП или счёт по заказу — тем же кодом, что и кнопки в карточке. */
+async function buildOrderDocument(
+    orderNumber: string,
+    kind: 'proposal' | 'invoice',
+): Promise<{ filename: string; content: Buffer<ArrayBuffer>; contentType: string } | null> {
+    const { data: order } = await supabase
+        .from('orders')
+        .select('order_id')
+        .eq('number', orderNumber)
+        .maybeSingle();
+    const orderId = Number((order as any)?.order_id ?? orderNumber);
+    if (!Number.isFinite(orderId)) return null;
+
+    const data = await loadOrderDocumentData(orderId);
+    if (!data) return null;
+
+    const built = await buildOrderDocumentPdf(data, kind);
+    return {
+        filename: built.fileName,
+        content: Buffer.from(new Uint8Array(built.content)),
+        contentType: built.contentType,
+    };
+}
+
+/** Файл из карточки заказа как вложение письма. */
+async function orderFileAttachment(
+    orderNumber: string,
+    fileId: number,
+): Promise<{ filename: string; content: Buffer<ArrayBuffer>; contentType: string } | null> {
+    const { data: row } = await supabase
+        .from('order_files')
+        .select('order_number, file_name, content_type, storage_bucket, storage_path')
+        .eq('id', fileId)
+        .is('deleted_at', null)
+        .maybeSingle();
+    // Чужой файл к письму не приложим: номер заказа должен совпадать.
+    if (!row || String(row.order_number) !== String(orderNumber)) return null;
+
+    const file = await supabase.storage.from(row.storage_bucket || 'okk-assets').download(row.storage_path);
+    if (file.error || !file.data) return null;
+
+    return {
+        filename: row.file_name,
+        content: Buffer.from(new Uint8Array(await file.data.arrayBuffer())),
+        contentType: row.content_type || 'application/octet-stream',
+    };
+}
 
 /** Следующий порядковый номер сообщения в переписке по заказу (по тегам `[#N/order]` во входящих). */
 async function nextThreadSeq(orderNumber: string): Promise<number> {
@@ -93,6 +154,33 @@ export async function POST(req: Request) {
         );
     }
 
+    const attachments = (body.attachments || []).map((file) => ({
+        filename: file.filename,
+        content: Buffer.from(file.contentBase64, 'base64'),
+        contentType: file.contentType,
+    }));
+
+    // КП и счёт собираем здесь же: они делаются из самого заказа, гонять их
+    // через браузер незачем.
+    for (const kind of body.documents || []) {
+        try {
+            const pdf = await buildOrderDocument(body.orderNumber, kind);
+            if (pdf) attachments.push(pdf);
+        } catch (e: any) {
+            console.error('[send-email] документ не собрался:', kind, e?.message || e);
+            return NextResponse.json(
+                { ok: false, error: kind === 'invoice' ? 'Счёт не собрался — отправьте письмо без него' : 'КП не собралось — отправьте письмо без него' },
+                { status: 400 },
+            );
+        }
+    }
+
+    // Файлы заказа тоже лежат у нас — достаём из хранилища, а не из браузера.
+    for (const fileId of body.orderFileIds || []) {
+        const file = await orderFileAttachment(body.orderNumber, fileId);
+        if (file) attachments.push(file);
+    }
+
     const result = await sendOrderEmail({
         to: body.to,
         orderNumber: body.orderNumber,
@@ -101,11 +189,7 @@ export async function POST(req: Request) {
         seq,
         fromName: body.fromName,
         replyTo: body.replyTo,
-        attachments: (body.attachments || []).map((file) => ({
-            filename: file.filename,
-            content: Buffer.from(file.contentBase64, 'base64'),
-            contentType: file.contentType,
-        })),
+        attachments,
     });
 
     if (!result.sent) {

@@ -27,25 +27,17 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
     const [sending, setSending] = useState(false);
     // Вложения: клиенту часто нужно приложить КП, счёт или чертёж.
     const [files, setFiles] = useState<File[]>([]);
-    const [attaching, setAttaching] = useState<'proposal' | 'invoice' | null>(null);
+    /**
+     * КП и счёт собирает сервер — через браузер они больше не ходят.
+     * Раньше документ скачивался сюда и уходил обратно строкой base64: вместе с
+     * паспортами и сертификатами письмо упиралось в лимит запроса и падало
+     * непонятной ошибкой (Ирина 02.10.2026).
+     */
+    const [documents, setDocuments] = useState<Array<'proposal' | 'invoice'>>([]);
 
-    /** Приложить к письму документ по этому заказу: КП или счёт. */
-    const attachOrderDocument = async (kind: 'proposal' | 'invoice') => {
-        setAttaching(kind);
-        try {
-            const response = await fetch(`/api/orders/${orderNumber}/document?kind=${kind}`);
-            if (!response.ok) {
-                const payload = await response.json().catch(() => ({}));
-                throw new Error(payload.error || 'Документ не получился');
-            }
-            const blob = await response.blob();
-            const name = kind === 'invoice' ? `Счёт №${orderNumber}.pdf` : `КП №${orderNumber}.pdf`;
-            setFiles((prev) => [...prev, new File([blob], name, { type: 'application/pdf' })]);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : 'Документ не получился');
-        } finally {
-            setAttaching(null);
-        }
+    /** Отметить, что к письму нужно приложить КП или счёт по этому заказу. */
+    const attachOrderDocument = (kind: 'proposal' | 'invoice') => {
+        setDocuments((prev) => (prev.includes(kind) ? prev.filter((k) => k !== kind) : [...prev, kind]));
     };
     const [error, setError] = useState<string | null>(null);
     const [done, setDone] = useState(false);
@@ -177,6 +169,12 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
 
             // Вложения отправляем вместе с письмом: читаем файлы в браузере и
             // передаём содержимое строкой — отдельного хранилища для этого не нужно.
+            // Файлы с компьютера всё ещё идут телом запроса — но теперь это только
+            // то, что человек выбрал сам, и мы заранее предупреждаем о размере.
+            const tooBig = files.reduce((sum, f) => sum + f.size, 0) > 8 * 1024 * 1024;
+            if (tooBig) {
+                throw new Error('Файлы с компьютера тяжелее 8 МБ — приложите их по одному или через раздел «Файлы» заказа');
+            }
             const attachments = await Promise.all(files.map(async (file) => ({
                 filename: file.name,
                 contentType: file.type || 'application/octet-stream',
@@ -188,10 +186,17 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                 headers: { 'Content-Type': 'application/json' },
                 // force: письмо пишет человек, он и решает, сколько раз отвечать по заказу.
                 // Защита от двойного клика — блокировка кнопки на время отправки.
-                body: JSON.stringify({ orderNumber, to: to.trim(), subjectText: subject.trim(), html, force: true, attachments }),
+                body: JSON.stringify({ orderNumber, to: to.trim(), subjectText: subject.trim(), html, force: true, attachments, documents }),
             });
 
-            const data = await res.json();
+            // Ответ не всегда JSON: при слишком тяжёлом письме сервер отвечает
+            // текстом, и разбор падал технической ошибкой «Unexpected token…».
+            const data = await res.json().catch(() => null);
+            if (!data) {
+                throw new Error(res.status === 413
+                    ? 'Письмо слишком тяжёлое — уберите часть вложений и отправьте отдельным письмом'
+                    : `Сервер ответил ошибкой (${res.status}) — письмо не ушло`);
+            }
             if (!res.ok || !data.ok) {
                 throw new Error(data.error === 'smtp_not_configured'
                     ? 'Почта не настроена на сервере — письмо не отправлено.'
@@ -310,17 +315,23 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                     диске незачем, они формируются из этой же карточки. */}
                 <button
                     onClick={() => attachOrderDocument('proposal')}
-                    disabled={attaching !== null}
-                    className="border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                    className={`border px-3 py-2 text-sm font-bold ${
+                        documents.includes('proposal')
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                    }`}
                 >
-                    {attaching === 'proposal' ? 'Готовлю КП…' : 'Приложить КП'}
+                    {documents.includes('proposal') ? 'КП приложено ✓' : 'Приложить КП'}
                 </button>
                 <button
                     onClick={() => attachOrderDocument('invoice')}
-                    disabled={attaching !== null}
-                    className="border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                    className={`border px-3 py-2 text-sm font-bold ${
+                        documents.includes('invoice')
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                    }`}
                 >
-                    {attaching === 'invoice' ? 'Готовлю счёт…' : 'Приложить счёт'}
+                    {documents.includes('invoice') ? 'Счёт приложен ✓' : 'Приложить счёт'}
                 </button>
                 <label className="cursor-pointer border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100">
                     Файл с компьютера

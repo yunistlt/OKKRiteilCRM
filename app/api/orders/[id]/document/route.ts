@@ -9,7 +9,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { orderDocumentData } from '@/lib/own-crm/documents';
 import { supabase } from '@/utils/supabase';
-import { generateInvoicePDF, generateProposalPDF } from '@/lib/pdf-generator';
+import { buildOrderDocumentPdf } from '@/lib/own-crm/order-document-pdf';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -59,60 +59,12 @@ export async function GET(request: Request, { params }: { params: { id: string }
         );
     }
 
-    const items = data.items.map((item) => ({
-        name: item.name,
-        quantity: item.quantity,
-        price: item.price,
-    }));
+    const built = await buildOrderDocumentPdf(data, kind);
 
-    const pdf = kind === 'invoice'
-        ? await generateInvoicePDF({
-            invoice_number: data.orderNumber,
-            title: `Счёт по заказу №${data.orderNumber}`,
-            items,
-            discount_pct: 0,
-            vat_pct: data.vatPercent,
-            payer_company: data.payerCompany || undefined,
-            payer_name: data.payerName || undefined,
-            payer_inn: data.payerInn || undefined,
-            payer_kpp: data.payerKpp || undefined,
-            payer_address: data.payerAddress || undefined,
-            seller_name: data.seller?.name,
-            seller_inn: data.seller?.inn,
-            seller_kpp: data.seller?.kpp,
-            seller_bank: data.seller?.bank,
-            seller_bik: data.seller?.bik,
-            seller_ks: data.seller?.ks,
-            seller_rs: data.seller?.rs,
-            seller_address: data.seller?.address,
-            seller_ogrn: data.seller?.ogrn,
-            seller_full_name: data.sellerFullName,
-            seller_seal_place: data.sellerSealPlace,
-            seller_has_seal: data.sellerHasSeal,
-            seal_image: data.sealImage,
-            signature_image: data.signatureImage,
-            manager_name: data.managerName,
-            production_days: data.productionDays,
-            shipping_terms: data.shippingTerms,
-            signer_name: data.signerName,
-            signer_title: data.signerTitle,
-        })
-        : await generateProposalPDF({
-            title: `Коммерческое предложение по заказу №${data.orderNumber}`,
-            items,
-            discount_pct: 0,
-            client_company: data.payerCompany || undefined,
-            client_name: data.payerName || undefined,
-        });
-
-    const fileName = kind === 'invoice'
-        ? `Счёт №${data.orderNumber}.pdf`
-        : `КП №${data.orderNumber}.pdf`;
-
-    return new NextResponse(new Uint8Array(pdf), {
+    return new NextResponse(new Uint8Array(built.content), {
         headers: {
             'Content-Type': 'application/pdf',
-            'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+            'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(built.fileName)}`,
         },
     });
 }
