@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { sellerOptions } from '@/lib/own-crm/documents';
+import { refreshSignersFromEgrul } from '@/lib/own-crm/legal-entity-head';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,20 @@ const saveSchema = z.object({
     signer_name: z.string().trim().max(200).nullable().optional(),
     signer_title: z.string().trim().max(200).nullable().optional(),
 });
+
+/** Подписанты из ЕГРЮЛ: руководителя по ИНН отдаёт Dadata. */
+export async function PUT() {
+    const session = await getSession();
+    if (!session?.user) {
+        return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
+    }
+
+    try {
+        return NextResponse.json({ ok: true, updates: await refreshSignersFromEgrul() });
+    } catch (e: any) {
+        return NextResponse.json({ error: e.message }, { status: 502 });
+    }
+}
 
 export async function POST(request: Request) {
     const session = await getSession();

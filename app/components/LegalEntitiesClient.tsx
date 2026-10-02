@@ -40,6 +40,34 @@ export default function LegalEntitiesClient() {
 
     useEffect(() => { load(); }, [load]);
 
+    /**
+     * Руководителя берём из ЕГРЮЛ, а не со слов (решение владельца
+     * 02.10.2026): так в счёте стоит тот, кто вправе подписывать.
+     */
+    const [headsBusy, setHeadsBusy] = useState(false);
+
+    const pullHeads = async () => {
+        setHeadsBusy(true);
+        setNote(null);
+        try {
+            const response = await fetch('/api/settings/legal-entities', { method: 'PUT' });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || 'Не удалось получить данные ЕГРЮЛ');
+
+            const filled = (payload.updates || []).filter((row: any) => row.name);
+            const missing = (payload.updates || []).filter((row: any) => !row.name);
+            setNote([
+                filled.length ? `Из ЕГРЮЛ: ${filled.map((row: any) => `${row.entity} — ${row.title || 'руководитель'} ${row.name}`).join('; ')}` : null,
+                missing.length ? `Руками: ${missing.map((row: any) => `${row.entity} (${row.note})`).join('; ')}` : null,
+            ].filter(Boolean).join('. '));
+            await load();
+        } catch (e: any) {
+            setNote(e.message);
+        } finally {
+            setHeadsBusy(false);
+        }
+    };
+
     const change = (id: number, patch: Partial<Entity>) => {
         setEntities((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
     };
@@ -73,6 +101,13 @@ export default function LegalEntitiesClient() {
         <div className="min-h-screen bg-gray-50 p-4">
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3 border-b border-gray-200 pb-2">
                 <h1 className="text-xl font-bold text-gray-900">Наши юрлица</h1>
+                <button
+                    onClick={pullHeads}
+                    disabled={headsBusy}
+                    className="border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                >
+                    {headsBusy ? 'Смотрю ЕГРЮЛ…' : 'Подписанты из ЕГРЮЛ'}
+                </button>
                 {note && <span className="text-xs text-gray-600">{note}</span>}
             </div>
 

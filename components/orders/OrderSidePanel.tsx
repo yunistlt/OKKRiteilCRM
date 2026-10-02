@@ -153,19 +153,52 @@ function readableOn(hex: string): string {
 
 function FilesList({ orderNumber }: { orderNumber: string }) {
     const [files, setFiles] = useState<any[] | null>(null);
+    // Приложить файл руками (просьба Евгении 02.10.2026: счёт выставлен в
+    // RetailCRM, а нужен при заказе в ОКК).
+    const [busy, setBusy] = useState(false);
+    const [note, setNote] = useState<string | null>(null);
 
-    useEffect(() => {
-        fetch(`/api/orders/${orderNumber}/files`)
+    const load = useCallback(() => {
+        fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files`)
             .then((r) => r.json())
             .then((d) => setFiles(d.files || []))
             .catch(() => setFiles([]));
     }, [orderNumber]);
 
-    if (files === null) return <p className="text-sm text-gray-500">Загружаем…</p>;
+    useEffect(() => { load(); }, [load]);
 
-    if (!files.length) {
-        return <p className="text-sm text-gray-500">С письмами по этому заказу вложений не приходило.</p>;
-    }
+    const upload = async (file: File) => {
+        setBusy(true);
+        setNote(null);
+        try {
+            const body = new FormData();
+            body.append('file', file);
+            const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files/upload`, { method: 'POST', body });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось приложить файл');
+            setNote(`Приложен: ${file.name}`);
+            load();
+        } catch (e: any) {
+            setNote(e.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const remove = async (fileId: number, name: string) => {
+        if (!confirm(`Убрать «${name}» из заказа?`)) return;
+        setBusy(true);
+        try {
+            const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files/upload?fileId=${fileId}`, { method: 'DELETE' });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось убрать файл');
+            load();
+        } catch (e: any) {
+            setNote(e.message);
+        } finally {
+            setBusy(false);
+        }
+    };
 
     const size = (bytes: number | null) => {
         if (!bytes) return '';
@@ -176,37 +209,83 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
 
     return (
         <>
-            <ul className="divide-y divide-gray-100">
-                {files.map((f, i) => (
-                    <li key={i} className="py-2">
-                        {/* Файл открывается: при первом нажатии он докачивается из
-                            письма и дальше отдаётся из нашего хранилища
-                            (требование владельца 02.10.2026). */}
-                        {f.downloadable !== false && f.emailId ? (
-                            <a
-                                href={`/api/orders/${orderNumber}/files/download?emailId=${encodeURIComponent(String(f.emailId))}&name=${encodeURIComponent(f.filename)}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-sm font-bold text-blue-700 hover:underline"
-                            >
-                                {f.filename}
-                            </a>
-                        ) : (
-                            <p className="text-sm font-bold text-gray-900">
-                                {f.filename}
-                                <span className="ml-2 text-[11px] font-normal text-amber-800">
-                                    письма уже нет в ящике — открыть нельзя
-                                </span>
+            <div className="mb-2 flex flex-wrap items-center gap-3">
+                <label className={`cursor-pointer border border-gray-300 px-3 py-1.5 text-xs font-semibold ${busy ? 'text-gray-400' : 'text-gray-700 hover:bg-gray-100'}`}>
+                    {busy ? 'Загружаю…' : 'Приложить файл'}
+                    <input
+                        type="file"
+                        className="hidden"
+                        disabled={busy}
+                        onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = '';
+                            if (file) upload(file);
+                        }}
+                    />
+                </label>
+                <span className="text-[11px] text-gray-500">до 25 МБ; видно всем, кто работает с заказом</span>
+                {note && <span className="text-[11px] text-gray-700">{note}</span>}
+            </div>
+
+            {files === null ? (
+                <p className="text-sm text-gray-500">Загружаем…</p>
+            ) : !files.length ? (
+                <p className="text-sm text-gray-500">
+                    Файлов по этому заказу нет: вложения в письмах не приходили, руками ничего не прикладывали.
+                </p>
+            ) : (
+                <ul className="divide-y divide-gray-100">
+                    {files.map((f, i) => (
+                        <li key={f.source === 'manual' ? `m${f.fileId}` : `e${i}`} className="py-2">
+                            {/* Файл открывается: вложение письма при первом нажатии
+                                докачивается из ящика, приложенный руками лежит у нас
+                                (требование владельца 02.10.2026). */}
+                            {f.source === 'manual' ? (
+                                <div className="flex items-baseline justify-between gap-2">
+                                    <a
+                                        href={`/api/orders/${encodeURIComponent(orderNumber)}/files/download?fileId=${f.fileId}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-sm font-bold text-blue-700 hover:underline"
+                                    >
+                                        {f.filename}
+                                    </a>
+                                    <button
+                                        onClick={() => remove(f.fileId, f.filename)}
+                                        disabled={busy}
+                                        className="text-[11px] font-semibold text-gray-500 hover:underline disabled:text-gray-300"
+                                    >
+                                        убрать
+                                    </button>
+                                </div>
+                            ) : f.downloadable !== false && f.emailId ? (
+                                <a
+                                    href={`/api/orders/${encodeURIComponent(orderNumber)}/files/download?emailId=${encodeURIComponent(String(f.emailId))}&name=${encodeURIComponent(f.filename)}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-sm font-bold text-blue-700 hover:underline"
+                                >
+                                    {f.filename}
+                                </a>
+                            ) : (
+                                <p className="text-sm font-bold text-gray-900">
+                                    {f.filename}
+                                    <span className="ml-2 text-[11px] font-normal text-amber-800">
+                                        письма уже нет в ящике — открыть нельзя
+                                    </span>
+                                </p>
+                            )}
+                            <p className="text-[11px] text-gray-500">
+                                {size(f.size)}
+                                {f.source === 'manual'
+                                    ? ` · приложил ${f.uploadedBy || 'менеджер'}`
+                                    : (f.fromName || f.fromEmail ? ` · от ${f.fromName || f.fromEmail}` : '')}
+                                {f.receivedAt ? ` · ${new Date(f.receivedAt).toLocaleDateString('ru-RU')}` : ''}
                             </p>
-                        )}
-                        <p className="text-[11px] text-gray-500">
-                            {size(f.size)}
-                            {f.fromName || f.fromEmail ? ` · от ${f.fromName || f.fromEmail}` : ''}
-                            {f.receivedAt ? ` · ${new Date(f.receivedAt).toLocaleDateString('ru-RU')}` : ''}
-                        </p>
-                    </li>
-                ))}
-            </ul>
+                        </li>
+                    ))}
+                </ul>
+            )}
         </>
     );
 }

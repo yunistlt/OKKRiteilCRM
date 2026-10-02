@@ -33,6 +33,38 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const url = new URL(request.url);
     const emailId = url.searchParams.get('emailId') || '';
     const filename = url.searchParams.get('name') || '';
+    const fileId = url.searchParams.get('fileId') || '';
+
+    // Файл, приложенный менеджером руками, лежит у нас — отдаём сразу.
+    if (fileId) {
+        const { data: row } = await supabase
+            .from('order_files')
+            .select('order_number, file_name, content_type, storage_bucket, storage_path, deleted_at')
+            .eq('id', Number(fileId))
+            .maybeSingle();
+
+        const file = row as any;
+        if (!file || file.deleted_at) {
+            return NextResponse.json({ error: 'Файл не найден' }, { status: 404 });
+        }
+        if (String(file.order_number) !== orderNumber) {
+            return NextResponse.json({ error: 'Этот файл не из этого заказа' }, { status: 403 });
+        }
+
+        const stored = await supabase.storage.from(file.storage_bucket).download(file.storage_path);
+        if (!stored.data) {
+            return NextResponse.json({ error: 'Файл не нашёлся в хранилище' }, { status: 404 });
+        }
+
+        const buffer = Buffer.from(await stored.data.arrayBuffer());
+        return new NextResponse(new Uint8Array(buffer), {
+            headers: {
+                'Content-Type': file.content_type || stored.data.type || 'application/octet-stream',
+                'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(file.file_name)}`,
+                'Cache-Control': 'private, max-age=600',
+            },
+        });
+    }
 
     if (!emailId || !filename) {
         return NextResponse.json({ error: 'Нужны письмо и имя файла' }, { status: 400 });

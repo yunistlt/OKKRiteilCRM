@@ -38,6 +38,8 @@ export type CompanyInfo = {
     branches: number | null;
     registeredAt: string | null;
     managerName: string | null;
+    /** Должность руководителя по ЕГРЮЛ: «Генеральный директор», «Директор». */
+    managerTitle: string | null;
     /** Признак, что компания ликвидирована или в процессе — повод не звонить. */
     alive: boolean;
 };
@@ -102,6 +104,7 @@ export async function companyByInn(inn: string): Promise<CompanyInfo | null> {
                 ? new Date(Number(d.state.registration_date)).toISOString().slice(0, 10)
                 : null,
             managerName: d.management?.name ?? null,
+            managerTitle: d.management?.post ?? null,
             alive: status === 'ACTIVE',
         };
     } catch {
