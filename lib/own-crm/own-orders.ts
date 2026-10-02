@@ -22,6 +22,7 @@
 import { supabase } from '@/utils/supabase';
 import { orderTotal, validateNewOrder, type NewOrder, type NewOrderItem, type CreatedOrder } from './create-order';
 import { itemDiscountPerUnit, itemPriceWithDiscount, orderTotals } from './discount';
+import { customFieldValueName, itemLabel, managerName, moneyValue, statusName, writeOwnHistory, type HistoryEntry } from './history-write';
 import { OWN_ID_BASE, OWN_SITE, isOwnCrmManager, nextOwnOrderNumber, ownItemIds } from './own-order-insert';
 
 export { isOwnCrmManager, nextOwnOrderNumber };
@@ -129,6 +130,25 @@ export async function createOwnOrder(order: NewOrder): Promise<CreatedOrder> {
         throw new Error(`Не удалось завести заказ у нас: ${error.message}`);
     }
 
+    // История с первой секунды: создание — это уже событие, как в RetailCRM
+    // (требование владельца 02.10.2026).
+    const payload = buildPayload(order, { id, number, site, itemIds });
+    await writeOwnHistory(
+        id,
+        [
+            { field: 'status', newValue: await statusName(order.statusCode || DEFAULT_STATUS) },
+            ...(order.managerId ? [{ field: 'manager', newValue: await managerName(order.managerId) }] : []),
+            ...(order.customerComment ? [{ field: 'customer_comment', newValue: order.customerComment }] : []),
+            ...(order.managerComment ? [{ field: 'manager_comment', newValue: order.managerComment }] : []),
+            ...order.items.map((item) => ({
+                field: 'order_product',
+                newValue: itemLabel({ name: item.name, quantity: item.quantity, price: item.price }),
+            })),
+            { field: 'summ', newValue: moneyValue(payload.totalSumm) },
+        ],
+        order.managerId ? Number(order.managerId) : null,
+    );
+
     return { id, number, site };
 }
 
@@ -221,6 +241,70 @@ export async function editOwnOrder(
 
     const { error: e } = await supabase.from('orders').update(update).eq('id', rowId);
     if (e) throw new Error(e.message);
+
+    // История правки — теми же именами полей, что присылает RetailCRM, иначе
+    // перевод на человеческий язык её не узнает.
+    const before: any = (((data as any)?.raw_payload) || {});
+    const history: HistoryEntry[] = [];
+
+    if (edit.statusCode && edit.statusCode !== before.status) {
+        history.push({
+            field: 'status',
+            oldValue: await statusName(before.status),
+            newValue: await statusName(edit.statusCode),
+        });
+    }
+    if (edit.customerComment !== undefined && String(edit.customerComment ?? '') !== String(before.customerComment ?? '')) {
+        history.push({ field: 'customer_comment', oldValue: before.customerComment, newValue: edit.customerComment });
+    }
+    if (edit.managerComment !== undefined && String(edit.managerComment ?? '') !== String(before.managerComment ?? '')) {
+        history.push({ field: 'manager_comment', oldValue: before.managerComment, newValue: edit.managerComment });
+    }
+    if (edit.managerId && Number(edit.managerId) !== Number(before.managerId)) {
+        history.push({
+            field: 'manager',
+            oldValue: before.managerId ? await managerName(before.managerId) : null,
+            newValue: await managerName(edit.managerId),
+        });
+    }
+    if (edit.items) {
+        const was = (before.items || []).map((item: any) => itemLabel({
+            name: item.offer?.name || item.productName,
+            quantity: item.quantity,
+            price: item.price ?? item.initialPrice,
+        }));
+        const now = (payload.items || []).map((item: any) => itemLabel({
+            name: item.offer?.name || item.productName,
+            quantity: item.quantity,
+            price: item.price ?? item.initialPrice,
+        }));
+        for (const label of now.filter((l: string) => !was.includes(l))) {
+            history.push({ field: 'order_product', newValue: label });
+        }
+        for (const label of was.filter((l: string) => !now.includes(l))) {
+            history.push({ field: 'order_product', oldValue: label });
+        }
+        if (Number(before.totalSumm ?? 0) !== Number(payload.totalSumm ?? 0)) {
+            history.push({
+                field: 'summ',
+                oldValue: moneyValue(before.totalSumm),
+                newValue: moneyValue(payload.totalSumm),
+            });
+        }
+    }
+    for (const [code, value] of Object.entries(edit.customFields || {})) {
+        if (String(value ?? '') === String(before.customFields?.[code] ?? '')) continue;
+        history.push({
+            field: `custom_${code}`,
+            oldValue: await customFieldValueName(code, before.customFields?.[code]),
+            newValue: await customFieldValueName(code, value),
+        });
+    }
+    if (edit.delivery?.code !== undefined && String(edit.delivery.code ?? '') !== String(before.delivery?.code ?? '')) {
+        history.push({ field: 'delivery_type', oldValue: before.delivery?.code, newValue: edit.delivery.code as any });
+    }
+
+    await writeOwnHistory(rowId, history, Number(edit.managerId ?? before.managerId) || null);
 }
 
 /** Наш это заказ или приехал из RetailCRM. */

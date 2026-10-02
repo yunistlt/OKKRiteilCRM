@@ -24,6 +24,7 @@ const SYSTEM_FIELD_LABELS: Record<string, string> = {
     order_method: 'Способ оформления',
     site: 'Магазин',
     total_summ: 'Сумма заказа',
+    summ: 'Сумма заказа',
     prepay_sum: 'Предоплата',
     discount_manual_percent: 'Скидка, %',
     discount_manual_amount: 'Скидка, сумма',

@@ -14,6 +14,7 @@
  * `create-order.ts` начинают ссылаться друг на друга по кругу.
  */
 import { supabase } from '@/utils/supabase';
+import { itemLabel, managerName, moneyValue, statusName, writeOwnHistory } from './history-write';
 
 /**
  * С какого номера идут наши строки заказов. `orders.id` у приехавших — это
@@ -156,6 +157,31 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
     if (error) {
         throw new Error(`Не удалось завести заказ у нас: ${error.message}`);
     }
+
+    // История с первой секунды: создание заказа — это уже событие, как в
+    // RetailCRM (требование владельца 02.10.2026). Пишем статус, менеджера,
+    // сумму и состав — то же, что показывает их история нового заказа.
+    const managerId = orderData.managerId ? Number(orderData.managerId) : null;
+    await writeOwnHistory(
+        id,
+        [
+            { field: 'status', newValue: await statusName(payload.status || 'novyi-1') },
+            ...(managerId ? [{ field: 'manager', newValue: await managerName(managerId) }] : []),
+            ...(payload.orderMethod ? [{ field: 'order_method', newValue: String(payload.orderMethod) }] : []),
+            ...(payload.customerComment ? [{ field: 'customer_comment', newValue: String(payload.customerComment) }] : []),
+            ...(payload.managerComment ? [{ field: 'manager_comment', newValue: String(payload.managerComment) }] : []),
+            ...(payload.items || []).map((item: any) => ({
+                field: 'order_product',
+                newValue: itemLabel({
+                    name: item.offer?.name || item.productName,
+                    quantity: item.quantity,
+                    price: item.price ?? item.initialPrice,
+                }),
+            })),
+            { field: 'summ', newValue: moneyValue(payload.totalSumm ?? total) },
+        ],
+        managerId,
+    );
 
     return { success: true, id, number, order: { id, number, site: OWN_SITE }, own: true };
 }
