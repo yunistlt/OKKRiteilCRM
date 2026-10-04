@@ -6,6 +6,10 @@
             "schedule": "40 1 * * *"
         },
         {
+            "path": "/api/cron/tseh-push",
+            "schedule": "*/5 * * * *"
+        },
+        {
             "path": "/api/cron/rop-bind",
             "schedule": "*/10 4-15 * * 1-5"
         },
