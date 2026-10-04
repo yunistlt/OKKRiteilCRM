@@ -11,6 +11,7 @@
 import { supabase } from '@/utils/supabase';
 import { orderDocumentData } from '@/lib/own-crm/documents';
 import { orderInn } from '@/lib/own-crm/inn-gate';
+import { productionComment } from '@/lib/own-crm/tseh-production-notes';
 
 export type OutboxResult =
     | { queued: true; alreadyQueued: boolean }
@@ -84,7 +85,10 @@ export async function queueOrderForProduction(orderId: number): Promise<OutboxRe
                 price: item.price,
             })),
             total_summ: payload.totalSumm ?? null,
-            manager_comment: payload.managerComment || null,
+            // В цех уходит ТОЛЬКО то, что менеджер написал во вкладке «Для производства»
+            // (решение владельца 04.10.2026). Комментарий менеджера по заказу туда больше не
+            // передаём: там бывает внутренняя кухня — согласования и договорённости по цене.
+            manager_comment: await productionComment(orderNumber),
         });
 
         if (error) {
