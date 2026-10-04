@@ -24,7 +24,14 @@ export function hasValidInn(raw: unknown): boolean {
     return digits.length === 10 || digits.length === 12;
 }
 
-/** ИНН заказа: сперва из самого заказа, затем из карточки клиента. */
+/**
+ * ИНН заказа. Хозяин ИНН — карточка клиента, в заказе он лишь отражается
+ * (уточнение владельца 04.10.2026). Поэтому сперва спрашиваем карточку: там
+ * менеджер его и правит, а в заказе может лежать старое значение или пусто.
+ *
+ * Заказ остаётся запасным источником: у старых заказов из RetailCRM карточки
+ * клиента у нас может не быть вовсе, а реквизиты в заказе сохранились.
+ */
 export async function orderInn(orderId: number): Promise<string | null> {
     const { data: order } = await supabase
         .from('orders')
@@ -33,20 +40,20 @@ export async function orderInn(orderId: number): Promise<string | null> {
         .maybeSingle();
 
     const payload: any = (order as any)?.raw_payload || {};
-    const fromOrder = payload.contragent?.INN || payload.contragent?.inn || null;
-    if (hasValidInn(fromOrder)) return String(fromOrder);
 
     const clientId = payload.customer?.id;
-    if (!clientId) return null;
+    if (clientId) {
+        const { data: client } = await supabase
+            .from('clients')
+            .select('inn')
+            .eq('id', clientId)
+            .maybeSingle();
+        const fromClient = (client as any)?.inn || null;
+        if (hasValidInn(fromClient)) return String(fromClient);
+    }
 
-    const { data: client } = await supabase
-        .from('clients')
-        .select('inn')
-        .eq('id', clientId)
-        .maybeSingle();
-
-    const fromClient = (client as any)?.inn || null;
-    return hasValidInn(fromClient) ? String(fromClient) : null;
+    const fromOrder = payload.contragent?.INN || payload.contragent?.inn || null;
+    return hasValidInn(fromOrder) ? String(fromOrder) : null;
 }
 
 /**
