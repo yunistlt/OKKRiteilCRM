@@ -39,6 +39,8 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
     const [tab, setTab] = useState<'users' | 'rights'>('users');
     /** Открытая карточка пользователя: ключ «источник:идентификатор». */
     const [openAccount, setOpenAccount] = useState<string | null>(null);
+    /** Окно создания аккаунта. */
+    const [createOpen, setCreateOpen] = useState(false);
     const [message, setMessage] = useState('');
     const [showSqlGuide, setShowSqlGuide] = useState(!routeRulesTableReady || !roleCapabilitiesTableReady || !invitationsTableReady);
     const [invitations, setInvitations] = useState(initialInvitations);
@@ -146,6 +148,8 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
             }
 
             setMessage(result.message || 'Новый аккаунт создан.');
+            // Создали — окно закрываем, человек видит нового в таблице.
+            setCreateOpen(false);
             setNewAccount({ accountType: 'legacy', email: '', username: '', password: '', first_name: '', last_name: '', role: 'manager', retail_crm_manager_id: '' });
             router.refresh();
         });
@@ -417,14 +421,25 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
             )}
 
             {tab === 'users' && (
-            <section className="grid grid-cols-1 xl:grid-cols-[1.35fr_0.65fr] gap-4">
+            <section>
                 <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-xl shadow-gray-100">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
                         <div>
                             <h2 className="text-lg font-black text-gray-900">Все аккаунты</h2>
                             <p className="text-sm text-gray-500">Редактирование ролей, логинов и привязки к RetailCRM-менеджеру.</p>
                         </div>
-                        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Поиск по логину, email, ФИО, роли" className="w-full md:w-72 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition-all focus:border-blue-500" />
+                        <div className="flex w-full items-center gap-3 md:w-auto">
+                            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Поиск по логину, email, ФИО, роли" className="w-full md:w-72 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition-all focus:border-blue-500" />
+                            {/* Форма создания живёт в окне: на полотне она занимала треть
+                                ширины и мешала таблице (просьба владельца 04.10.2026). */}
+                            <button
+                                type="button"
+                                onClick={() => setCreateOpen(true)}
+                                className="shrink-0 rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-black text-white hover:bg-blue-700"
+                            >
+                                Создать
+                            </button>
+                        </div>
                     </div>
 
                     {/* Таблица людей по эталону golds/GOLD_UI_TABLES.md: шапка
@@ -544,9 +559,16 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                     </div>
                 </div>
 
-                <div className="space-y-4">
-                    <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-xl shadow-gray-100">
-                        <h2 className="text-lg font-black text-gray-900 mb-1">Новый аккаунт</h2>
+                {createOpen && (
+                <div
+                    className="fixed inset-0 z-[998] flex items-start justify-center overflow-auto bg-black/40 p-6"
+                    onClick={() => setCreateOpen(false)}
+                >
+                    <div className="w-full max-w-lg rounded-3xl border border-gray-100 bg-white p-5" onClick={(event) => event.stopPropagation()}>
+                        <div className="mb-1 flex items-start justify-between gap-3">
+                            <h2 className="text-lg font-black text-gray-900">Новый аккаунт</h2>
+                            <button type="button" onClick={() => setCreateOpen(false)} className="px-2 text-xl leading-none text-gray-400 hover:text-gray-900" title="Закрыть">×</button>
+                        </div>
                         <p className="text-sm text-gray-500 mb-4">Можно создать основной аккаунт по email или локальный аккаунт по логину.</p>
 
                         <div className="grid grid-cols-1 gap-2.5">
@@ -584,10 +606,11 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                                     {initialManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.label}</option>)}
                                 </select>
                             </div>
-                            <button onClick={handleCreateAccount} disabled={isPending} className="rounded-2xl bg-gray-900 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">Создать аккаунт</button>
+                            <button onClick={handleCreateAccount} disabled={isPending} className="rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">Создать аккаунт</button>
                         </div>
                     </div>
                 </div>
+                )}
             </section>
             )}
 
