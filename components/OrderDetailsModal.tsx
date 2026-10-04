@@ -55,7 +55,15 @@ const viewTabs = [
     // Поля, которые менеджеру в работе не нужны, живут отдельно: на основном
     // экране должно быть максимум данных по заказу и ничего лишнего
     // (требование владельца 02.10.2026).
-    { id: 'tech', label: 'Технические данные' }
+    { id: 'tech', label: 'Технические данные' },
+    /**
+     * Для производства: что менеджер осознанно передаёт в цех.
+     *
+     * Комментарий менеджера туда больше не уезжает — в нём договорённости по
+     * цене и заметки про конкурентов, цеху это не нужно (решение владельца
+     * 04.10.2026). Вместо него менеджер пишет отдельный текст и отмечает файлы.
+     */
+    { id: 'production', label: 'Для производства' }
 ] as const;
 
 const sectionNavItems = [
@@ -313,6 +321,17 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [counterpartyScore, setCounterpartyScore] = useState<CounterpartyScoreResult | null>(null);
     const [counterpartyScoreLoading, setCounterpartyScoreLoading] = useState(false);
     const [viewTab, setViewTab] = useState<ViewTab>('card');
+    // Вкладка «Для производства»: свой комментарий и отметки файлов для цеха.
+    const [productionNote, setProductionNote] = useState('');
+    const [productionFiles, setProductionFiles] = useState<number[]>([]);
+    const [productionSaving, setProductionSaving] = useState(false);
+    const [productionMessage, setProductionMessage] = useState<string | null>(null);
+    const [productionData, setProductionData] = useState<{
+        comment: string;
+        updatedBy: string | null;
+        updatedAt: string | null;
+        files: Array<{ id: number; fileName: string; contentType: string | null; sizeBytes: number | null; forProduction: boolean }>;
+    } | null>(null);
     const [qualityCalls, setQualityCalls] = useState<any[]>([]);
     const [qualityScore, setQualityScore] = useState<any | null>(null);
     const [qualityCallsLoading, setQualityCallsLoading] = useState(false);
@@ -393,6 +412,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     useEffect(() => {
         if (isOpen && orderId) loadRequisites();
     }, [isOpen, orderId, loadRequisites]);
+
 
     const searchCustomers = async (query: string) => {
         setCustomerQuery(query);
@@ -1677,6 +1697,157 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
      * ЭДО, счёт действителен, Roistat). Экран менеджера от них свободен, но
      * данные не спрятаны: открыть можно одной вкладкой.
      */
+    /** Содержимое вкладки «Для производства» — одним запросом. */
+    const loadProduction = useCallback(async () => {
+        const orderNumber = String(data?.order?.number ?? orderId);
+        try {
+            const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/production`);
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось прочитать данные для производства');
+            setProductionData(payload);
+            setProductionNote(payload.comment || '');
+            setProductionMessage(null);
+        } catch (e: any) {
+            setProductionMessage(e.message);
+        }
+    }, [data?.order?.number, orderId]);
+
+// Содержимое вкладки «Для производства» читаем при переходе на неё, а не
+    // при каждом открытии карточки: на основном экране оно не нужно.
+    useEffect(() => {
+        if (isOpen && viewTab === 'production' && !productionData) void loadProduction();
+    }, [isOpen, viewTab, productionData, loadProduction]);
+
+    const saveProductionNote = async () => {
+        const orderNumber = String(data?.order?.number ?? orderId);
+        setProductionSaving(true);
+        setProductionMessage(null);
+        try {
+            const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/production`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ comment: productionNote }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось сохранить');
+            setProductionMessage('Сохранено');
+            await loadProduction();
+        } catch (e: any) {
+            setProductionMessage(e.message);
+        } finally {
+            setProductionSaving(false);
+        }
+    };
+
+    /** Отметка файла уходит сразу: терять её в несохранённой форме обиднее, чем текст. */
+    const toggleProductionFile = async (fileId: number, on: boolean) => {
+        setProductionData((current) => current && ({
+            ...current,
+            files: current.files.map((file) => (file.id === fileId ? { ...file, forProduction: on } : file)),
+        }));
+        try {
+            const orderNumber = String(data?.order?.number ?? orderId);
+            const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/production`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileId, forProduction: on }),
+            });
+            if (!res.ok) {
+                const payload = await res.json().catch(() => ({}));
+                throw new Error(payload.error || 'Отметка не сохранилась');
+            }
+        } catch (e: any) {
+            setProductionMessage(e.message);
+            await loadProduction();
+        }
+    };
+
+    /**
+     * Вкладка «Для производства».
+     *
+     * Сюда менеджер пишет то, что нужно цеху, и отмечает файлы заказа, которые
+     * уходят вместе с ним. Комментарий менеджера в производство больше не
+     * передаётся: в нём договорённости по цене и заметки про конкурентов
+     * (решение владельца 04.10.2026).
+     */
+    const renderProductionView = () => {
+        const orderNumber = String(data?.order?.number ?? orderId);
+        const files = productionData?.files ?? [];
+
+        return (
+            <div className="space-y-4 p-4">
+                <div className="bg-white border border-gray-200 p-4">
+                    <h4 className="text-sm font-semibold text-gray-900">Комментарий для производства</h4>
+                    <p className="mt-1 text-xs text-gray-500">
+                        Что важно знать цеху по этому заказу. Этот текст уходит в ЦехУспех —
+                        комментарий менеджера туда не передаётся.
+                    </p>
+                    <textarea
+                        value={productionNote}
+                        onChange={(event) => setProductionNote(event.target.value)}
+                        rows={6}
+                        placeholder="Например: покрытие по образцу заказчика, отгрузка одной партией"
+                        className="mt-3 w-full border border-gray-200 bg-white p-3 text-sm text-gray-800"
+                    />
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <button
+                            type="button"
+                            disabled={productionSaving}
+                            onClick={saveProductionNote}
+                            className="bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                        >
+                            {productionSaving ? 'Сохраняю…' : 'Сохранить'}
+                        </button>
+                        {productionData?.updatedBy && (
+                            <span className="text-xs text-gray-500">
+                                Последняя правка: {productionData.updatedBy}
+                                {productionData.updatedAt ? ` · ${new Date(productionData.updatedAt).toLocaleString('ru-RU')}` : ''}
+                            </span>
+                        )}
+                        {productionMessage && <span className="text-xs text-gray-700">{productionMessage}</span>}
+                    </div>
+                </div>
+
+                <div className="bg-white border border-gray-200 p-4">
+                    <h4 className="text-sm font-semibold text-gray-900">Файлы для производства</h4>
+                    <p className="mt-1 text-xs text-gray-500">
+                        Отметьте техническое задание и чертежи, которые нужны цеху. Отмеченные файлы
+                        уходят вместе с заказом; остальные остаются только у нас.
+                    </p>
+
+                    {files.length === 0 ? (
+                        <p className="mt-3 text-sm text-gray-500">
+                            Файлов по этому заказу нет — приложите их во вкладке «Файлы».
+                        </p>
+                    ) : (
+                        <div className="mt-3 divide-y divide-gray-100 border border-gray-200">
+                            {files.map((file) => (
+                                <label key={file.id} className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-gray-50">
+                                    <input
+                                        type="checkbox"
+                                        checked={file.forProduction}
+                                        onChange={(event) => toggleProductionFile(file.id, event.target.checked)}
+                                        className="h-4 w-4"
+                                    />
+                                    <span className="flex-1 truncate text-sm text-gray-800">{file.fileName}</span>
+                                    <a
+                                        href={`/api/orders/${encodeURIComponent(orderNumber)}/files/download?fileId=${file.id}`}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        onClick={(event) => event.stopPropagation()}
+                                        className="shrink-0 text-xs font-semibold text-blue-700 hover:underline"
+                                    >
+                                        открыть
+                                    </a>
+                                </label>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     const renderTechView = () => {
         const json = data as any;
         const payload = json?.raw_payload ?? {};
@@ -2301,6 +2472,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     </>
                                 ) : viewTab === 'tech' ? (
                                     renderTechView()
+                                ) : viewTab === 'production' ? (
+                                    renderProductionView()
                                 ) : (
                                     renderQualityView()
                                 )}
