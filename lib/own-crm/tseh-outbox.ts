@@ -10,6 +10,7 @@
  */
 import { supabase } from '@/utils/supabase';
 import { orderDocumentData } from '@/lib/own-crm/documents';
+import { orderInn } from '@/lib/own-crm/inn-gate';
 
 export type OutboxResult =
     | { queued: true; alreadyQueued: boolean }
@@ -64,7 +65,8 @@ export async function queueOrderForProduction(orderId: number): Promise<OutboxRe
             managerName = [(manager as any)?.last_name, (manager as any)?.first_name].filter(Boolean).join(' ') || null;
         }
 
-        const customerInn = data?.payerInn || payload.contragent?.INN || null;
+        // ИНН спрашиваем там же, где его правит менеджер — в карточке клиента.
+        const customerInn = (await orderInn(Number((order as any).order_id))) || data?.payerInn || null;
         const problem = innProblem(customerInn);
         if (problem) return { queued: false, reason: problem };
 

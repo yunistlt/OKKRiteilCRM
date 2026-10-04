@@ -127,7 +127,10 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, color, onCh
             const json = await res.json();
             if (!res.ok) {
                 throw new Error(
-                    json.error === 'transition_not_allowed' ? 'Такой переход запрещён настройками статусов'
+                    // Про ИНН сервер объясняет сам: текст один и тот же везде,
+                    // чтобы менеджер не гадал, что от него хотят.
+                    json.error === 'inn_required' ? (json.message || 'У клиента не заполнен ИНН')
+                    : json.error === 'transition_not_allowed' ? 'Такой переход запрещён настройками статусов'
                     : json.error === 'status_not_mapped' ? 'Статус не сопоставлен с нашим справочником'
                     : json.error === 'crm_rejected' ? `RetailCRM отклонил смену статуса: ${json.details || 'без пояснения'}`
                     : 'Не удалось сменить статус'
