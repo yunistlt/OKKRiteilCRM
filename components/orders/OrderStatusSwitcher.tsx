@@ -135,6 +135,9 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, color, onCh
             }
             setOpen(false);
             setData(null);
+            // Заказ в производство не уедет — говорим сразу, менеджер поправит
+            // карточку клиента и передаст заново.
+            if (json.productionNote) setError(json.productionNote);
             onChanged?.(code);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Не удалось сменить статус');

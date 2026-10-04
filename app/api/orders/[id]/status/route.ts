@@ -147,12 +147,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         if (!result.ok) return NextResponse.json({ error: 'own_update_failed', details: result.reason }, { status: 409 });
 
         // Руками поставили «Передано в производство» — заказ так же встаёт в
-        // очередь, из которой его забирает ЦехУспех.
+        // очередь на отправку в ЦехУспех.
+        let productionNote: string | null = null;
         if (body.status === PRODUCTION_STATUS) {
-            await queueOrderForProduction(Number((order as any).order_id ?? (order as any).id));
+            const queued = await queueOrderForProduction(Number((order as any).order_id ?? (order as any).id));
+            // Статус менять не мешаем, но причину говорим сразу: иначе менеджер
+            // узнает об отказе только когда ЦехУспех вернёт ошибку.
+            if (!queued.queued) productionNote = queued.reason;
         }
 
-        return NextResponse.json({ ok: true, status: body.status, own: true });
+        return NextResponse.json({ ok: true, status: body.status, own: true, productionNote });
     }
 
     // Пока свой функционал не достроен, наружу не пишем — см. lib/retailcrm/outbound-guard.
