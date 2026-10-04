@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { PRODUCTION_STATUS } from '@/lib/payments/production';
 import { queueOrderForProduction } from '@/lib/own-crm/tseh-outbox';
+import { INN_GATE_MESSAGE, INN_REQUIRED_STATUSES, ensureInnTask, orderInn } from '@/lib/own-crm/inn-gate';
 import { editOrder } from '@/lib/own-crm/edit-order';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
 import { isRetailcrmOutboundWriteEnabled, RETAILCRM_WRITE_BLOCKED_MESSAGE } from '@/lib/retailcrm/outbound-guard';
@@ -115,7 +116,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         return NextResponse.json({ error: 'invalid_body', details: e?.errors ?? String(e) }, { status: 400 });
     }
 
-    const order = await findOrder(id, 'id, order_id, status, site, is_own');
+    const order = await findOrder(id, 'id, order_id, number, status, site, is_own');
     if (!order) return NextResponse.json({ error: 'order_not_found' }, { status: 404 });
     if (order.status === body.status) return NextResponse.json({ ok: true, unchanged: true });
 
@@ -136,6 +137,30 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const allowed = ((transitions || []) as any[]).some((t) => t.from_status_id === from.id && t.to_status_id === to.id);
     if (!allowed) {
         return NextResponse.json({ error: 'transition_not_allowed' }, { status: 409 });
+    }
+
+    /**
+     * До договора и счёта у клиента должен быть ИНН.
+     *
+     * Решение владельца 04.10.2026: требование переносим на тот момент, когда
+     * менеджер ещё разговаривает с клиентом. Иначе заказ застревает на входе в
+     * производство — когда работа уже считается сделанной. Переход запрещаем и
+     * ставим задачу уточнить ИНН, чтобы требование не превратилось в тупик.
+     */
+    if ((INN_REQUIRED_STATUSES as readonly string[]).includes(body.status)) {
+        const inn = await orderInn(Number((order as any).order_id ?? id));
+        if (!inn) {
+            const who = [session.user.first_name, session.user.last_name].filter(Boolean).join(' ')
+                || session.user.email || session.user.role;
+            const taskAdded = await ensureInnTask(String((order as any).number ?? id), who);
+            return NextResponse.json(
+                {
+                    error: 'inn_required',
+                    message: taskAdded ? `${INN_GATE_MESSAGE} Задача добавлена в список по заказу.` : INN_GATE_MESSAGE,
+                },
+                { status: 409 },
+            );
+        }
     }
 
     // Свой заказ меняем у себя: в RetailCRM его нет, и рубильник исходящих
