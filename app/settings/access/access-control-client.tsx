@@ -31,6 +31,14 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
     const [routeRules, setRouteRules] = useState(initialRouteRules);
     const [roleCapabilities, setRoleCapabilities] = useState(initialRoleCapabilities);
     const [search, setSearch] = useState('');
+    /**
+     * Две подстраницы, как в RetailCRM: список людей и отдельно права.
+     * Раньше всё лежало на одном полотне, и чтобы найти человека, приходилось
+     * прокручивать матрицу прав (просьба владельца 04.10.2026).
+     */
+    const [tab, setTab] = useState<'users' | 'rights'>('users');
+    /** Открытая карточка пользователя: ключ «источник:идентификатор». */
+    const [openAccount, setOpenAccount] = useState<string | null>(null);
     const [message, setMessage] = useState('');
     const [showSqlGuide, setShowSqlGuide] = useState(!routeRulesTableReady || !roleCapabilitiesTableReady || !invitationsTableReady);
     const [invitations, setInvitations] = useState(initialInvitations);
@@ -286,6 +294,24 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
                 <p className="text-sm md:text-base text-gray-500">Управление аккаунтами, ролями, бизнес-допусками и маршрутной матрицей доступа.</p>
             </div>
 
+            {/* Две подстраницы: кто у нас работает и что кому можно. */}
+            <div className="flex items-center gap-1 border-b border-gray-200">
+                {([['users', 'Пользователи'], ['rights', 'Права']] as const).map(([code, label]) => (
+                    <button
+                        key={code}
+                        type="button"
+                        onClick={() => setTab(code)}
+                        className={`border-b-2 px-4 py-2 text-sm font-black ${
+                            tab === code
+                                ? 'border-blue-600 text-blue-700'
+                                : 'border-transparent text-gray-500 hover:text-gray-800'
+                        }`}
+                    >
+                        {label}
+                    </button>
+                ))}
+            </div>
+
             {message && <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">{message}</div>}
 
             {showSqlGuide && (
@@ -333,6 +359,7 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                 </div>
             )}
 
+            {tab === 'rights' && (
             <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-xl shadow-gray-100 space-y-4">
                 <div className="flex items-start justify-between gap-3">
                     <div>
@@ -387,7 +414,9 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                     </div>
                 </div>
             </section>
+            )}
 
+            {tab === 'users' && (
             <section className="grid grid-cols-1 xl:grid-cols-[1.35fr_0.65fr] gap-4">
                 <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-xl shadow-gray-100">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
@@ -398,9 +427,56 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                         <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Поиск по логину, email, ФИО, роли" className="w-full md:w-72 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition-all focus:border-blue-500" />
                     </div>
 
-                    <div className="space-y-3 max-h-[calc(100vh-240px)] overflow-y-auto pr-1">
-                        {filteredAccounts.map((account) => (
-                            <div key={`${account.source}:${account.id}`} className="rounded-2xl border border-gray-100 bg-gray-50/70 p-3.5">
+                    {/* Таблица людей по эталону golds/GOLD_UI_TABLES.md: шапка
+                        закреплена, строки чередуются и подсвечиваются, пустое
+                        значение — прочерк. Карточка открывается по клику на строку. */}
+                    <div className="max-h-[calc(100vh-240px)] overflow-auto border border-gray-200">
+                        <table className="w-full text-sm">
+                            <thead className="sticky top-0 z-10 bg-gray-50">
+                                <tr className="text-left text-[10px] uppercase tracking-widest text-gray-500">
+                                    <th className="px-4 py-3 font-black">Логин</th>
+                                    <th className="px-4 py-3 font-black">Имя</th>
+                                    <th className="px-4 py-3 font-black">Почта</th>
+                                    <th className="px-4 py-3 font-black">Роль</th>
+                                    <th className="px-4 py-3 font-black">Менеджер в CRM</th>
+                                    <th className="px-4 py-3 font-black">Тип входа</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredAccounts.length === 0 && (
+                                    <tr>
+                                        <td colSpan={6} className="px-4 py-6 text-center text-gray-500">Никого не нашли.</td>
+                                    </tr>
+                                )}
+                                {filteredAccounts.map((account, index) => {
+                                    const key = `${account.source}:${account.id}`;
+                                    const managerLabel = initialManagers.find((m) => m.id === account.retail_crm_manager_id)?.label;
+                                    const fullName = [account.last_name, account.first_name].filter(Boolean).join(' ');
+                                    return (
+                                        <tr
+                                            key={key}
+                                            onClick={() => setOpenAccount(openAccount === key ? null : key)}
+                                            className={`cursor-pointer border-t border-gray-100 hover:bg-blue-50 ${
+                                                openAccount === key ? 'bg-blue-50' : index % 2 ? 'bg-gray-50/60' : 'bg-white'
+                                            }`}
+                                        >
+                                            <td className="px-4 py-3 font-semibold text-gray-900">{account.username || account.email || 'Без имени'}</td>
+                                            <td className="px-4 py-3 text-gray-700">{fullName || <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-4 py-3 text-gray-700">{account.email || <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-4 py-3 text-gray-700">{ROLE_LABELS[account.role]}</td>
+                                            <td className="px-4 py-3 text-gray-700">{managerLabel || <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-4 py-3 text-gray-500">{ACCOUNT_SOURCE_LABELS[account.source]}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Карточка выбранного человека: та же правка, что была в списке. */}
+                    <div className="mt-4 space-y-3">
+                        {filteredAccounts.filter((account) => `${account.source}:${account.id}` === openAccount).map((account) => (
+                            <div key={`${account.source}:${account.id}`} className="rounded-2xl border border-gray-200 bg-gray-50/70 p-3.5">
                                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                                     <div className="flex items-center gap-2">
                                         <h3 className="text-sm font-black text-gray-900" data-ui-audit-code="ok">{account.username || account.email || 'Без имени'}</h3>
@@ -513,7 +589,9 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                     </div>
                 </div>
             </section>
+            )}
 
+            {tab === 'rights' && (
             <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-xl shadow-gray-100">
                 <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 mb-4">
                     <div className="max-w-3xl">
@@ -565,6 +643,7 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                     </table>
                 </div>
             </section>
+            )}
         </div>
     );
 }
