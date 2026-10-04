@@ -15,6 +15,20 @@ export type OutboxResult =
     | { queued: true; alreadyQueued: boolean }
     | { queued: false; reason: string };
 
+/**
+ * ИНН заказчика — 10 цифр у организации, 12 у предпринимателя.
+ *
+ * ЦехУспех ищет заказчика только по ИНН: завод работает с юрлицами, и дубли по
+ * ИНН там запрещены. Без ИНН заказ туда не заведётся, поэтому говорим об этом
+ * менеджеру сразу, а не после отказа (согласовано 04.10.2026).
+ */
+function innProblem(raw: unknown): string | null {
+    const digits = String(raw ?? '').replace(/\D/g, '');
+    if (digits.length === 10 || digits.length === 12) return null;
+    return 'У заказчика нет корректного ИНН. ЗМК работает только с юрлицами — '
+        + 'заполните ИНН в карточке клиента и передайте заказ заново.';
+}
+
 /** Кладёт заказ в очередь на производство. Не бросает: сбой не должен ломать смену статуса. */
 export async function queueOrderForProduction(orderId: number): Promise<OutboxResult> {
     try {
@@ -50,11 +64,15 @@ export async function queueOrderForProduction(orderId: number): Promise<OutboxRe
             managerName = [(manager as any)?.last_name, (manager as any)?.first_name].filter(Boolean).join(' ') || null;
         }
 
+        const customerInn = data?.payerInn || payload.contragent?.INN || null;
+        const problem = innProblem(customerInn);
+        if (problem) return { queued: false, reason: problem };
+
         const { error } = await supabase.from('tseh_production_outbox').insert({
             order_number: orderNumber,
             order_id: Number((order as any).order_id),
             customer_name: data?.payerCompany || data?.payerName || payload.customer?.nickName || null,
-            customer_inn: data?.payerInn || payload.contragent?.INN || null,
+            customer_inn: customerInn,
             manager_name: managerName,
             production_days: data?.productionDays ?? null,
             shipping_terms: data?.shippingTerms ?? null,
