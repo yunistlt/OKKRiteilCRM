@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import MailComposer from 'nodemailer/lib/mail-composer';
 import { randomUUID } from 'crypto';
+import { brandAttachment, wrapInBrand } from '@/lib/email-brand';
 import { appendToSentFolder } from './email/imap';
 
 /**
@@ -51,13 +52,13 @@ export async function sendAppEmail({ to, subject, html, fromName = 'OKKRiteil CR
             from: `"${fromName}" <${process.env.SMTP_USER}>`,
             to,
             subject,
-            html,
+            html: wrapInBrand(html),
             replyTo,
-            attachments: (attachments || []).map((a) => ({
+            attachments: [brandAttachment(), ...(attachments || []).map((a) => ({
                 filename: a.filename || 'attachment',
                 content: a.content,
                 contentType: a.contentType || undefined,
-            })),
+            }))],
         });
         return { sent: true };
     } catch (error: any) {
@@ -146,18 +147,23 @@ export async function sendOrderEmail(input: SendOrderEmailInput): Promise<SendOr
             from: `"${fromName}" <${user}>`,
             to: input.to,
             subject,
-            html: input.html,
+            html: wrapInBrand(input.html),
             // Текстовая часть обязательна: без неё письмо в папке «Отправленные»
             // лежит одним HTML, и лента переписки по заказу показывает пустоту.
             text: htmlToPlainText(input.html),
             replyTo: input.replyTo,
             messageId,
             date: new Date(),
-            attachments: (input.attachments || []).map((a) => ({
-                filename: a.filename || 'attachment',
-                content: a.content,
-                contentType: a.contentType || undefined,
-            })),
+            attachments: [
+                // Логотип письма вкладываем картинкой: ссылку почтовые клиенты
+                // блокируют, и шапка оставалась бы пустой.
+                brandAttachment(),
+                ...(input.attachments || []).map((a) => ({
+                    filename: a.filename || 'attachment',
+                    content: a.content,
+                    contentType: a.contentType || undefined,
+                })),
+            ],
         });
         raw = await new Promise<Buffer>((resolve, reject) =>
             composer.compile().build((err, msg) => (err ? reject(err) : resolve(msg)))

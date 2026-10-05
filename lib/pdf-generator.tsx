@@ -13,6 +13,7 @@ import {
     Image,
 } from '@react-pdf/renderer';
 import path from 'path';
+import { BRAND, LOGO_DATA_URL } from '@/lib/brand';
 
 /**
  * Шрифт с кириллицей. Стандартный Helvetica русских букв не знает: 30.09.2026
@@ -263,6 +264,7 @@ function ProposalPDF({ data }: { data: ProposalData }) {
         <Document>
             <Page size="A4" style={invStyles.page}>
                 <View style={invStyles.topBorder} />
+                <Image src={LOGO_DATA_URL} style={invStyles.logo} />
 
                 {/* Шапка: кто предлагает. Без реквизитов продавца КП не примут. */}
                 <View style={invStyles.headerRow}>
@@ -494,7 +496,10 @@ export interface InvoiceData {
 const invStyles = StyleSheet.create({
     page: { fontFamily: FONT_FAMILY, fontSize: 9, padding: 40, color: '#1e293b', backgroundColor: '#fff' },
     // Шапка
-    topBorder: { height: 4, backgroundColor: '#0f172a', marginBottom: 16 },
+    // Фирменная полоса — синяя, как шапка сайта (брендирование документов,
+    // решение владельца 05.10.2026).
+    topBorder: { height: 4, backgroundColor: BRAND.blue, marginBottom: 12 },
+    logo: { width: 150, height: 47, objectFit: 'contain', marginBottom: 10 },
     headerRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
     sellerBlock: { width: '55%' },
     invoiceMeta: { width: '40%', alignItems: 'flex-end' },
@@ -575,6 +580,8 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
             <Page size="A4" style={invStyles.page}>
                 {/* Верхняя полоса */}
                 <View style={invStyles.topBorder} />
+                {/* Логотип ЗМК: документ должен быть узнаваем с первого взгляда. */}
+                <Image src={LOGO_DATA_URL} style={invStyles.logo} />
 
                 {/* Шапка: продавец + мета */}
                 <View style={invStyles.headerRow}>
