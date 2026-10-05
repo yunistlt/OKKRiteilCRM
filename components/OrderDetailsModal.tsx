@@ -27,6 +27,9 @@ interface OrderDetailsModalProps {
     orderId: number;
     isOpen: boolean;
     onClose: () => void;
+    /** Переход из списка писем: ответить этому адресату на это письмо. */
+    replyTo?: string | null;
+    replySubject?: string | null;
 }
 
 interface OrderDetails {
@@ -255,7 +258,7 @@ const toArray = (value: any) => {
     return [];
 };
 
-export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDetailsModalProps) {
+export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, replySubject }: OrderDetailsModalProps) {
 
     const statusName = useStatusNames();
     const names = useDictionaryNames();
@@ -297,6 +300,27 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [replySource, setReplySource] = useState<{ to: string | null; subject: string | null; quote: string | null } | null>(null);
     /** Новая запись в комментарий: метку ставит система при добавлении. */
     const [newComment, setNewComment] = useState('');
+
+    /**
+     * Пришли из списка писем — открываем ответ. Само письмо ищем в переписке
+     * заказа по адресу и теме: так находится и цитата, а если письма здесь нет
+     * (переписка ещё не подтянулась), отвечаем без неё.
+     */
+    useEffect(() => {
+        if (!replyTo && !replySubject) return;
+        if (!data) return;
+
+        const mail = (data.emails ?? []).find((e: any) =>
+            (!replySubject || String(e.subject ?? '') === replySubject)
+            && (!replyTo || String(e.partyEmail ?? '') === replyTo));
+
+        setReplySource({
+            to: replyTo || mail?.partyEmail || null,
+            subject: replySubject || mail?.subject || null,
+            quote: mail?.body ? String(mail.body).slice(0, 4000) : null,
+        });
+        setReplyOpen(true);
+    }, [replyTo, replySubject, data]);
     /** Поля с ошибками: ключ черновика → что не так. Подсвечиваются красным. */
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
     // Правка остальных полей карточки. Ключи: имя поля заказа (firstName, phone…),
@@ -1728,6 +1752,25 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                     {email.type}
                                                     {email.party ? ` · ${email.party}` : ''}
                                                 </span>
+                                            </div>
+                                            {/* «Ответить» и в шапке письма: до него не надо
+                                                разворачивать письмо и листать до конца
+                                                (просьба владельца 05.10.2026). */}
+                                            <div className="mb-2 flex justify-end">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setReplySource({
+                                                            to: email.partyEmail || email.party || null,
+                                                            subject: email.subject || null,
+                                                            quote: email.body ? String(email.body).slice(0, 4000) : null,
+                                                        });
+                                                        setReplyOpen(true);
+                                                    }}
+                                                    className="border border-blue-600 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                                                >
+                                                    Ответить
+                                                </button>
                                             </div>
 
                                             {/* Письмо открывается целиком: до этого была видна одна

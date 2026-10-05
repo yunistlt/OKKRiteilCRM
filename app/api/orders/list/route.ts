@@ -267,6 +267,18 @@ export async function GET(req: Request) {
                 quantity: i?.quantity ?? null,
             })),
             itemsTotal: Array.isArray(payload.items) ? payload.items.length : 0,
+            // Названия товаров и город поставки — по ним сверяют дубли.
+            itemNames: (Array.isArray(payload.items) ? payload.items : [])
+                .map((i: any) => i?.offer?.name || i?.productName)
+                .filter(Boolean),
+            // Сначала «Город доставки (менеджерам ОП)» — его менеджер и
+            // заполняет; адрес доставки берём, только если поле пустое.
+            deliveryCity: payload.customFields?.gorod_dostavki_menedzheram_op
+                || payload.delivery?.address?.city
+                || null,
+            // Дополнительные поля заказа: из них собираются колонки и фильтры,
+            // которые человек включает сам.
+            customFields: payload.customFields ?? {},
         };
     });
 

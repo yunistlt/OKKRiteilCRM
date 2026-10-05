@@ -28,6 +28,12 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
     const [presets, setPresets] = useState<Preset[]>([]);
     const [fields, setFields] = useState<string[]>(DEFAULT_FILTER_FIELDS);
     const [fieldsOpen, setFieldsOpen] = useState(false);
+    /**
+     * Реестр полей фильтра приходит с сервера: к постоянным добавлены поля
+     * карточки заказа (решение владельца 05.10.2026).
+     */
+    const [registry, setRegistry] = useState(FILTER_FIELDS);
+    const registryRef = useRef(FILTER_FIELDS);
 
     useEffect(() => { setDraft(value); }, [value]);
 
@@ -37,10 +43,28 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
             .then((d) => setOptions({ categories: d.categories || [], sferas: d.sferas || [] }))
             .catch(() => undefined);
 
-        fetch('/api/settings/view?viewKey=orders.filters')
-            .then((r) => r.json())
-            .then((d) => setFields(normalizeSelection(d.settings?.items, FILTER_FIELDS, DEFAULT_FILTER_FIELDS)))
-            .catch(() => undefined);
+        // Сначала реестр, потом выбор: сохранённое поле карточки иначе
+        // выкинулось бы как неизвестное.
+        (async () => {
+            try {
+                const res = await fetch('/api/orders/view-fields');
+                const data = await res.json();
+                if (Array.isArray(data.filters) && data.filters.length) {
+                    registryRef.current = data.filters;
+                    setRegistry(data.filters);
+                }
+            } catch {
+                // Реестр не пришёл — остаются постоянные поля.
+            }
+
+            try {
+                const res = await fetch('/api/settings/view?viewKey=orders.filters');
+                const data = await res.json();
+                setFields(normalizeSelection(data.settings?.items, registryRef.current, DEFAULT_FILTER_FIELDS));
+            } catch {
+                // Выбор не пришёл — остаются поля по умолчанию.
+            }
+        })();
 
         loadPresets();
     }, []);
@@ -196,6 +220,19 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                                 </label>
                             </Field>
                         )}
+                        {/* Поля карточки заказа: человек включает их шестерёнкой,
+                            ищем по совпадению текста (решение владельца
+                            05.10.2026). */}
+                        {fields.filter((key) => key.startsWith('cf.')).map((key) => (
+                            <Field key={key} label={registry.find((f) => f.key === key)?.label ?? key}>
+                                <Text
+                                    value={draft.customFields?.[key.slice(3)] ?? ''}
+                                    onChange={(v) => set({
+                                        customFields: { ...(draft.customFields ?? {}), [key.slice(3)]: v },
+                                    })}
+                                />
+                            </Field>
+                        ))}
                     </div>
 
                     <div className="mt-2 flex shrink-0 flex-wrap items-center gap-2">
@@ -246,7 +283,7 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
             {fieldsOpen && (
                 <ViewSettingsModal
                     title="Фильтры"
-                    registry={FILTER_FIELDS}
+                    registry={registry}
                     selected={fields}
                     defaults={DEFAULT_FILTER_FIELDS}
                     onSave={saveFields}

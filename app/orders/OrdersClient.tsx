@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import OrdersFilterPanel from '@/components/orders/OrdersFilterPanel';
 import OrdersStatusSidebar, { type StatusGroup } from '@/components/orders/OrdersStatusSidebar';
 import ViewSettingsModal from '@/components/orders/ViewSettingsModal';
@@ -27,6 +27,9 @@ interface OrderRow {
     contragentName: string | null;
     managerComment: string | null;
     customerComment: string | null;
+    itemNames?: string[];
+    deliveryCity?: string | null;
+    customFields?: Record<string, any>;
     categoryLabel: string | null;
     sferaLabel: string | null;
     phone: string | null;
@@ -126,6 +129,12 @@ export default function OrdersClient() {
     }, [openOrderNumber]);
 
     const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS);
+    /**
+     * Реестр колонок приходит с сервера: к постоянным добавлены поля карточки
+     * заказа из справочника RetailCRM (решение владельца 05.10.2026).
+     */
+    const [registry, setRegistry] = useState<typeof ORDER_COLUMNS>(ORDER_COLUMNS);
+    const registryRef = useRef<typeof ORDER_COLUMNS>(ORDER_COLUMNS);
     const [columnsOpen, setColumnsOpen] = useState(false);
 
     useEffect(() => {
@@ -140,10 +149,28 @@ export default function OrdersClient() {
             })
             .catch(() => undefined);
 
-        fetch('/api/settings/view?viewKey=orders.columns')
-            .then((r) => r.json())
-            .then((d) => setColumns(normalizeSelection(d.settings?.items, ORDER_COLUMNS, DEFAULT_COLUMNS)))
-            .catch(() => undefined);
+        // Сначала реестр, потом выбор: иначе сохранённые поля карточки
+        // выкинулись бы как «неизвестные».
+        (async () => {
+            try {
+                const res = await fetch('/api/orders/view-fields');
+                const data = await res.json();
+                if (Array.isArray(data.columns) && data.columns.length) {
+                    registryRef.current = data.columns;
+                    setRegistry(data.columns);
+                }
+            } catch {
+                // Реестр не пришёл — остаются постоянные колонки.
+            }
+
+            try {
+                const res = await fetch('/api/settings/view?viewKey=orders.columns');
+                const data = await res.json();
+                setColumns(normalizeSelection(data.settings?.items, registryRef.current, DEFAULT_COLUMNS));
+            } catch {
+                // Выбор не пришёл — остаются колонки по умолчанию.
+            }
+        })();
     }, []);
 
     const saveColumns = async (next: string[]) => {
@@ -203,7 +230,20 @@ export default function OrdersClient() {
     }, [openOrderNumber]);
 
 
-    const headerFor = (key: string) => ORDER_COLUMNS.find((c) => c.key === key)?.label ?? key;
+    const headerFor = (key: string) => registry.find((c) => c.key === key)?.label ?? key;
+
+    /**
+     * Значение поля карточки заказа (`cf.<код>`). Коды в человеческие названия
+     * не переводим здесь: справочные поля уже приходят расшифрованными с
+     * сервера, остальные — обычный текст.
+     */
+    const customFieldValue = (order: OrderRow, key: string) => {
+        const code = key.slice(3);
+        const raw = (order as any).customFields?.[code];
+        if (raw === null || raw === undefined || raw === '') return '—';
+        if (typeof raw === 'boolean') return raw ? 'Да' : 'Нет';
+        return String(raw);
+    };
 
     const cell = (order: OrderRow, key: string) => {
         switch (key) {
@@ -236,6 +276,12 @@ export default function OrdersClient() {
                 return <CommentCell value={order.managerComment} />;
             case 'customerComment':
                 return order.customerComment || '—';
+            case 'itemNames':
+                return order.itemNames?.length
+                    ? <span className="whitespace-pre-line text-gray-800">{order.itemNames.join('\n')}</span>
+                    : '—';
+            case 'deliveryCity':
+                return order.deliveryCity || '—';
             case 'category':
                 return order.categoryLabel || '—';
             case 'sfera':
@@ -425,7 +471,7 @@ export default function OrdersClient() {
             {columnsOpen && (
                 <ViewSettingsModal
                     title="Колонки"
-                    registry={ORDER_COLUMNS}
+                    registry={registry}
                     selected={columns}
                     defaults={DEFAULT_COLUMNS}
                     onSave={saveColumns}
@@ -438,7 +484,15 @@ export default function OrdersClient() {
                 900043, сохранила, вышла — а в колонке по-прежнему висела
                 автоподсказка «возможно дубль …». */}
             {openOrderId !== null && (
-                <OrderDetailsModal orderId={openOrderId} isOpen onClose={() => { setOpenOrderNumber(null); void load(); }} />
+                <OrderDetailsModal
+                    orderId={openOrderId}
+                    isOpen
+                    // Пришли из списка писем — карточка сразу открывает ответ
+                    // на это письмо (решение владельца 05.10.2026).
+                    replyTo={searchParams.get('replyTo')}
+                    replySubject={searchParams.get('replySubject')}
+                    onClose={() => { setOpenOrderNumber(null); void load(); }}
+                />
             )}
         </div>
     );

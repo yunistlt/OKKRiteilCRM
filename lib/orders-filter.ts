@@ -41,6 +41,11 @@ export interface OrdersFilter {
     customerComment: string;
     /** Только заказы, выбившиеся из норматива времени в статусе. */
     overdueOnly: boolean;
+    /**
+     * Поля карточки заказа: код дополнительного поля → что ищем. Человек
+     * включает их шестерёнкой фильтра (решение владельца 05.10.2026).
+     */
+    customFields?: Record<string, string>;
 }
 
 export const EMPTY_FILTER: OrdersFilter = {
@@ -48,7 +53,7 @@ export const EMPTY_FILTER: OrdersFilter = {
     sumFrom: '', sumTo: '', categories: [], control: '',
     contactFrom: '', contactTo: '', createdFrom: '', createdTo: '',
     contragent: '', sferas: [], purchaseFrom: '', purchaseTo: '',
-    managerComment: '', customerComment: '', overdueOnly: false,
+    managerComment: '', customerComment: '', overdueOnly: false, customFields: {},
 };
 
 /**
@@ -69,6 +74,14 @@ function safe(value: string): string {
 export function filterToSearchParams(filter: OrdersFilter): URLSearchParams {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(filter)) {
+        // Поля карточки едут как `cf.<код>=значение`: так они переживают
+        // ссылку, сохранённый фильтр и перезагрузку страницы.
+        if (key === 'customFields') {
+            for (const [code, text] of Object.entries((value ?? {}) as Record<string, string>)) {
+                if (text) params.set(`cf.${code}`, String(text));
+            }
+            continue;
+        }
         if (Array.isArray(value)) {
             if (value.length) params.set(key, value.join(','));
         } else if (typeof value === 'boolean') {
@@ -84,7 +97,13 @@ export function parseOrdersFilter(searchParams: URLSearchParams): OrdersFilter {
     const list = (key: string) => (searchParams.get(key) || '').split(',').filter(Boolean);
     const text = (key: string) => searchParams.get(key) || '';
 
+    const customFields: Record<string, string> = {};
+    searchParams.forEach((value: string, key: string) => {
+        if (key.startsWith('cf.') && value) customFields[key.slice(3)] = value;
+    });
+
     return {
+        customFields,
         number: text('number'),
         customer: text('customer'),
         managers: list('managers').length ? list('managers') : list('manager'),
@@ -196,6 +215,20 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
     if (filter.contragent) q = q.ilike('raw_payload->contragent->>legalName', `%${safe(filter.contragent)}%`);
     if (filter.managerComment) q = q.ilike('raw_payload->>managerComment', `%${safe(filter.managerComment)}%`);
     if (filter.customerComment) q = q.ilike('raw_payload->>customerComment', `%${safe(filter.customerComment)}%`);
+
+    /**
+     * Поля карточки заказа. Ищем точное совпадение значения: подстрокой
+     * (ILIKE) запрос шёл перебором всех заказов и со счётчиком не укладывался
+     * в таймаут — список возвращался пустым. Точное совпадение идёт по GIN
+     * (миграция 20261005_orders_custom_fields_index.sql): 3,7 с → 76 мс.
+     */
+    const cf = Object.entries(filter.customFields ?? {})
+        .filter(([code, value]) => String(value ?? '').trim() && /^[a-z0-9_]+$/i.test(code));
+    if (cf.length) {
+        q = q.contains('raw_payload->customFields', Object.fromEntries(
+            cf.map(([code, value]) => [code, String(value).trim()]),
+        ));
+    }
 
     return q;
 }

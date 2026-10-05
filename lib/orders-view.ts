@@ -23,6 +23,10 @@ export const ORDER_COLUMNS: ViewItem[] = [
     { key: 'managerComment', label: 'Комментарий оператора', group: 'Комментарии' },
     { key: 'customerComment', label: 'Комментарий клиента', group: 'Комментарии' },
     { key: 'items', label: 'Состав', group: 'Товары' },
+    // Наименования товаров и город поставки отдельными колонками: по ним
+    // сверяют дубли заявок (просьба Жени Матвеевой 05.10.2026).
+    { key: 'itemNames', label: 'Наименование товара', group: 'Товары' },
+    { key: 'deliveryCity', label: 'Город поставки', group: 'Доставка' },
     { key: 'category', label: 'Категория товара', group: 'Товары' },
     { key: 'sfera', label: 'Сфера деятельности', group: 'Покупатель' },
     { key: 'totalSumm', label: 'Сумма заказа', group: 'Стоимость' },
