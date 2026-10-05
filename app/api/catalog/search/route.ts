@@ -34,6 +34,8 @@ export async function GET(request: Request) {
             category: item.category,
             url: item.url,
             active: item.active,
+            // Модификации: размер и цена выбираются при добавлении в заказ.
+            variants: (item as any).variants ?? [],
         })),
         // Три разных сообщения: нет цены вообще — это работа для сайта, а не
         // «цена из витрины» (требование владельца 02.10.2026).

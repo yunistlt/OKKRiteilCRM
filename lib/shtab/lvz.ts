@@ -107,7 +107,7 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
             if (!parts.length) return [] as any[];
             let request = client()
                 .from('marketing_products')
-                .select('id, sku, name, price, full_url, category_id, meta');
+                .select('id, sku, name, price, full_url, category_id, meta, raw_data');
             for (const part of parts) request = request.ilike('name', `%${part}%`);
             const { data, error } = await request.limit(take);
             if (error) throw new Error(error.message);
@@ -142,7 +142,7 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
             const or = all.map((part) => `name.ilike.%${part}%`).join(',');
             const { data, error } = await client()
                 .from('marketing_products')
-                .select('id, sku, name, price, full_url, category_id, meta')
+                .select('id, sku, name, price, full_url, category_id, meta, raw_data')
                 .or(or)
                 .limit(500);
             if (error) throw new Error(error.message);
@@ -172,6 +172,21 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
                 url: d.full_url || '',
                 category: cats[String(d.category_id)] || '',
                 active: String(d.meta?.status ?? '') === '1',
+                /**
+                 * Модификации товара: «на 24 пары», «на 30 пар» — у каждой своя
+                 * цена и свой артикул. Без них менеджер добавлял в заказ
+                 * родительскую карточку и не мог выбрать нужный размер
+                 * (Лена Парфёнова 05.10.2026).
+                 */
+                variants: (Array.isArray(d.raw_data?.skus) ? d.raw_data.skus : [])
+                    .filter((sku: any) => String(sku?.available ?? '1') !== '0')
+                    .map((sku: any) => ({
+                        id: String(sku.id),
+                        name: String(sku.name ?? '').trim(),
+                        article: sku.sku ? String(sku.sku) : null,
+                        price: Number(sku.price) || 0,
+                    }))
+                    .filter((sku: any) => sku.name),
             })),
         };
     } catch (e: any) {

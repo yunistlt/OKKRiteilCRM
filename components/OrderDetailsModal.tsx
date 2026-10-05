@@ -407,7 +407,18 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         };
     }, []);
     const [catalogQuery, setCatalogQuery] = useState('');
-    const [catalogFound, setCatalogFound] = useState<Array<{ id: string; article?: string | null; name: string; price: number; priceLive: boolean; priceSource?: 'live' | 'cache' | 'none' }>>([]);
+    const [catalogFound, setCatalogFound] = useState<Array<{
+        id: string;
+        article?: string | null;
+        name: string;
+        price: number;
+        priceLive: boolean;
+        priceSource?: 'live' | 'cache' | 'none';
+        /** Размеры одного товара: «на 24 пары», «на 30 пар» — у каждого своя цена. */
+        variants?: Array<{ id: string; name: string; article: string | null; price: number }>;
+    }>>([]);
+    /** У какого найденного товара раскрыт список размеров. */
+    const [openVariants, setOpenVariants] = useState<string | null>(null);
     /**
      * Расчёты из калькулятора «Бот-Инженер» по этому заказу: менеджер считает
      * там изделие и вписывает номер нашего заказа, мы находим расчёт по номеру.
@@ -1338,22 +1349,65 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             )}
                             {catalogFound.length > 0 && (
                                 <div className="mt-1 max-h-48 overflow-auto border border-gray-200">
-                                    {catalogFound.map((found) => (
-                                        <button
-                                            key={found.id}
-                                            onClick={() => addItem({ id: found.id, name: found.name, price: found.price, article: found.article ?? null })}
-                                            className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-amber-50"
-                                        >
-                                            <div className="text-gray-900">{found.name}</div>
-                                            <div className="text-xs text-gray-500">
-                                                {found.priceSource === 'none' ? 'Цена не указана' : formatCurrency(found.price)}
-                                                {' · '}
-                                                <span className={found.priceSource === 'none' ? 'text-amber-800' : ''}>
-                                                    {priceSourceLabel(found.priceSource, found.priceLive)}
-                                                </span>
+                                    {catalogFound.map((found) => {
+                                        const variants = found.variants ?? [];
+                                        const opened = openVariants === found.id;
+
+                                        return (
+                                            <div key={found.id} className="border-b border-gray-100">
+                                                <button
+                                                    onClick={() => {
+                                                        // Есть размеры — сначала выбираем, какой именно:
+                                                        // без этого в заказ попадала родительская
+                                                        // карточка (Лена Парфёнова 05.10.2026).
+                                                        if (variants.length) {
+                                                            setOpenVariants(opened ? null : found.id);
+                                                            return;
+                                                        }
+                                                        addItem({ id: found.id, name: found.name, price: found.price, article: found.article ?? null });
+                                                    }}
+                                                    className="block w-full px-3 py-2 text-left text-sm hover:bg-amber-50"
+                                                >
+                                                    <div className="text-gray-900">
+                                                        {found.name}
+                                                        {variants.length > 0 && (
+                                                            <span className="ml-2 text-xs font-semibold text-blue-700">
+                                                                {opened ? 'скрыть размеры' : `размеров: ${variants.length}`}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500">
+                                                        {found.priceSource === 'none' ? 'Цена не указана' : formatCurrency(found.price)}
+                                                        {' · '}
+                                                        <span className={found.priceSource === 'none' ? 'text-amber-800' : ''}>
+                                                            {priceSourceLabel(found.priceSource, found.priceLive)}
+                                                        </span>
+                                                    </div>
+                                                </button>
+
+                                                {opened && variants.map((variant) => (
+                                                    <button
+                                                        key={variant.id}
+                                                        onClick={() => {
+                                                            addItem({
+                                                                id: found.id,
+                                                                // Название с размером: по нему человек
+                                                                // и узнаёт позицию в составе заказа.
+                                                                name: `${found.name} ${variant.name}`.replace(/\s+/g, ' ').trim(),
+                                                                price: variant.price || found.price,
+                                                                article: variant.article ?? found.article ?? null,
+                                                            });
+                                                            setOpenVariants(null);
+                                                        }}
+                                                        className="block w-full border-t border-gray-100 bg-gray-50 px-6 py-1.5 text-left text-sm hover:bg-amber-50"
+                                                    >
+                                                        <span className="text-gray-900">{variant.name}</span>
+                                                        <span className="ml-2 text-xs text-gray-600">{formatCurrency(variant.price)}</span>
+                                                    </button>
+                                                ))}
                                             </div>
-                                        </button>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
