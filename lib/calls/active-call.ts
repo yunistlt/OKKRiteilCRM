@@ -89,6 +89,22 @@ export async function callIsRinging(call: RingingCall): Promise<void> {
         managerId = (data as any)?.manager_id ?? null;
     }
 
+    /**
+     * Перевод по внутреннему: Телфин шлёт новое событие с тем же звонком, но
+     * другим добавочным. Копим список — окно видят и тот, кому звонили, и тот,
+     * на кого перевели (решение владельца 05.10.2026).
+     */
+    const { data: known } = await supabase
+        .from('active_calls')
+        .select('extensions')
+        .eq('telphin_call_id', callId)
+        .maybeSingle();
+
+    const extensions = Array.from(new Set([
+        ...(((known as any)?.extensions ?? []) as string[]),
+        ...(ext ? [ext] : []),
+    ]));
+
     await supabase.from('active_calls').upsert([{
         telphin_call_id: callId,
         direction,
@@ -96,6 +112,7 @@ export async function callIsRinging(call: RingingCall): Promise<void> {
         to_number: call.toNumber ?? null,
         extension: call.extension ?? null,
         extension_number: ext,
+        extensions,
         is_queue: isQueue,
         manager_id: managerId,
         client_name: who?.name ?? null,

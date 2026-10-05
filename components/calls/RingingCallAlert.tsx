@@ -28,6 +28,8 @@ type Ringing = {
     started_at: string | null;
     /** Добавочный, на который идёт звонок: по нему окно адресуется хозяину телефона. */
     extension_number: string | null;
+    /** Все добавочные звонка: кому звонили и на кого перевели — окно видят все они. */
+    extensions: string[] | null;
     /** Звонок на очередь — телефон звонит у нескольких, окно видят все. */
     is_queue: boolean | null;
 };
@@ -54,8 +56,12 @@ export default function RingingCallAlert() {
         if (!me) return false;              // Пока не знаем, чей телефон, — молчим.
         if (me.seeAll) return true;
         if (call.is_queue) return true;     // Очередь звонит у всех сразу.
-        if (!call.extension_number) return true; // Добавочный не пришёл — лучше показать.
-        return call.extension_number === me.extension;
+
+        // Перевод по внутреннему: показываем и тому, кому звонили, и тому, на
+        // кого перевели (решение владельца 05.10.2026).
+        const taking = call.extensions?.length ? call.extensions : (call.extension_number ? [call.extension_number] : []);
+        if (!taking.length) return true;    // Добавочный не пришёл — лучше показать.
+        return !!me.extension && taking.includes(me.extension);
     }, [me]);
 
     const drop = useCallback((callId: string) => {
@@ -70,7 +76,7 @@ export default function RingingCallAlert() {
         let cancelled = false;
         void supabase
             .from('active_calls')
-            .select('telphin_call_id, direction, from_number, client_name, order_number, status, started_at, extension_number, is_queue')
+            .select('telphin_call_id, direction, from_number, client_name, order_number, status, started_at, extension_number, extensions, is_queue')
             .in('status', ['ringing', 'answered'])
             .gte('started_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
             .then(({ data }) => {
