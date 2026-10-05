@@ -9,6 +9,26 @@
  */
 import { orderDocumentData, type OrderDocumentData } from '@/lib/own-crm/documents';
 import { generateInvoicePDF, generateProposalPDF } from '@/lib/pdf-generator';
+import { KP_ABOUT_PAGE_PDF_BASE64 } from '@/lib/own-crm/kp-about-page';
+import { PDFDocument } from 'pdf-lib';
+
+/**
+ * Приклеить к КП последнюю страницу «Компания в цифрах» (владелец 05.10.2026).
+ * Не приклеилась — отдаём предложение как есть: КП без рекламной страницы
+ * остаётся рабочим документом, а без цен и реквизитов — нет.
+ */
+async function withAboutPage(pdf: Uint8Array): Promise<Uint8Array> {
+    try {
+        const document = await PDFDocument.load(pdf);
+        const about = await PDFDocument.load(Buffer.from(KP_ABOUT_PAGE_PDF_BASE64, 'base64'));
+        const pages = await document.copyPages(about, about.getPageIndices());
+        for (const page of pages) document.addPage(page);
+        return await document.save();
+    } catch (e: any) {
+        console.warn('[КП] последняя страница не приклеилась:', e?.message);
+        return pdf;
+    }
+}
 
 export type OrderDocumentKind = 'proposal' | 'invoice';
 
@@ -103,9 +123,11 @@ export async function buildOrderDocumentPdf(
             valid_days: data.validDays,
         });
 
+    const content = kind === 'proposal' ? await withAboutPage(pdf) : pdf;
+
     return {
         fileName: kind === 'invoice' ? `Счёт №${data.orderNumber}.pdf` : `КП №${data.orderNumber}.pdf`,
-        content: Buffer.from(pdf),
+        content: Buffer.from(content),
         contentType: 'application/pdf',
     };
 }
