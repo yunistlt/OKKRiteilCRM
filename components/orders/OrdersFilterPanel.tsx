@@ -87,7 +87,20 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
             </button>
 
             {open && (
-                <div className="flex flex-col">
+                /* Enter в любом поле фильтра = «Применить». Лена Парфёнова
+                   05.10.2026: «через интер не ищет, нужно кликать мышью —
+                   применить не удобно». */
+                <div
+                    className="flex flex-col"
+                    onKeyDown={(e) => {
+                        if (e.key !== 'Enter' || e.shiftKey) return;
+                        const el = e.target as HTMLElement;
+                        // В списках и многострочных полях Enter свой смысл имеет.
+                        if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return;
+                        e.preventDefault();
+                        onApply(draft);
+                    }}
+                >
                     <div className="grid gap-x-3 gap-y-1.5 md:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7">
                         {show('number') && (
                             <Field label="Номер заказа"><Text value={draft.number} onChange={(v) => set({ number: v })} /></Field>
