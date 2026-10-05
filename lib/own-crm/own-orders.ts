@@ -265,7 +265,15 @@ export async function editOwnOrder(
 
     if (edit.delivery && Object.keys(edit.delivery).length) {
         payload.delivery = { ...(payload.delivery || {}) };
-        if (edit.delivery.address !== undefined) payload.delivery.address = { text: String(edit.delivery.address ?? '') };
+        // Адрес с частями: город и индекс живут внутри объекта адреса.
+        payload.delivery.address = {
+            ...(payload.delivery.address ?? {}),
+            ...(edit.delivery.address !== undefined ? { text: String(edit.delivery.address ?? '') } : {}),
+            ...(edit.delivery.region !== undefined ? { region: String(edit.delivery.region ?? '') } : {}),
+            ...(edit.delivery.city !== undefined ? { city: String(edit.delivery.city ?? '') } : {}),
+            ...(edit.delivery.index !== undefined ? { index: String(edit.delivery.index ?? '') } : {}),
+        };
+        if (edit.delivery.time !== undefined) payload.delivery.time = String(edit.delivery.time ?? '') || undefined;
         if (edit.delivery.cost !== undefined) payload.delivery.cost = Number(edit.delivery.cost) || 0;
         // Тип доставки — код из справочника RetailCRM (deliveryType).
         if (edit.delivery.code !== undefined) payload.delivery.code = String(edit.delivery.code ?? '') || undefined;

@@ -303,6 +303,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     const [replySource, setReplySource] = useState<{ to: string | null; subject: string | null; quote: string | null } | null>(null);
     /** Новая запись в комментарий: метку ставит система при добавлении. */
     const [newComment, setNewComment] = useState('');
+    /** Разбор адреса доставки по частям: идёт ли сейчас и что сказать человеку. */
+    const [parsingAddress, setParsingAddress] = useState(false);
+    const [addressNote, setAddressNote] = useState<string | null>(null);
 
     /**
      * Пришли из списка писем — открываем ответ. Само письмо ищем в переписке
@@ -1596,17 +1599,82 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 options={names.enumOptions('deliveryType')}
                                 onChange={(v) => setField('delivery.code', v)}
                             />
-                            <InfoField label="Дата доставки" value={formatDate(delivery.date || expectedDelivery)} />
-                            <InfoField label="Время доставки" value={logisticTime || '—'} />
+                            <EditField fieldKey="delivery.date" label="Дата доставки" type="date" value={fieldValue('delivery.date', String(delivery.date || expectedDelivery || '').slice(0, 10))} onChange={(v) => setField('delivery.date', v)} />
+                            <EditField fieldKey="delivery.time" label="Время доставки" value={fieldValue('delivery.time', logisticTime || '')} onChange={(v) => setField('delivery.time', v)} />
                             <EditField fieldKey="delivery.cost" label="Стоимость доставки" type="number" value={fieldValue('delivery.cost', logisticCost ?? 0)} onChange={(v) => setField('delivery.cost', v)} />
                             <InfoField label="Себестоимость" value={formatCurrency(logisticSelfCost)} />
-                            <InfoField label="Регион" value={logisticRegion || '—'} />
-                            <InfoField label="Город" value={logisticCity || '—'} />
+                            <EditField fieldKey="delivery.region" label="Регион" value={fieldValue('delivery.region', logisticRegion || '')} onChange={(v) => setField('delivery.region', v)} />
+                            <EditField fieldKey="delivery.city" label="Город" value={fieldValue('delivery.city', logisticCity || '')} onChange={(v) => setField('delivery.city', v)} />
                             <InfoField label="Метро" value={logisticMetro || '—'} />
-                            <InfoField label="Индекс" value={logisticIndex || '—'} />
-                            <EditField fieldKey="delivery.address" label="Адрес доставки" value={fieldValue('delivery.address', logisticAddress || '')} onChange={(v) => setField('delivery.address', v)} />
-                            <InfoField label="Получатель" value={logisticReceiver || '—'} />
+                            <EditField fieldKey="delivery.index" label="Индекс" value={fieldValue('delivery.index', logisticIndex || '')} onChange={(v) => setField('delivery.index', v)} />
+                            <EditField fieldKey="cf.consignee" label="Получатель" value={fieldValue('cf.consignee', customFields.consignee || logisticReceiver || '')} onChange={(v) => setField('cf.consignee', v)} />
                             <InfoField label="Коммент клиента" value={delivery.comment || '—'} />
+                        </div>
+
+                        {/* Адрес одной строкой и разбор по частям — как в RetailCRM:
+                            менеджер вставляет скопированный адрес, а область, город
+                            и индекс система ставит сама (просьба Лены Парфёновой
+                            05.10.2026). */}
+                        <div className="mt-2">
+                            <EditField
+                                fieldKey="delivery.address"
+                                label="Адрес доставки"
+                                value={fieldValue('delivery.address', logisticAddress || '')}
+                                onChange={(v) => setField('delivery.address', v)}
+                            />
+                            <div className="mt-1 flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    disabled={parsingAddress}
+                                    onClick={async () => {
+                                        const address = String(fieldValue('delivery.address', logisticAddress || '') ?? '').trim();
+                                        if (!address) return;
+                                        setParsingAddress(true);
+                                        setAddressNote(null);
+                                        try {
+                                            const res = await fetch('/api/address/parse', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ address }),
+                                            });
+                                            const payload = await res.json();
+                                            if (!res.ok) throw new Error(payload.error || 'Адрес не разобрался');
+                                            const parts = payload.parts ?? {};
+                                            setDraftFields((prev) => ({
+                                                ...prev,
+                                                ...(parts.address ? { 'delivery.address': parts.address } : {}),
+                                                ...(parts.region ? { 'delivery.region': parts.region } : {}),
+                                                ...(parts.city ? { 'delivery.city': parts.city } : {}),
+                                                ...(parts.index ? { 'delivery.index': parts.index } : {}),
+                                            }));
+                                            setDirty(true);
+                                            setAddressNote('Разобрали: проверьте части и сохраните');
+                                        } catch (e: any) {
+                                            setAddressNote(e.message);
+                                        } finally {
+                                            setParsingAddress(false);
+                                        }
+                                    }}
+                                    className="border border-blue-600 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:border-gray-300 disabled:text-gray-400"
+                                >
+                                    {parsingAddress ? 'Разбираем…' : 'Разобрать по полям'}
+                                </button>
+                                <span className="text-[11px] text-gray-500">
+                                    {addressNote || 'Вставьте адрес целиком — область, город и индекс заполнятся сами'}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Общее поле под габариты и состав: по шкафам его
+                            постоянно спрашивают при самовывозе. Поле заказа
+                            «Примечание по отгрузке» — не заводим новое. */}
+                        <div className="mt-3">
+                            <EditField
+                                fieldKey="cf.primecanie_po_otgruzke"
+                                label="Примечание по отгрузке (габариты, состав, что сказать заказчику)"
+                                value={fieldValue('cf.primecanie_po_otgruzke', customFields.primecanie_po_otgruzke || '')}
+                                onChange={(v) => setField('cf.primecanie_po_otgruzke', v)}
+                            />
                         </div>
                     </div>
 
