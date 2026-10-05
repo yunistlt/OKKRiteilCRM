@@ -2817,16 +2817,22 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     style={{ backgroundColor: tintFromColor(data?.statusColor, 0.14) || '#ffffff' }}
                 >
                     <div className="flex items-center gap-2">
+                        {/* Кнопки активны всегда. Раньше они гасли, пока в
+                            черновике нет правок, — но карточка умеет меняться и
+                            помимо него: передача заказа другому менеджеру идёт
+                            своим запросом. Владелец 05.10.2026: «перевёл на Ирину
+                            — а выйти можно только закрыв окно браузера». Без
+                            изменений «Сохранить» просто скажет, что их не было. */}
                         <button
                             onClick={saveOrder}
-                            disabled={!dirty || savingOrder}
+                            disabled={savingOrder}
                             className="bg-green-600 px-3 py-1 text-xs font-semibold text-white hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-400"
                         >
                             {savingOrder ? 'Сохраняю…' : 'Сохранить'}
                         </button>
                         <button
-                            onClick={async () => { await saveOrder(); onClose(); }}
-                            disabled={!dirty || savingOrder}
+                            onClick={async () => { if (dirty) await saveOrder(); onClose(); }}
+                            disabled={savingOrder}
                             className="bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-200 disabled:text-gray-400"
                         >
                             Сохранить и выйти
