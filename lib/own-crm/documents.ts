@@ -53,6 +53,11 @@ export type OrderDocumentData = {
     payerInn: string | null;
     payerKpp: string | null;
     payerAddress: string | null;
+    /** Полное наименование и подписант клиента — нужны договору. */
+    payerFullName: string | null;
+    payerSignerName: string | null;
+    payerSignerTitle: string | null;
+    payerSignerBasis: string | null;
     seller: Seller | null;
     /**
      * Срок изготовления в днях — «Срок изготовления в днях*» из заказа. Женя
@@ -297,6 +302,10 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
     const payerInn = contragent.INN || clientRequisites?.inn || null;
     const payerKpp = contragent.KPP || clientRequisites?.kpp || null;
     const payerAddress = contragent.legalAddress || clientRequisites?.legalAddress || null;
+    const payerFullName = clientRequisites?.fullName || null;
+    const payerSignerName = clientRequisites?.signerName || null;
+    const payerSignerTitle = clientRequisites?.signerTitle || null;
+    const payerSignerBasis = clientRequisites?.signerBasis || null;
 
     const seller = await sellerFromSite(sellerCode || (order as any).site);
 
@@ -308,6 +317,10 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
         payerInn,
         payerKpp,
         payerAddress,
+        payerFullName,
+        payerSignerName,
+        payerSignerTitle,
+        payerSignerBasis,
         // Юрлицо: по умолчанию то, чьему магазину принадлежит заказ, но счёт
         // можно выставить и от другого — юрлиц у компании несколько.
         seller,

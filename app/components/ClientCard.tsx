@@ -12,6 +12,9 @@ import OrderNumberLink from '@/components/ui/OrderNumberLink';
 type Requisites = {
     contragentType?: string | null;
     fullName?: string | null;
+    signerName?: string | null;
+    signerTitle?: string | null;
+    signerBasis?: string | null;
     inn: string | null;
     kpp: string | null;
     ogrn?: string | null;
@@ -185,6 +188,67 @@ export default function ClientCard({ clientId }: { clientId: string }) {
         }
     }, [clientId]);
 
+    /**
+     * Заполнить реквизиты по ИНН или из присланной карточки предприятия.
+     * Заполняем только пустые поля: то, что менеджер уже вписал руками,
+     * затирать нельзя (решение владельца 05.10.2026).
+     */
+    const [lookupBusy, setLookupBusy] = useState<'inn' | 'file' | null>(null);
+
+    const applyFound = (found: Record<string, any>) => {
+        setDraft((current) => {
+            const base: any = { ...(current ?? {}) };
+            for (const [key, value] of Object.entries(found)) {
+                if (!value) continue;
+                if (!String(base[key] ?? '').trim()) base[key] = value;
+            }
+            return base;
+        });
+    };
+
+    const fillByInn = async () => {
+        const inn = String(draft?.inn ?? requisites?.inn ?? '').trim();
+        if (!inn) { setRequisitesNote('Сначала впишите ИНН'); return; }
+
+        setLookupBusy('inn');
+        setRequisitesNote(null);
+        try {
+            const res = await fetch('/api/clients/requisites-lookup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ inn }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не нашлось');
+            applyFound(payload.requisites ?? {});
+            setRequisitesNote(payload.status && payload.status !== 'ACTIVE'
+                ? 'Заполнили из реестра. Внимание: компания не действующая — проверьте перед сделкой.'
+                : 'Заполнили из реестра. Банк и счёт в реестре не хранятся — впишите их сами.');
+        } catch (e: any) {
+            setRequisitesNote(e.message);
+        } finally {
+            setLookupBusy(null);
+        }
+    };
+
+    const fillFromFile = async (file: File) => {
+        setLookupBusy('file');
+        setRequisitesNote(null);
+        try {
+            const form = new FormData();
+            form.append('file', file);
+            const res = await fetch('/api/clients/requisites-from-file', { method: 'POST', body: form });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Файл не разобрался');
+            applyFound(payload.requisites ?? {});
+            setRequisitesNote(`Из файла заполнено полей: ${payload.filled}. Проверьте счёт и банк — ошибка в них дороже всего.`);
+        } catch (e: any) {
+            setRequisitesNote(e.message);
+        } finally {
+            setLookupBusy(null);
+        }
+    };
+
     const saveRequisites = async () => {
         if (!draft) return;
         setSavingRequisites(true);
@@ -196,6 +260,9 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                 body: JSON.stringify({
                     legalName: draft.legalName ?? '',
                     fullName: draft.fullName ?? '',
+                    signerName: draft.signerName ?? '',
+                    signerTitle: draft.signerTitle ?? '',
+                    signerBasis: draft.signerBasis ?? '',
                     inn: draft.inn ?? '',
                     kpp: draft.kpp ?? '',
                     ogrn: draft.ogrn ?? '',
@@ -369,6 +436,36 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                         )}
                     </div>
 
+                    {/* Заполнить реквизиты, а не переписывать их руками: по ИНН из
+                        реестра или из присланной карточки предприятия (решение
+                        владельца 05.10.2026). Заполняются только пустые поля. */}
+                    {editing && draft && (
+                        <div className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-2">
+                            <button
+                                type="button"
+                                onClick={fillByInn}
+                                disabled={lookupBusy !== null}
+                                className="border border-blue-600 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:border-gray-300 disabled:text-gray-400"
+                            >
+                                {lookupBusy === 'inn' ? 'Ищем…' : 'Заполнить по ИНН'}
+                            </button>
+                            <label className="cursor-pointer border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+                                {lookupBusy === 'file' ? 'Читаем файл…' : 'Загрузить карточку предприятия'}
+                                <input
+                                    type="file"
+                                    accept=".pdf,.png,.jpg,.jpeg,.txt"
+                                    className="hidden"
+                                    disabled={lookupBusy !== null}
+                                    onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) void fillFromFile(file);
+                                        e.target.value = '';
+                                    }}
+                                />
+                            </label>
+                        </div>
+                    )}
+
                     {editing && draft ? (
                         <div className="divide-y divide-gray-100">
                             {([
@@ -380,6 +477,11 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                                 ['kpp', 'КПП'],
                                 ['ogrn', 'ОГРН'],
                                 ['ogrnip', 'ОГРНИП'],
+                                // Подписант договора: без него договор не
+                                // составить (просьба Лены 05.10.2026).
+                                ['signerTitle', 'Должность подписанта'],
+                                ['signerName', 'ФИО подписанта'],
+                                ['signerBasis', 'Действует на основании'],
                                 ['legalAddress', 'Юридический адрес'],
                                 ['bank', 'Банк'],
                                 ['bankAccount', 'Расчётный счёт'],
@@ -420,6 +522,8 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                             <Field label="ИНН" value={requisites?.inn} />
                             <Field label="КПП" value={requisites?.kpp} />
                             <Field label="ОГРН / ОГРНИП" value={requisites?.ogrn || requisites?.ogrnip} />
+                            <Field label="Подписант договора" value={[requisites?.signerTitle, requisites?.signerName].filter(Boolean).join(', ')} />
+                            <Field label="Действует на основании" value={requisites?.signerBasis} />
                             <Field label="Юридический адрес" value={requisites?.legalAddress} />
                             <Field label="Банк" value={requisites?.bank} />
                             <Field label="Расчётный счёт" value={requisites?.bankAccount} />

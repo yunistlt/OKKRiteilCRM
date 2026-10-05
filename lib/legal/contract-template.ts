@@ -32,6 +32,8 @@ export type ContractFill = {
         name: string;
         signerTitle?: string | null;
         signerName?: string | null;
+        /** На основании чего действует подписант: Устава, доверенности №… */
+        signerBasis?: string | null;
         inn?: string | null;
         kpp?: string | null;
         bank?: string | null;
@@ -74,7 +76,7 @@ export function buildContractText(fill: ContractFill): string {
     const buyer = fill.buyer;
     const sellerIntro = `${seller.shortName}, далее «Продавец», в лице ${seller.signerTitle} ${seller.signerName}, действующего на основании Устава, с одной стороны`;
     const buyerIntro = buyer.signerName
-        ? `${buyer.name}, именуемое в дальнейшем «Покупатель», в лице ${buyer.signerTitle || 'руководителя'} ${buyer.signerName}, действующего на основании Устава, с другой стороны`
+        ? `${buyer.name}, именуемое в дальнейшем «Покупатель», в лице ${buyer.signerTitle || 'руководителя'} ${buyer.signerName}, действующего на основании ${buyer.signerBasis || 'Устава'}, с другой стороны`
         : `${buyer.name}, именуемое в дальнейшем «Покупатель», с другой стороны`;
 
     return `ДОГОВОР КУПЛИ-ПРОДАЖИ № ${fill.number}

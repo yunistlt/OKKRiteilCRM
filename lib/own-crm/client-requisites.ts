@@ -27,6 +27,15 @@ export type Requisites = {
      * счетах, где сокращённого мало (просьба Лены Парфёновой 05.10.2026).
      */
     fullName: string | null;
+    /**
+     * Кто подписывает договор со стороны клиента и на каком основании.
+     * «в лице генерального директора Иванова И. И., действующего на основании
+     * Устава» — без этих трёх полей договор не составить (просьба Лены
+     * Парфёновой 05.10.2026).
+     */
+    signerName: string | null;
+    signerTitle: string | null;
+    signerBasis: string | null;
     inn: string | null;
     kpp: string | null;
     ogrn: string | null;
@@ -49,7 +58,8 @@ export type ClientRequisitesCard = Requisites & {
 };
 
 const EMPTY: Requisites = {
-    contragentType: null, legalName: null, fullName: null, inn: null, kpp: null, ogrn: null, ogrnip: null,
+    contragentType: null, legalName: null, fullName: null,
+    signerName: null, signerTitle: null, signerBasis: null, inn: null, kpp: null, ogrn: null, ogrnip: null,
     legalAddress: null, bank: null, bankAccount: null, bik: null, corrAccount: null, bankAddress: null,
 };
 
@@ -64,8 +74,12 @@ export function fromOrderContragent(contragent: any): Requisites {
     return {
         contragentType: text(c.contragentType),
         legalName: text(c.legalName),
-        // В заказе RetailCRM полного наименования нет — оно только у клиента.
+        // В заказе RetailCRM полного наименования и подписанта нет — они
+        // только в карточке клиента.
         fullName: null,
+        signerName: null,
+        signerTitle: null,
+        signerBasis: null,
         inn: text(c.INN),
         kpp: text(c.KPP),
         ogrn: text(c.OGRN),
@@ -109,6 +123,9 @@ function rowToRequisites(row: any): Requisites {
         contragentType: text(row.contragent_type),
         legalName: text(row.legalName) || text(row.company_name),
         fullName: text(row.full_name),
+        signerName: text(row.signer_name),
+        signerTitle: text(row.signer_title),
+        signerBasis: text(row.signer_basis),
         inn: text(row.inn),
         kpp: text(row.kpp),
         ogrn: text(row.OGRN),
@@ -123,7 +140,7 @@ function rowToRequisites(row: any): Requisites {
 }
 
 const CLIENT_COLUMNS =
-    'contragent_type, company_name, full_name, inn, kpp, "legalName", "legalAddress", "bank", "bankAccount", "BIK", "corrAccount", "bankAddress", "OGRN", "OGRNIP", requisites_updated_at, requisites_updated_by';
+    'contragent_type, company_name, full_name, signer_name, signer_title, signer_basis, inn, kpp, "legalName", "legalAddress", "bank", "bankAccount", "BIK", "corrAccount", "bankAddress", "OGRN", "OGRNIP", requisites_updated_at, requisites_updated_by';
 
 /** Есть ли в карточке хоть что-то, кроме пустоты. */
 function filled(requisites: Requisites): boolean {
@@ -177,6 +194,9 @@ export async function loadClientRequisites(clientId: number | string): Promise<C
             contragentType: fromCard.contragentType || fromOrder.contragentType,
             legalName: fromCard.legalName || fromOrder.legalName,
             fullName: fromCard.fullName,
+            signerName: fromCard.signerName,
+            signerTitle: fromCard.signerTitle,
+            signerBasis: fromCard.signerBasis,
             inn: fromCard.inn || fromOrder.inn,
             kpp: fromCard.kpp || fromOrder.kpp,
             ogrn: fromCard.ogrn || fromOrder.ogrn,
@@ -216,6 +236,9 @@ export async function saveClientRequisites(
         contragent_type: text(requisites.contragentType),
         legalName: text(requisites.legalName),
         full_name: text(requisites.fullName),
+        signer_name: text(requisites.signerName),
+        signer_title: text(requisites.signerTitle),
+        signer_basis: text(requisites.signerBasis),
         // `company_name` приезжает из RetailCRM и показывается в списке клиентов:
         // держим его в согласии с юридическим названием, если его внесли.
         ...(text(requisites.legalName) ? { company_name: text(requisites.legalName) } : {}),

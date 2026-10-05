@@ -1183,6 +1183,13 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 <InfoField label="ИНН" value={requisites?.client?.inn || requisites?.inOrder?.inn || '—'} />
                                 <InfoField label="КПП" value={requisites?.client?.kpp || requisites?.inOrder?.kpp || '—'} />
                                 <InfoField label="ОГРН / ОГРНИП" value={requisites?.client?.ogrn || requisites?.client?.ogrnip || requisites?.inOrder?.ogrn || requisites?.inOrder?.ogrnip || '—'} />
+                                {/* Подписант договора — из карточки клиента: в заказе
+                                    этих данных нет (просьба Лены Парфёновой 05.10.2026). */}
+                                <InfoField
+                                    label="Подписант договора"
+                                    value={[requisites?.client?.signerTitle, requisites?.client?.signerName].filter(Boolean).join(', ') || '—'}
+                                />
+                                <InfoField label="Действует на основании" value={requisites?.client?.signerBasis || '—'} />
                                 <InfoField label="Юридический адрес" value={requisites?.client?.legalAddress || requisites?.inOrder?.legalAddress || '—'} />
                                 <InfoField label="Банк" value={requisites?.client?.bank || requisites?.inOrder?.bank || '—'} />
                                 <InfoField label="Расчётный счёт" value={requisites?.client?.bankAccount || requisites?.inOrder?.bankAccount || '—'} />

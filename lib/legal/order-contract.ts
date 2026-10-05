@@ -100,7 +100,12 @@ export async function buildOrderContract(params: {
             address: data.seller.address,
         },
         buyer: {
-            name: data.payerCompany || data.payerName || 'Покупатель',
+            // Полное наименование в договоре правильнее сокращённого.
+            name: data.payerFullName || data.payerCompany || data.payerName || 'Покупатель',
+            // Кто подписывает со стороны клиента — из его карточки.
+            signerName: data.payerSignerName,
+            signerTitle: data.payerSignerTitle,
+            signerBasis: data.payerSignerBasis,
             inn: data.payerInn,
             kpp: data.payerKpp,
             address: data.payerAddress,
