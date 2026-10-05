@@ -66,6 +66,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 // письмо лежало в базе целиком.
                 subject: entry.subject,
                 body: entry.body,
+                party: entry.party,
+                partyEmail: entry.partyEmail,
                 attachments: entry.attachments,
                 source: entry.source,
             })),

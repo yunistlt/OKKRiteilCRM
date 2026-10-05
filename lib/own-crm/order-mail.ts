@@ -30,6 +30,8 @@ export type OrderMailEntry = {
     source: 'incoming' | 'outgoing';
     /** От кого или кому — чтобы письмо читалось без открытия. */
     party: string | null;
+    /** Адрес собеседника — по нему карточка отвечает на письмо. */
+    partyEmail: string | null;
     /** Тема отдельно: в ленте она заголовок, а не часть текста. */
     subject: string | null;
     /**
@@ -151,6 +153,7 @@ export async function loadOrderMail(params: {
             date: row.received_at || row.created_at || null,
             type: 'Входящее письмо',
             party: row.from_name || row.from_email || null,
+            partyEmail: row.from_email || null,
             subject: row.subject || null,
             body: mailBody(row),
             attachments: countAttachments(row.attachments_meta),
@@ -167,6 +170,7 @@ export async function loadOrderMail(params: {
                 date: row.created_at || null,
                 type: 'Исходящее письмо',
                 party: row.to_email || null,
+                partyEmail: row.to_email || null,
                 subject: row.subject || null,
                 body: body ? String(body).replace(/\u00a0/g, ' ').trim() : null,
                 attachments: countAttachments(twin?.attachments_meta),
@@ -182,6 +186,7 @@ export async function loadOrderMail(params: {
                 date: row.sent_at || null,
                 type: 'Исходящее письмо',
                 party: row.to_email || null,
+                partyEmail: row.to_email || null,
                 subject: row.subject || null,
                 body: mailBody(row),
                 attachments: countAttachments(row.attachments_meta),

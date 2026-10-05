@@ -272,6 +272,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [dirty, setDirty] = useState(false);
     const [savingOrder, setSavingOrder] = useState(false);
     const [saveNote, setSaveNote] = useState<string | null>(null);
+    /** На какое письмо отвечаем: адрес, тема и цитата для формы ответа. */
+    const [replySource, setReplySource] = useState<{ to: string | null; subject: string | null; quote: string | null } | null>(null);
     /** Поля с ошибками: ключ черновика → что не так. Подсвечиваются красным. */
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
     // Правка остальных полей карточки. Ключи: имя поля заказа (firstName, phone…),
@@ -1541,7 +1543,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     </div>
                                     <OrderReplyForm
                                         orderNumber={String(data.order?.number ?? orderId)}
-                                        onClose={() => setReplyOpen(false)}
+                                        replyTo={replySource}
+                                        onClose={() => { setReplyOpen(false); setReplySource(null); }}
                                     />
                                 </div>
                             </div>
@@ -1685,17 +1688,36 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                             Вложений: {email.attachments} — они в разделе «Файлы» заказа.
                                                         </p>
                                                     )}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setOpenedEmails((prev) => {
-                                                            const next = new Set(prev);
-                                                            next.delete(key);
-                                                            return next;
-                                                        })}
-                                                        className="mt-2 text-xs font-semibold text-gray-500 hover:underline"
-                                                    >
-                                                        свернуть
-                                                    </button>
+                                                    <div className="mt-2 flex items-center gap-3">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setOpenedEmails((prev) => {
+                                                                const next = new Set(prev);
+                                                                next.delete(key);
+                                                                return next;
+                                                            })}
+                                                            className="text-xs font-semibold text-gray-500 hover:underline"
+                                                        >
+                                                            свернуть
+                                                        </button>
+                                                        {/* Ответ прямо отсюда: адрес, тему и цитату
+                                                            письма подставляем сами (просьба Жени
+                                                            Матвеевой 05.10.2026). */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setReplySource({
+                                                                    to: email.partyEmail || email.party || null,
+                                                                    subject: email.subject || null,
+                                                                    quote: email.body ? String(email.body).slice(0, 4000) : null,
+                                                                });
+                                                                setReplyOpen(true);
+                                                            }}
+                                                            className="border border-blue-600 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                                                        >
+                                                            Ответить
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>

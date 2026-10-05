@@ -7,6 +7,12 @@ interface OrderReplyFormProps {
     orderNumber: string;
     onClose: () => void;
     onSent?: () => void;
+    /**
+     * Ответ на конкретное письмо: адрес, тема и цитата приходят от него.
+     * Раньше форма всегда начиналась с чистого листа, и менеджер вручную искал,
+     * кому и на что отвечает (просьба Жени Матвеевой 05.10.2026).
+     */
+    replyTo?: { to?: string | null; subject?: string | null; quote?: string | null } | null;
 }
 
 interface ThreadState {
@@ -22,7 +28,7 @@ interface ThreadState {
  * Ответ клиенту по заказу. Почта у компании одна, поэтому письмо привязывается к заказу
  * служебным тегом в теме — его добавляет сервер, менеджеру этого видеть не нужно.
  */
-export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderReplyFormProps) {
+export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }: OrderReplyFormProps) {
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
     // Вложения: клиенту часто нужно приложить КП, счёт или чертёж.
@@ -64,10 +70,19 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                 if (cancelled) return;
                 if (!res.ok) throw new Error(data.error || 'Не удалось загрузить переписку');
                 setThread(data);
-                setTo(data.to || '');
-                setSubject(data.subjectText || `По заказу №${orderNumber}`);
+                setTo(replyTo?.to || data.to || '');
+                // Отвечаем — тема письма с «Re:», иначе обычная тема по заказу.
+                setSubject(
+                    replyTo?.subject
+                        ? (/^re:/i.test(replyTo.subject) ? replyTo.subject : `Re: ${replyTo.subject}`)
+                        : data.subjectText || `По заказу №${orderNumber}`,
+                );
                 // Подпись ставим сразу: менеджер дописывает письмо над ней, как в RetailCRM.
-                if (data.signature) setBody(`\n\n${data.signature}`);
+                // При ответе под подписью цитируем исходное письмо.
+                const quote = replyTo?.quote
+                    ? `\n\n${String(replyTo.quote).split('\n').map((line) => `> ${line}`).join('\n')}`
+                    : '';
+                if (data.signature || quote) setBody(`\n\n${data.signature ?? ''}${quote}`);
 
                 const tplRes = await fetch('/api/settings/templates?kind=email&active=true');
                 const tplData = await tplRes.json();
@@ -75,9 +90,13 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
 
                 // Недописанное письмо возвращаем на место, вместе с тем, что
                 // человек уже набрал: иначе он начинает заново.
-                const draftRes = await fetch(`/api/orders/${orderNumber}/email-draft`);
-                const draftData = await draftRes.json().catch(() => null);
-                if (!cancelled && draftRes.ok && draftData?.draft) {
+                // Отвечаем на конкретное письмо — черновик не подставляем: он
+                // перебил бы адрес, тему и цитату чужим недописанным текстом.
+                const draftRes = replyTo
+                    ? null
+                    : await fetch(`/api/orders/${orderNumber}/email-draft`);
+                const draftData = draftRes ? await draftRes.json().catch(() => null) : null;
+                if (!cancelled && draftRes?.ok && draftData?.draft) {
                     if (draftData.draft.to) setTo(draftData.draft.to);
                     if (draftData.draft.subject) setSubject(draftData.draft.subject);
                     if (draftData.draft.body) setBody(draftData.draft.body);
@@ -95,7 +114,7 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
             }
         })();
         return () => { cancelled = true; };
-    }, [orderNumber]);
+    }, [orderNumber, replyTo]);
 
 
     const applyTemplate = async (code: string) => {
