@@ -41,8 +41,14 @@ const bodySchema = z.object({
     managerId: z.coerce.number().int().positive().optional().nullable(),
     customFields: z.record(z.string(), z.any()).optional(),
     contact: z.record(z.string(), z.any()).optional(),
-    /** Реквизиты заказчика — они живут на заказе, как в RetailCRM. */
-    contragent: z.record(z.string(), z.any()).optional(),
+    /**
+     * Реквизиты заказчика снаружи не правятся — ЗАКОН владельца: их хозяин
+     * карточка клиента, в заказ они подтягиваются сами. В карточке заказа они
+     * и показаны только для чтения; схема закрывает обход через запрос.
+     *
+     * Перенос реквизитов из карточки в заказ идёт внутренним вызовом
+     * (app/api/orders/[id]/requisites), эта схема ему не мешает.
+     */
     /** Другой заказчик: карточка клиента, которой принадлежит заказ. */
     customerId: z.coerce.number().int().positive().optional().nullable(),
     /** Юрлицо (магазин) заказа: реквизиты продавца, счёт и НДС. */
