@@ -51,6 +51,16 @@ export const EMPTY_FILTER: OrdersFilter = {
     managerComment: '', customerComment: '', overdueOnly: false,
 };
 
+/**
+ * Последние десять цифр телефона — то, что не зависит от записи номера: «8»
+ * и «+7» в начале у одного и того же номера разные, дальше всё совпадает.
+ * Не похоже на телефон — возвращаем пустую строку.
+ */
+export function phoneTail(value: string): string {
+    const digits = String(value ?? '').replace(/\D+/g, '');
+    return digits.length >= 10 ? digits.slice(-10) : '';
+}
+
 /** Запятые и скобки ломают синтаксис `or` в PostgREST — вычищаем их из пользовательского ввода. */
 function safe(value: string): string {
     return value.replace(/[,()]/g, ' ').trim();
@@ -126,14 +136,23 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
 
     if (filter.customer) {
         const v = safe(filter.customer);
-        q = q.or(
-            [
-                `raw_payload->>firstName.ilike.%${v}%`,
-                `raw_payload->>lastName.ilike.%${v}%`,
-                `raw_payload->>email.ilike.%${v}%`,
-                `phone.ilike.%${v}%`,
-            ].join(',')
-        );
+        const conditions = [
+            `raw_payload->>firstName.ilike.%${v}%`,
+            `raw_payload->>lastName.ilike.%${v}%`,
+            `raw_payload->>email.ilike.%${v}%`,
+            `phone.ilike.%${v}%`,
+        ];
+
+        /**
+         * Телефон ищем по последним десяти цифрам. В базе он лежит слитно
+         * («79953446862»), а человек набирает как привык — «8 995 344-68-62»,
+         * «+7 (995) 344-68-62» — и поиск молча не находил ничего (Елена
+         * Парфёнова 05.10.2026).
+         */
+        const digits = phoneTail(v);
+        if (digits) conditions.push(`phone.ilike.%${digits}%`);
+
+        q = q.or(conditions.join(','));
     }
 
     if (filter.statuses.length) q = q.in('status', filter.statuses);
