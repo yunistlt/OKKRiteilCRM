@@ -40,8 +40,10 @@ const first = (...values: any[]): string | null => {
 
 /** Что за событие пришло: Телфин называет его по-разному в разных подписках. */
 function phaseOf(payload: any): CallPhase {
+    // Телфин присылает `EventType` с большой буквы: dial-in, dial-out, answer,
+    // hangup (проверено живым звонком 05.10.2026).
     const raw = String(
-        payload?.event ?? payload?.event_type ?? payload?.type ?? payload?.status ?? payload?.state ?? '',
+        payload?.EventType ?? payload?.event ?? payload?.event_type ?? payload?.type ?? payload?.status ?? payload?.state ?? '',
     ).toLowerCase();
 
     if (/ring|incoming|invite|new_call|dial/.test(raw)) return 'ringing';
@@ -51,7 +53,7 @@ function phaseOf(payload: any): CallPhase {
 }
 
 function directionOf(payload: any): 'incoming' | 'outgoing' {
-    const raw = String(payload?.flow ?? payload?.direction ?? payload?.call_flow ?? '').toLowerCase();
+    const raw = String(payload?.CallFlow ?? payload?.flow ?? payload?.direction ?? payload?.call_flow ?? '').toLowerCase();
     return /out/.test(raw) ? 'outgoing' : 'incoming';
 }
 
@@ -97,7 +99,7 @@ export async function POST(req: NextRequest) {
         }
     }
 
-    const callId = first(payload.call_uuid, payload.call_id, payload.callId, payload.uuid, payload.id);
+    const callId = first(payload.CallID, payload.CallBackID, payload.call_uuid, payload.call_id, payload.callId, payload.uuid, payload.id);
     const phase = phaseOf(payload);
 
     /**
@@ -114,9 +116,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true, ignored: 'нет идентификатора звонка' });
     }
 
-    const fromNumber = first(payload.from_number, payload.ani_number, payload.from, payload.caller, payload.from_username);
-    const toNumber = first(payload.to_number, payload.dest_number, payload.to, payload.called, payload.to_username);
-    const extension = first(payload.extension_name, payload.extension, payload.extension_id, payload.ext);
+    /**
+     * Чей номер где. У Телфина `CallerIDNum` — кто звонит, `CalledNumber` —
+     * кому. Для входящего первый и есть клиент, для исходящего клиент — второй;
+     * направление разбирается ниже, здесь просто раскладываем как пришло.
+     */
+    const fromNumber = first(payload.CallerIDNum, payload.from_number, payload.ani_number, payload.from, payload.caller, payload.from_username);
+    const toNumber = first(payload.CalledNumber, payload.to_number, payload.dest_number, payload.to, payload.called, payload.to_username);
+    const extension = first(payload.CalledExtension, payload.CallerExtension, payload.extension_name, payload.extension, payload.extension_id, payload.ext);
 
     try {
         if (phase === 'ringing') {
