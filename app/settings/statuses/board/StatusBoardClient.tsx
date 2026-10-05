@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { STATUS_ICONS } from '@/components/orders/StatusIcon';
+import { mutedOnColor, textOnColor } from '@/lib/status-color';
 
 interface CrmStatus {
     id: string;
@@ -189,10 +190,10 @@ export default function StatusBoardClient() {
                             <button
                                 key={g.id}
                                 onClick={() => setEditGroup(g)}
-                                style={{ backgroundColor: g.color || '#f1f5f9' }}
-                                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-800 hover:border-blue-500 hover:text-blue-700"
+                                style={{ backgroundColor: g.color || '#f1f5f9', color: textOnColor(g.color || '#f1f5f9') }}
+                                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:border-blue-500"
                             >
-                                {g.name} <span className="text-gray-500">{statuses.filter((s) => s.group_id === g.id).length}</span>
+                                {g.name} <span style={{ color: mutedOnColor(g.color || '#f1f5f9') }}>{statuses.filter((s) => s.group_id === g.id).length}</span>
                             </button>
                         ))}
                     </div>
@@ -215,8 +216,8 @@ export default function StatusBoardClient() {
                                     <th
                                         key={`top-${b.id ?? 'none'}-${i}`}
                                         colSpan={b.span}
-                                        style={{ backgroundColor: b.color }}
-                                        className="border border-gray-200 px-2 py-1 text-center text-[11px] font-semibold text-gray-800"
+                                        style={{ backgroundColor: b.color, color: textOnColor(b.color) }}
+                                        className="border border-gray-200 px-2 py-1 text-center text-[11px] font-semibold"
                                     >
                                         <button
                                             onClick={() => { const g = groups.find((x) => x.id === b.id); if (g) setEditGroup(g); }}
@@ -237,12 +238,12 @@ export default function StatusBoardClient() {
                                     <th
                                         key={s.id}
                                         className="border border-gray-200 p-0 align-bottom"
-                                        style={{ backgroundColor: groupOf(s)?.color || '#f8fafc', minWidth: 112, maxWidth: 112 }}
+                                        style={{ backgroundColor: groupOf(s)?.color || '#f8fafc', color: textOnColor(groupOf(s)?.color || '#f8fafc'), minWidth: 112, maxWidth: 112 }}
                                     >
                                         <button
                                             onClick={() => setEditStatus(s)}
                                             title="Настроить статус"
-                                            className="block h-full w-full px-2 py-2 text-left text-xs font-medium leading-snug text-gray-800 hover:underline"
+                                            className="block h-full w-full px-2 py-2 text-left text-xs font-medium leading-snug hover:underline"
                                         >
                                             {s.name}
                                         </button>
@@ -264,14 +265,14 @@ export default function StatusBoardClient() {
                                     {band && (
                                         <th
                                             rowSpan={band.span}
-                                            style={{ backgroundColor: band.color }}
+                                            style={{ backgroundColor: band.color, color: textOnColor(band.color) }}
                                             className="sticky left-0 z-20 border border-gray-200 px-1 py-2 align-top"
                                         >
                                             <button
                                                 onClick={() => { const g = groups.find((x) => x.id === band!.id); if (g) setEditGroup(g); }}
                                                 disabled={!band.id}
                                                 title={band.id ? 'Настроить группу' : undefined}
-                                                className="text-[11px] font-semibold text-gray-800 hover:underline disabled:cursor-default"
+                                                className="text-[11px] font-semibold hover:underline disabled:cursor-default"
                                                 style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', whiteSpace: 'nowrap' }}
                                             >
                                                 {band.name}
@@ -280,22 +281,23 @@ export default function StatusBoardClient() {
                                     )}
                                     <th
                                         className="sticky left-8 z-10 border border-gray-200 p-0 text-left"
-                                        style={{ backgroundColor: groupOf(from)?.color || '#f8fafc', minWidth: 220, maxWidth: 220 }}
+                                        style={{ backgroundColor: groupOf(from)?.color || '#f8fafc', color: textOnColor(groupOf(from)?.color || '#f8fafc'), minWidth: 220, maxWidth: 220 }}
                                     >
                                         <div className="px-3 py-2">
                                             <button
                                                 onClick={() => setEditStatus(from)}
                                                 title="Настроить статус"
-                                                className="block w-full text-left text-xs font-medium leading-snug text-gray-800 hover:underline"
+                                                className="block w-full text-left text-xs font-medium leading-snug hover:underline"
                                             >
                                                 {from.name}
                                             </button>
-                                            <span className="mt-0.5 block text-[10px] font-normal text-gray-500">
+                                            <span className="mt-0.5 block text-[10px] font-normal" style={{ color: mutedOnColor(groupOf(from)?.color || '#f8fafc') }}>
                                                 {groupOf(from) ? (
                                                     <button
                                                         onClick={() => setEditGroup(groupOf(from)!)}
                                                         title="Настроить группу"
-                                                        className="text-gray-500 underline decoration-dotted hover:text-blue-600"
+                                                        className="underline decoration-dotted"
+                                                        style={{ color: mutedOnColor(groupOf(from)?.color || '#f8fafc') }}
                                                     >
                                                         {groupOf(from)!.name}
                                                     </button>
