@@ -13,19 +13,22 @@ import { KP_ABOUT_PAGE_PDF_BASE64 } from '@/lib/own-crm/kp-about-page';
 import { PDFDocument } from 'pdf-lib';
 
 /**
- * Приклеить к КП последнюю страницу «Компания в цифрах» (владелец 05.10.2026).
+ * Поставить перед КП страницу «Компания в цифрах» (владелец 05.10.2026).
+ * Она идёт ПЕРВОЙ, как в прежнем КП RetailCRM: клиент сначала видит, с кем
+ * имеет дело, и только потом цены.
+ *
  * Не приклеилась — отдаём предложение как есть: КП без рекламной страницы
  * остаётся рабочим документом, а без цен и реквизитов — нет.
  */
 async function withAboutPage(pdf: Uint8Array): Promise<Uint8Array> {
     try {
-        const document = await PDFDocument.load(pdf);
         const about = await PDFDocument.load(Buffer.from(KP_ABOUT_PAGE_PDF_BASE64, 'base64'));
-        const pages = await document.copyPages(about, about.getPageIndices());
-        for (const page of pages) document.addPage(page);
-        return await document.save();
+        const proposal = await PDFDocument.load(pdf);
+        const pages = await about.copyPages(proposal, proposal.getPageIndices());
+        for (const page of pages) about.addPage(page);
+        return await about.save();
     } catch (e: any) {
-        console.warn('[КП] последняя страница не приклеилась:', e?.message);
+        console.warn('[КП] страница о компании не приклеилась:', e?.message);
         return pdf;
     }
 }
