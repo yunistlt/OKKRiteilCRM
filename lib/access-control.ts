@@ -15,7 +15,7 @@ export type RoleCapabilityProfile = {
     canRunBulkOperations: boolean;
 };
 
-export const ROLE_DISPLAY_ORDER: AppRole[] = ['admin', 'manager', 'okk', 'rop', 'logistics', 'jurist', 'demo'];
+export const ROLE_DISPLAY_ORDER: AppRole[] = ['admin', 'manager', 'okk', 'rop', 'logistics', 'logistics_view', 'jurist', 'demo'];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
     admin: 'Админ',
@@ -23,6 +23,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
     okk: 'Контролёр ОКК',
     rop: 'РОП',
     logistics: 'Логистика и закупки',
+    logistics_view: 'Логистика: только просмотр',
     jurist: 'Юрист',
     demo: 'ДЕМО',
 };
@@ -68,6 +69,18 @@ export const DEFAULT_ROLE_CAPABILITIES: RoleCapabilityProfile[] = [
         role: 'logistics',
         dataScope: 'all',
         editScope: 'all',
+        canViewAnalytics: false,
+        canViewAudit: false,
+        canViewSalary: false,
+        canViewSettings: false,
+        canManageUsers: false,
+        canRunBulkOperations: false,
+    },
+    {
+        // Кладовщик: видит ту же работу по заказам, но ничего не меняет.
+        role: 'logistics_view',
+        dataScope: 'all',
+        editScope: 'own',
         canViewAnalytics: false,
         canViewAudit: false,
         canViewSalary: false,

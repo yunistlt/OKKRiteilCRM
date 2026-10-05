@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getDefaultPathForRole } from '@/lib/rbac';
+import { getDefaultPathForRole, isReadOnlyRole } from '@/lib/rbac';
 import { canAccessPathServer } from '@/lib/rbac-server';
 
 function applyNoStoreHeaders(response: NextResponse) {
@@ -53,6 +53,18 @@ export async function middleware(request: NextRequest) {
                 return applyNoStoreHeaders(NextResponse.json({ error: 'Неавторизован' }, { status: 401 }));
             }
             return applyNoStoreHeaders(NextResponse.redirect(new URL('/login', request.url)));
+        }
+
+        /**
+         * Роль «только просмотр»: смотреть можно всё, что ей открыто, менять —
+         * ничего. Проверяем здесь, а не в обработчиках: иначе первый же новый
+         * маршрут окажется незакрытым (решение владельца 05.10.2026).
+         */
+        if (isReadOnlyRole(session.user.role) && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
+            return applyNoStoreHeaders(NextResponse.json(
+                { error: 'У вашей роли доступ только на просмотр — изменения закрыты' },
+                { status: 403 },
+            ));
         }
 
         if (!(await canAccessPathServer(session.user.role, pathname))) {
