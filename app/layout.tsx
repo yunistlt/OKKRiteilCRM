@@ -37,6 +37,7 @@ export const metadata: Metadata = {
 import Sidebar from "../components/ui/Sidebar";
 import { PhonePanel } from "@/components/softphone/PhonePanel";
 import IncomingMailAlerts from "@/components/orders/IncomingMailAlerts";
+import NotificationBell from "@/components/notifications/NotificationBell";
 import QaOverlay from "@/components/qa/QaOverlay";
 
 export default async function RootLayout({
@@ -90,6 +91,14 @@ export default async function RootLayout({
                       </BreadcrumbsProvider>
                     </DayPlanProvider>
                     {session ? <PhonePanel /> : null}
+                    {/* Центр оповещений: что пропустил человек по своим заказам.
+                        Рядом с кнопкой телефона, как колокольчик в RetailCRM
+                        (решение владельца 05.10.2026). */}
+                    {session ? (
+                        <div className="fixed right-40 top-3 z-[60]">
+                            <NotificationBell />
+                        </div>
+                    ) : null}
                     {/* Письмо по заказу — повод ответить сегодня: показываем его
                         сразу, а не когда менеджер зайдёт в карточку. */}
                     {session ? <IncomingMailAlerts /> : null}

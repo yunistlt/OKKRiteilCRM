@@ -121,6 +121,13 @@ export function useDictionaryNames(): DictionaryResolver {
         resolve: (entity, code) => {
             if (code == null || code === '') return '';
             const c = String(code);
+            /**
+             * `own-crm` — код несуществующей витрины: так помечались первые свои
+             * заказы, пока юрлицо им не выбирали. Показывать «Own Crm» нельзя —
+             * в интерфейсе кодов быть не должно (закон проекта), да и магазина
+             * такого нет. Пусто честнее: менеджер выберет юрлицо сам.
+             */
+            if (entity === 'site' && c === 'own-crm') return '';
             return catalog.names[key(entity, null, c)] || humanize(c);
         },
         field: (fieldCode, value) => {
