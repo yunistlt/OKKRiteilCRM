@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Всплывающее оповещение по заказу: пришло письмо или поставили задачу.
+ * Всплывающее оповещение по заказу: письмо, задача или входящий звонок.
  *
  * Лена Парфёнова 05.10.2026: «можно настроить оповещения по входящим письмам в
  * конкретный заказ? Всплывающее окно было в RetailCRM». Письмо по заказу — повод
@@ -21,8 +21,8 @@ import OrderNumberLink from '@/components/ui/OrderNumberLink';
 
 type Alert = {
     id: string;
-    /** Письмо или задача: заголовок и содержимое у них разные. */
-    kind: 'mail' | 'task';
+    /** Письмо, задача или звонок: заголовок и содержимое у них разные. */
+    kind: 'mail' | 'task' | 'call';
     orderNumber: string;
     /** Тема письма или текст задачи — то, ради чего человек это читает. */
     text: string;
@@ -45,9 +45,10 @@ export default function IncomingMailAlerts() {
         const query = since.current ? `?since=${encodeURIComponent(since.current)}` : '';
 
         try {
-            const [mailRes, taskRes] = await Promise.all([
+            const [mailRes, taskRes, callRes] = await Promise.all([
                 fetch(`/api/emails/incoming-alerts${query}`),
                 fetch(`/api/orders/task-alerts${query}`),
+                fetch(`/api/calls/alerts${query}`),
             ]);
 
             const fresh: Alert[] = [];
@@ -82,6 +83,22 @@ export default function IncomingMailAlerts() {
                 }
             }
 
+            if (callRes.ok) {
+                const payload = await callRes.json();
+                for (const call of (payload.calls || [])) {
+                    fresh.push({
+                        id: call.id,
+                        kind: 'call',
+                        orderNumber: call.orderNumber || '',
+                        // Кто звонит — главное в этом оповещении: номер сам по
+                        // себе ничего не говорит (Женя 05.10.2026).
+                        text: call.clientName || call.phone || 'Неизвестный номер',
+                        note: [call.phone, call.managerName ? `менеджер ${call.managerName}` : null]
+                            .filter(Boolean).join(' · '),
+                    });
+                }
+            }
+
             const unseen = fresh.filter((item) => !seen.current.has(item.id));
             for (const item of unseen) seen.current.add(item.id);
             if (unseen.length) setAlerts((current) => [...unseen, ...current].slice(0, 4));
@@ -109,10 +126,10 @@ export default function IncomingMailAlerts() {
     return (
         <div className="fixed bottom-4 right-4 z-[200] flex w-80 flex-col gap-2">
             {alerts.map((alert) => (
-                <div key={alert.id} className={`border bg-white shadow-lg ${alert.kind === 'task' ? 'border-amber-200' : 'border-blue-200'}`}>
-                    <div className={`flex items-center justify-between px-3 py-1.5 ${alert.kind === 'task' ? 'bg-amber-600' : 'bg-blue-600'}`}>
+                <div key={alert.id} className={`border bg-white shadow-lg ${alert.kind === 'task' ? 'border-amber-200' : alert.kind === 'call' ? 'border-green-200' : 'border-blue-200'}`}>
+                    <div className={`flex items-center justify-between px-3 py-1.5 ${alert.kind === 'task' ? 'bg-amber-600' : alert.kind === 'call' ? 'bg-green-700' : 'bg-blue-600'}`}>
                         <span className="text-[10px] font-black uppercase tracking-widest text-white">
-                            {alert.kind === 'task' ? 'Задача по заказу' : 'Письмо по заказу'}
+                            {alert.kind === 'task' ? 'Задача по заказу' : alert.kind === 'call' ? 'Входящий звонок' : 'Письмо по заказу'}
                         </span>
                         <button
                             type="button"
@@ -124,9 +141,15 @@ export default function IncomingMailAlerts() {
                         </button>
                     </div>
                     <div className="px-3 py-2">
-                        <div className="text-sm font-semibold text-gray-900">
-                            Заказ <OrderNumberLink number={alert.orderNumber} />
-                        </div>
+                        {alert.orderNumber ? (
+                            <div className="text-sm font-semibold text-gray-900">
+                                Заказ <OrderNumberLink number={alert.orderNumber} />
+                            </div>
+                        ) : (
+                            // Звонок с незнакомого номера — заказа у него нет, и
+                            // врать про заказ нельзя.
+                            <div className="text-sm font-semibold text-gray-900">Заказ не найден</div>
+                        )}
                         <div className="mt-1 text-sm text-gray-800" title={alert.text}>{alert.text}</div>
                         <div className="mt-0.5 truncate text-xs text-gray-500">{alert.note}</div>
                     </div>
