@@ -6,6 +6,10 @@
             "schedule": "40 1 * * *"
         },
         {
+            "path": "/api/cron/tseh-push",
+            "schedule": "*/5 * * * *"
+        },
+        {
             "path": "/api/cron/rop-bind",
             "schedule": "*/10 4-15 * * 1-5"
         },
@@ -82,20 +86,8 @@
             "schedule": "*/15 * * * *"
         },
         {
-            "path": "/api/cron/system-jobs/retailcrm-order-delta",
-            "schedule": "*/1 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/retailcrm-order-upsert",
-            "schedule": "*/1 * * * *"
-        },
-        {
             "path": "/api/cron/system-jobs/order-context-refresh",
             "schedule": "*/1 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/retailcrm-history-delta",
-            "schedule": "*/2 * * * *"
         },
         {
             "path": "/api/cron/system-jobs/transcription",
@@ -184,6 +176,10 @@
         {
             "path": "/api/cron/email-poll",
             "schedule": "*/5 * * * *"
+        },
+        {
+            "path": "/api/cron/email-sent-poll",
+            "schedule": "*/10 * * * *"
         },
         {
             "path": "/api/cron/ai-balance-watch",

@@ -121,6 +121,20 @@ export async function isExtensionOnline(extensionNumber: string): Promise<boolea
     }
 }
 
+/**
+ * Номер клиента в международном формате для набора: «+7…», «+375…».
+ * Российские 8XXXXXXXXXX и 10-значные приводим к +7, остальное оставляем как
+ * есть, добавив плюс — страну за клиента не угадываем.
+ */
+function toE164(raw: string): string {
+    const cleaned = String(raw ?? '').replace(/[^\d+]/g, '');
+    const digitsOnly = cleaned.replace(/\D/g, '');
+    if (!digitsOnly) return cleaned;
+    if (digitsOnly.length === 11 && digitsOnly.startsWith('8')) return `+7${digitsOnly.slice(1)}`;
+    if (digitsOnly.length === 10) return `+7${digitsOnly}`;
+    return `+${digitsOnly}`;
+}
+
 export async function initiateMakeCall(params: {
     extensionId: string;   // короткий номер добавочного-инициатора (напр. 105)
     source: string;        // первое плечо — очередь ОП (напр. 200)
@@ -138,11 +152,28 @@ export async function initiateMakeCall(params: {
     }
 
     // POST /api/ver1.0/extension/{extension_id}/callback/
-    // src_num (массив) — первое плечо (очередь ОП), dst_num — второе плечо (клиент).
-    // Номера — только цифры (Телфин не принимает '+'). caller_id — компанийский DID, чтобы
-    // клиент видел узнаваемый номер (иначе Телфин ставит дефолт транка). Настраивается env.
+    // src_num (массив) — первое плечо, dst_num — второе плечо (клиент).
+    // Номера — только цифры (Телфин не принимает '+').
+    //
+    // Кому какой номер показывается — не очевидно и стоило путаницы (Ирина
+    // 02.10.2026: «я набираю номер клиента, а звоню нам»):
+    //  * `caller_id_number` / `caller_id_name` видит ПЕРВОЕ плечо, то есть сам
+    //    менеджер на своём аппарате. Туда ставим номер КЛИЕНТА — так менеджер
+    //    видит, с кем его соединяют, и может перезвонить сам. Это же советует
+    //    документация Телфина, когда первое плечо — внутренний номер.
+    //  * `src_ani` видит КЛИЕНТ — туда идёт наш городской номер, иначе Телфин
+    //    подставит номер транка.
     const digits = (s: string) => String(s).replace(/[^\d]/g, '');
-    const callerId = process.env.TELPHIN_CALLBACK_CALLER_ID || '74993504490';
+    const companyNumber = process.env.TELPHIN_CALLBACK_CALLER_ID || '74993504490';
+    /**
+     * Номер клиента уходит в международном виде, с плюсом.
+     *
+     * Ирина 02.10.2026: «не набирает, говорит неправильно набран номер, а в
+     * RetailCRM набирает» — звонок был белорусскому клиенту. В журнале Телфина
+     * видно почему: вызовы с `+375…`, `+7…` проходят, а те же цифры без плюса
+     * отбиваются. Телфин без плюса не понимает, что номер международный.
+     */
+    const clientNumber = toE164(params.destination);
     const res = await fetchTelphin(`${TELPHIN_API}/extension/${extensionId}/callback/`, {
         method: 'POST',
         headers: {
@@ -151,8 +182,12 @@ export async function initiateMakeCall(params: {
         },
         body: JSON.stringify({
             src_num: [digits(params.source)],
-            dst_num: digits(params.destination),
-            caller_id_number: callerId
+            dst_num: clientNumber,
+            // В caller_id кладём только цифры: это подпись для аппарата
+            // менеджера, а не номер для набора.
+            caller_id_number: digits(clientNumber),
+            caller_id_name: digits(clientNumber),
+            src_ani: companyNumber
         })
     });
 

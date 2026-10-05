@@ -69,6 +69,11 @@ export interface NotifyContext {
   /** Для manager_dm: чей это личный чат. */
   managerChatId?: string | null;
   /**
+   * Кому адресовано сообщение в CRM: номер менеджера RetailCRM. По нему советы
+   * и планы кладутся в чат с Семёном — туда, где человек работает.
+   */
+  managerId?: number | null;
+  /**
    * Нет личного чата — отдать в общий. Человек не должен остаться без работы
    * из-за того, что не написал боту; на личный разбор звонков это не распространяем.
    */
@@ -130,6 +135,21 @@ export async function resolveRoute(code: string, ctx: NotifyContext = {}): Promi
   if (target !== 'group_sales') threadId = ov?.threadId ?? null;
 
   return { def, target, chatId, threadId, enabled, token: botToken(def.bot) };
+}
+
+/**
+ * Адрес чата по роли адресата — без учёта переопределений под конкретный тип.
+ * Нужен для копии сообщения второму адресату (copyTo в каталоге).
+ */
+export async function chatIdForTarget(target: NotifyTarget): Promise<string | null> {
+  const chats = await salesRopChats().catch(() => ({ group: '', owner: '' }));
+  if (target === 'group_sales') return chats.group || null;
+  if (target === 'owner_dm') return chats.owner || null;
+  if (target === 'project_stolyarka') return process.env.TELEGRAM_PROJECT_STOLYARKA_CHAT || null;
+  if (target === 'project_consulting') return process.env.TELEGRAM_PROJECT_CONSULTING_CHAT || null;
+  // manager_dm зависит от того, кому адресовано, а accounting рассылается своим списком —
+  // копией такие адресаты не поддерживаются.
+  return null;
 }
 
 /** Все типы с текущим адресатом — для экрана настроек. */

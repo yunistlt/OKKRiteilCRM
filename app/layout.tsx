@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Header from "./components/Header";
+import { BreadcrumbsProvider } from "@/components/ui/BreadcrumbsContext";
 import { Suspense } from 'react';
 import { getSession } from '@/lib/auth';
 import { AuthProvider } from '@/components/auth/AuthProvider';
@@ -9,6 +10,7 @@ import { getEffectiveRoleCapabilities } from '@/lib/access-control-server';
 import { enrichSessionWithManagerIdentity } from '@/lib/manager-identity';
 import { getEffectiveRouteRules } from '@/lib/rbac-server';
 import GlobalConsultantShell from '@/components/GlobalConsultantShell';
+import { DayPlanProvider } from '@/components/sales-rop/DayPlanContext';
 import PwaBootstrap from './components/PwaBootstrap';
 import SystemAlertsBanner from './components/SystemAlertsBanner';
 
@@ -34,6 +36,8 @@ export const metadata: Metadata = {
 
 import Sidebar from "../components/ui/Sidebar";
 import { PhonePanel } from "@/components/softphone/PhonePanel";
+import IncomingMailAlerts from "@/components/orders/IncomingMailAlerts";
+import RingingCallAlert from "@/components/calls/RingingCallAlert";
 import QaOverlay from "@/components/qa/QaOverlay";
 
 export default async function RootLayout({
@@ -71,14 +75,27 @@ export default async function RootLayout({
                     <Suspense fallback={<div className="w-72 bg-gray-900 h-screen" />}>
                         <Sidebar />
                     </Suspense>
-                    <div className="flex-1 flex flex-col min-h-0 min-w-0 relative h-screen">
-                        <Suspense fallback={null}><SystemAlertsBanner /></Suspense>
-                        <Header />
-                        <main className="flex-1 flex flex-col min-h-0 min-w-0 relative overflow-y-auto overflow-x-hidden">
-                            <GlobalConsultantShell>{children}</GlobalConsultantShell>
-                        </main>
-                    </div>
+                    {/* План дня знают и шапка (кнопка), и рабочая область (сама
+                        панель), поэтому состояние живёт выше них обоих. */}
+                    <DayPlanProvider>
+                      {/* Хлебные крошки: карточка, открытая поверх страницы, дописывает
+                          свою крошку к названию раздела в шапке. */}
+                      <BreadcrumbsProvider>
+                        <div className="flex-1 flex flex-col min-h-0 min-w-0 relative h-screen">
+                            <Suspense fallback={null}><SystemAlertsBanner /></Suspense>
+                            <Header />
+                            <main className="flex-1 flex flex-col min-h-0 min-w-0 relative overflow-y-auto overflow-x-hidden">
+                                <GlobalConsultantShell>{children}</GlobalConsultantShell>
+                            </main>
+                        </div>
+                      </BreadcrumbsProvider>
+                    </DayPlanProvider>
                     {session ? <PhonePanel /> : null}
+                    {/* Письмо по заказу — повод ответить сегодня: показываем его
+                        сразу, а не когда менеджер зайдёт в карточку. */}
+                    {session ? <IncomingMailAlerts /> : null}
+                    {/* Звонок, который идёт прямо сейчас: событие от Телфина, а не запись. */}
+                    {session ? <RingingCallAlert /> : null}
                     {session ? <Suspense fallback={null}><QaOverlay /></Suspense> : null}
                 </AuthProvider>
             </body>

@@ -1,0 +1,100 @@
+-- Забранный заказ синхронизация больше не перезаписывает.
+--
+-- Менеджер, переведённый на нашу CRM, работает в ней и по старым заказам
+-- RetailCRM: заявки живут месяцами, и «новые здесь, старые там» — это работа в
+-- двух системах. Такие заказы помечаются `orders.is_own` и дальше живут только
+-- у нас. Правки наружу не уходят, а снимок из RetailCRM их не затирает —
+-- иначе ближайший синк (каждые 1–2 минуты) вернул бы старое.
+--
+-- Меняем единственное место, через которое синхронизация пишет заказы, —
+-- условие `WHERE NOT orders.is_own` в ветке обновления. Вставка новых заказов
+-- и `order_metrics` не затронуты: своих заказов в RetailCRM нет.
+
+CREATE OR REPLACE FUNCTION public.upsert_orders_v2(orders_data jsonb)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+BEGIN
+    -- 1. Upsert into orders table
+    INSERT INTO public.orders (
+        id, 
+        order_id, 
+        created_at, 
+        updated_at, 
+        number, 
+        status,
+        site,
+        event_type, 
+        manager_id, 
+        phone, 
+        customer_phones, 
+        totalsumm, 
+        raw_payload,
+        prichiny_otmeny
+    )
+    SELECT 
+        (val->>'id')::bigint,
+        (val->>'order_id')::bigint,
+        (val->>'created_at')::timestamptz,
+        (val->>'updated_at')::timestamptz,
+        (val->>'number'),
+        (val->>'status'),
+        (val->>'site'),
+        (val->>'event_type'),
+        (val->>'manager_id')::bigint,
+        (val->>'phone'),
+        ARRAY(SELECT jsonb_array_elements_text(val->'customer_phones')),
+        (val->>'totalsumm')::numeric,
+        (val->'raw_payload')::jsonb,
+        (val->>'prichiny_otmeny')
+    FROM jsonb_array_elements(orders_data) AS val
+    ON CONFLICT (id) DO UPDATE SET
+        updated_at = EXCLUDED.updated_at,
+        status = EXCLUDED.status,
+        site = EXCLUDED.site,
+        manager_id = EXCLUDED.manager_id,
+        raw_payload = EXCLUDED.raw_payload,
+        totalsumm = EXCLUDED.totalsumm,
+        prichiny_otmeny = EXCLUDED.prichiny_otmeny
+    -- Заказ, забранный в нашу CRM, синхронизация не перезаписывает: менеджер
+    -- правит его у нас, и свежий снимок из RetailCRM стёр бы его работу
+    -- через минуту (требование владельца 01.10.2026).
+    WHERE NOT public.orders.is_own;
+
+    -- 2. Update order_metrics table with ENRICHED context
+    INSERT INTO public.order_metrics (
+        retailcrm_order_id,
+        current_status,
+        manager_id,
+        order_amount,
+        full_order_context,
+        computed_at
+    )
+    SELECT 
+        (val->>'order_id')::int,
+        (val->>'status'),
+        (val->>'manager_id')::int,
+        (val->>'totalsumm')::numeric,
+        jsonb_build_object(
+            'manager_comment', (val->'raw_payload'->>'managerComment'),
+            'customer_comment', (val->'raw_payload'->>'customerComment'),
+            'status_name', (val->'raw_payload'->'status'->>'name'),
+            'site', (val->'raw_payload'->>'site'),
+            'contragent', (val->'raw_payload'->'contragent'),
+            'customer', (val->'raw_payload'->'customer'),
+            'phone', (val->>'phone'),
+            'email', (val->'raw_payload'->>'email'),
+            'delivery_address', (val->'raw_payload'->'delivery'->'address'->>'text')
+        ),
+        now()
+    FROM jsonb_array_elements(orders_data) AS val
+    ON CONFLICT (retailcrm_order_id) DO UPDATE SET
+        current_status = EXCLUDED.current_status,
+        manager_id = EXCLUDED.manager_id,
+        order_amount = EXCLUDED.order_amount,
+        full_order_context = EXCLUDED.full_order_context,
+        computed_at = now();
+END;
+$function$
+

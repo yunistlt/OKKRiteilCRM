@@ -21,9 +21,14 @@ export async function GET() {
         }
 
         // Fetch user info for controlled managers
+        // Только работающие: уволенных в списках не показываем (закон «только
+        // активные сущности»). Признак `is_controlled` с человека не снимают при
+        // увольнении, и в фильтре заказов висели Хапилова с Никитиной, которых в
+        // компании давно нет (замечание владельца 05.10.2026).
         const { data: managers, error: err2 } = await supabase
             .from('managers')
             .select('id, first_name, last_name')
+            .eq('active', true)
             .in('id', managerIds);
 
         if (err2) throw err2;

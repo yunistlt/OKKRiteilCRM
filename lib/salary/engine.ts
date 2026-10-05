@@ -5,6 +5,7 @@ import { compose } from '@/lib/salary/blocks/compose';
 import { pickTier, round2 } from '@/lib/salary/blocks/tiers';
 import { getPlansForPeriod, listSchemes, resolveEngineerComp, resolveManagerComp, type EngineerComp, type PeriodPlans } from '@/lib/salary/schemes';
 import { resolveManagerGrades } from '@/lib/salary/grades';
+import { dropOpenPeriodCache } from '@/lib/salary/period-view';
 import type { BlockComputeContext, BlockContribution, BlockInstance } from '@/lib/salary/blocks/types';
 
 export { pickTier }; // обратная совместимость со старыми импортами
@@ -285,12 +286,22 @@ export async function calculateEngineerPeriod(year: number, month: number): Prom
 /** Считает период из боевых данных (метрики → схемы/планы → блоки). Без записи. */
 export async function calculatePeriod(year: number, month: number): Promise<PeriodSalary> {
     const config = await getConfigForPeriod(year, month);
-    const metrics = await collectPeriodMetrics(year, month, config);
     const asOf = `${year}-${String(month).padStart(2, '0')}-01`;
-    const compMap = await resolveManagerComp(asOf);
-    const plans = await getPlansForPeriod(year, month);
-    const categoryNames = await loadCategoryNames();
-    const grades = await resolveManagerGrades(asOf);
+
+    /**
+     * Справочники, схемы, планы и грейды от метрик не зависят — читаем их
+     * одновременно. По очереди расчёт открытого периода не укладывался в лимит
+     * и экран «Моя зарплата» писал «расчёта пока нет» (замечание владельца
+     * 05.10.2026).
+     */
+    const [metrics, compMap, plans, categoryNames, grades] = await Promise.all([
+        collectPeriodMetrics(year, month, config),
+        resolveManagerComp(asOf),
+        getPlansForPeriod(year, month),
+        loadCategoryNames(),
+        resolveManagerGrades(asOf),
+    ]);
+
     return computePeriodSalary(metrics, compMap, plans, config, categoryNames, grades);
 }
 
@@ -362,6 +373,9 @@ export function salaryResultToCalcRow(r: SalaryResult, periodId: number, compute
 
 /** Считает и СОХРАНЯЕТ расчёт периода в salary_calc (+ аудит). Период должен быть открыт. */
 export async function recalcAndPersist(year: number, month: number, actor: string | null): Promise<PeriodSalary> {
+    // Пересчёт — повод забыть посчитанное минуту назад: человек нажал кнопку
+    // именно чтобы увидеть новые цифры.
+    dropOpenPeriodCache();
     const periodId = await ensureOpenPeriod(year, month);
     // Одно юрлицо = несколько карточек клиента в CRM (менеджеры заводят новую на
     // каждый заказ) — без пересборки канона по ИНН постоянный клиент считается новым

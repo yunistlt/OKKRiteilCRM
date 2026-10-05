@@ -7,9 +7,16 @@
  *
  * Инкремент по дате изменения: за один проход берём свежие, полный проход
  * делается скриптом `scripts/customers-sync.mjs`.
+ *
+ * **Правленных в ОКК не затираем.** С 02.10.2026 ФИО, телефоны и почту
+ * человека менеджер правит у нас и в RetailCRM это не уезжает, поэтому у таких
+ * строк (метка `customers.okk_edited_at`) синхронизация обновляет только то,
+ * что считает CRM — заказы, суммы, сегменты, сырой ответ, — а личные поля
+ * оставляет нашими.
  */
 import { supabase } from '@/utils/supabase';
 import { getCrmConfig } from './leads';
+import { personsEditedInOkk } from '@/lib/own-crm/client-people';
 
 export type CustomersSyncResult = { fetched: number; links: number };
 
@@ -40,34 +47,68 @@ export async function syncCustomers(sinceIso: string, maxPages = 10): Promise<Cu
             break;
         }
 
-        await supabase.from('customers').upsert(
-            rows.map((customer: any) => ({
-                id: customer.id,
-                externalId: customer.externalId ?? null,
-                firstName: customer.firstName ?? null,
-                lastName: customer.lastName ?? null,
-                patronymic: customer.patronymic ?? null,
-                email: customer.email ?? null,
-                phones: phonesOf(customer),
-                site: customer.site ?? null,
-                managerId: customer.managerId ?? null,
-                vip: customer.vip ?? null,
-                bad: customer.bad ?? null,
-                isContact: customer.isContact ?? null,
-                createdAt: customer.createdAt ?? null,
-                ordersCount: customer.ordersCount ?? null,
-                totalSumm: customer.totalSumm ?? null,
-                averageSumm: customer.averageSumm ?? null,
-                personalDiscount: customer.personalDiscount ?? null,
-                segments: customer.segments ?? [],
-                customFields: customer.customFields ?? {},
-                raw: customer,
-                updated_at: new Date().toISOString(),
-            })),
-            { onConflict: 'id' },
-        );
+        /**
+         * Берём из RetailCRM только то, чего у нас ещё нет.
+         *
+         * Закон владельца 05.10.2026: «мы уже ничего не синхронизируем с
+         * ритейлом, если только надо что-то докачать». Работа идёт в ОКК, и
+         * обновления оттуда затирали бы наши данные — например, возвращали бы
+         * в карточку почту робота. Поэтому новые карточки заводим, а
+         * существующие не трогаем вовсе.
+         */
+        const { data: known } = await supabase
+            .from('customers')
+            .select('id')
+            .in('id', rows.map((customer: any) => customer.id));
+        const haveIds = new Set(((known ?? []) as any[]).map((row) => Number(row.id)));
+        const fresh = rows.filter((customer: any) => !haveIds.has(Number(customer.id)));
 
-        fetched += rows.length;
+        // Кого из этой партии правили у нас — их личные поля не перезаписываем.
+        const editedHere = await personsEditedInOkk(fresh.map((customer: any) => customer.id));
+
+        const common = (customer: any) => ({
+            id: customer.id,
+            externalId: customer.externalId ?? null,
+            site: customer.site ?? null,
+            managerId: customer.managerId ?? null,
+            vip: customer.vip ?? null,
+            bad: customer.bad ?? null,
+            isContact: customer.isContact ?? null,
+            createdAt: customer.createdAt ?? null,
+            ordersCount: customer.ordersCount ?? null,
+            totalSumm: customer.totalSumm ?? null,
+            averageSumm: customer.averageSumm ?? null,
+            personalDiscount: customer.personalDiscount ?? null,
+            segments: customer.segments ?? [],
+            customFields: customer.customFields ?? {},
+            raw: customer,
+            updated_at: new Date().toISOString(),
+        });
+
+        const personal = (customer: any) => ({
+            firstName: customer.firstName ?? null,
+            lastName: customer.lastName ?? null,
+            patronymic: customer.patronymic ?? null,
+            email: customer.email ?? null,
+            phones: phonesOf(customer),
+        });
+
+        // Два вызова, а не один: PostgREST обновляет ровно те колонки, что
+        // переданы, и набор колонок в партии должен быть одинаковым.
+        const untouched = fresh.filter((customer: any) => !editedHere.has(Number(customer.id)));
+        const ours = fresh.filter((customer: any) => editedHere.has(Number(customer.id)));
+
+        if (untouched.length) {
+            await supabase.from('customers').upsert(
+                untouched.map((customer: any) => ({ ...common(customer), ...personal(customer) })),
+                { onConflict: 'id' },
+            );
+        }
+        if (ours.length) {
+            await supabase.from('customers').upsert(ours.map(common), { onConflict: 'id' });
+        }
+
+        fetched += fresh.length;
         if (page >= (payload.pagination?.totalPageCount || 1)) {
             break;
         }

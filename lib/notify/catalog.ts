@@ -62,6 +62,13 @@ export interface NotifyTypeDef {
   target: NotifyTarget;
   /** Адресат жёстко задан природой сообщения (личный план — только этому менеджеру). */
   targetFixed?: boolean;
+  /**
+   * Копия сообщения второму адресату. Нужна там, где у события есть ответственный И
+   * команда, которой это тоже важно: заказ в производстве проверяет один человек, но
+   * отдел должен видеть, что заказ уехал. Копия не заменяет основного адресата и молча
+   * пропускается, если её адрес не настроен.
+   */
+  copyTo?: NotifyTarget;
 }
 
 export const NOTIFY_TYPES: NotifyTypeDef[] = [
@@ -81,6 +88,28 @@ export const NOTIFY_TYPES: NotifyTypeDef[] = [
     group: 'payments',
     bot: 'payments',
     target: 'group_sales',
+  },
+  {
+    code: 'tseh.order_accepted',
+    name: 'Заказ заведён в ЦехУспехе',
+    description:
+      'Заказ, переданный в производство, появился в ЦехУспехе: номер там, заказчик и сумма. '
+      + 'Повод проверить оформление — состав, сроки, реквизиты заказчика.',
+    group: 'quality',
+    bot: 'igor',
+    target: 'owner_dm',
+    copyTo: 'group_sales',
+  },
+  {
+    code: 'tseh.order_rejected',
+    name: 'Заказ не принят производством',
+    description:
+      'ЦехУспех отказался заводить заказ и назвал причину — например, у заказчика нет ИНН. '
+      + 'Заказ в производство не уехал, нужно поправить и передать заново.',
+    group: 'quality',
+    bot: 'igor',
+    target: 'owner_dm',
+    copyTo: 'group_sales',
   },
   {
     code: 'system.crm_site_missing',

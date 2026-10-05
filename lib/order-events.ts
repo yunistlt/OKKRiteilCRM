@@ -101,7 +101,16 @@ export async function countOrderEventsByField(orderId: number, patterns: string[
 }
 
 /** Поля-коммуникации: комментарии, письма, сообщения. */
+/** Всё общение по заказу, включая комментарии — этим читают агенты (ИИ). */
 export const COMMUNICATION_FIELD_PATTERNS = ['%comment%', '%email%', '%message%'];
+
+/**
+ * Лента «Письма и сообщения» в карточке — только переписка. Комментарии
+ * менеджера из неё убраны: они живут в своём поле карточки и в истории заказа,
+ * а в ленте выглядели третьим таким же полем и сбивали с толку — «куда
+ * писать?» (замечание Евгении Матвеевой 02.10.2026).
+ */
+export const MAIL_FEED_FIELD_PATTERNS = ['%email%', '%message%'];
 export const COMMENT_FIELD_PATTERNS = ['%comment%'];
 export const EMAIL_FIELD_PATTERNS = ['%email%'];
 

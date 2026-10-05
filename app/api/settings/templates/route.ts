@@ -33,6 +33,9 @@ const EmailSchema = z.object({
     name: z.string().min(1).max(120),
     subject: z.string().min(1).max(300),
     body: z.string().min(1),
+    // Шаблон с заданием: письмо под заказ пишет ИИ, тема и текст тут — запасные.
+    mode: z.enum(['static', 'ai']).optional(),
+    prompt: z.string().max(4000).optional(),
     active: z.boolean().optional(),
     sort_order: z.number().int().optional(),
 });

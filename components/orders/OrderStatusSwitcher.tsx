@@ -1,26 +1,76 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import StatusIcon from '@/components/orders/StatusIcon';
 
 interface Option {
     code: string;
     name: string;
     color: string | null;
     groupName: string;
+    groupColor: string | null;
+    groupIcon: string | null;
+    /** Разрешён ли переход в этот статус по матрице переходов. */
+    allowed: boolean;
+    /** В этот статус не пускают без причины словами (галочка в карточке статуса). */
+    requiresReason: boolean;
+    current: boolean;
 }
 
 interface OrderStatusSwitcherProps {
     orderId: number | string;
     currentLabel?: string | null;
+    /** Цвет этапа: кнопка статуса окрашивается в него, как в RetailCRM. */
+    color?: string | null;
     onChanged?: (code: string) => void;
+}
+
+/** Та же краска, подмешанная к белому: фон блока этапа в списке. */
+function tint(hex: string | null | undefined): string {
+    const match = hex ? /^#?([0-9a-f]{6})$/i.exec(hex.trim()) : null;
+    if (!match) return '#f8fafc';
+
+    const value = parseInt(match[1], 16);
+    const mix = (channel: number) => Math.round(255 - (255 - channel) * 0.35);
+    return `rgb(${mix((value >> 16) & 255)}, ${mix((value >> 8) & 255)}, ${mix(value & 255)})`;
+}
+
+/** Цвет этапа, затемнённый до читаемого текста поверх его же заливки. */
+function darken(hex: string | null | undefined): string {
+    const match = hex ? /^#?([0-9a-f]{6})$/i.exec(hex.trim()) : null;
+    if (!match) return '#334155';
+
+    const value = parseInt(match[1], 16);
+    const mix = (channel: number) => Math.round(channel * 0.45);
+    return `rgb(${mix((value >> 16) & 255)}, ${mix((value >> 8) & 255)}, ${mix(value & 255)})`;
+}
+
+/** Белый или почти чёрный текст — по яркости цвета этапа. */
+function readableOn(hex: string | null | undefined): string {
+    const match = hex ? /^#?([0-9a-f]{6})$/i.exec(hex.trim()) : null;
+    if (!match) return '#111827';
+
+    const value = parseInt(match[1], 16);
+    const luminance = (0.299 * ((value >> 16) & 255) + 0.587 * ((value >> 8) & 255) + 0.114 * (value & 255)) / 255;
+    return luminance > 0.72 ? '#111827' : '#ffffff';
 }
 
 /**
  * Смена статуса заказа из карточки. Показываем только те статусы, в которые разрешён
  * переход по нашей матрице, сгруппированные и окрашенные — как в RetailCRM.
  */
-export default function OrderStatusSwitcher({ orderId, currentLabel, onChanged }: OrderStatusSwitcherProps) {
+export default function OrderStatusSwitcher({ orderId, currentLabel, color, onChanged }: OrderStatusSwitcherProps) {
     const [open, setOpen] = useState(false);
+    /**
+     * Список рисуем поверх страницы, а не внутри полосы кнопок.
+     *
+     * Полоса кнопок в карточке прокручивается по горизонтали (`overflow-x-auto`)
+     * и имеет высоту ~26px, поэтому выпадающий список обрезался ею начисто:
+     * человек нажимал — и «ничего не происходило» (Андрей 02.10.2026).
+     */
+    const buttonRef = useRef<HTMLButtonElement | null>(null);
+    const [menuBox, setMenuBox] = useState<{ top: number; left: number } | null>(null);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -49,26 +99,61 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, onChanged }
 
     useEffect(() => { if (open && !data) load(); }, [open, data, load]);
 
-    const change = async (code: string) => {
+    // Позицию считаем от кнопки и держим при прокрутке страницы.
+    useEffect(() => {
+        if (!open) { setMenuBox(null); return; }
+        const place = () => {
+            const rect = buttonRef.current?.getBoundingClientRect();
+            if (!rect) return;
+            const width = 320;
+            setMenuBox({ top: rect.bottom + 4, left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)) });
+        };
+        place();
+        window.addEventListener('scroll', place, true);
+        window.addEventListener('resize', place);
+        return () => {
+            window.removeEventListener('scroll', place, true);
+            window.removeEventListener('resize', place);
+        };
+    }, [open]);
+
+    /**
+     * Статус, который спрашивает причину. Пока он выбран — вместо списка
+     * показываем поле: как всплывающее окно RetailCRM при смене статуса
+     * (решение владельца 05.10.2026).
+     */
+    const [asking, setAsking] = useState<Option | null>(null);
+    const [reason, setReason] = useState('');
+
+    const change = async (code: string, reasonText?: string) => {
         setSaving(true);
         setError(null);
         try {
             const res = await fetch(`/api/orders/${orderId}/status`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: code }),
+                body: JSON.stringify({ status: code, reason: reasonText ?? null }),
             });
             const json = await res.json();
             if (!res.ok) {
                 throw new Error(
-                    json.error === 'transition_not_allowed' ? 'Такой переход запрещён настройками статусов'
+                    // Про ИНН сервер объясняет сам: текст один и тот же везде,
+                    // чтобы менеджер не гадал, что от него хотят.
+                    json.error === 'reason_required' ? (json.message || 'Нужна причина словами')
+                    : json.error === 'inn_required' ? (json.message || 'У клиента не заполнен ИНН')
+                    : json.error === 'transition_not_allowed' ? 'Такой переход запрещён настройками статусов'
                     : json.error === 'status_not_mapped' ? 'Статус не сопоставлен с нашим справочником'
                     : json.error === 'crm_rejected' ? `RetailCRM отклонил смену статуса: ${json.details || 'без пояснения'}`
                     : 'Не удалось сменить статус'
                 );
             }
             setOpen(false);
+            setAsking(null);
+            setReason('');
             setData(null);
+            // Заказ в производство не уедет — говорим сразу, менеджер поправит
+            // карточку клиента и передаст заново.
+            if (json.productionNote) setError(json.productionNote);
             onChanged?.(code);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Не удалось сменить статус');
@@ -77,7 +162,16 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, onChanged }
         }
     };
 
-    const grouped = (data?.options || []).reduce<Record<string, Option[]>>((acc, o) => {
+    // В списке только те статусы, куда переход разрешён матрицей, плюс текущий
+    // (требование владельца 02.10.2026): весь каталог с серыми строками читался
+    // как «всё сломано». Если из текущего статуса переходов нет вовсе —
+    // показываем каталог целиком и честно пишем об этом выше.
+    const anyAllowed = (data?.options || []).some((o) => o.allowed);
+    const visibleOptions = anyAllowed
+        ? (data?.options || []).filter((o) => o.allowed || o.current)
+        : (data?.options || []);
+
+    const grouped = visibleOptions.reduce<Record<string, Option[]>>((acc, o) => {
         (acc[o.groupName] ||= []).push(o);
         return acc;
     }, {});
@@ -85,15 +179,59 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, onChanged }
     return (
         <div className="relative inline-block">
             <button
+                ref={buttonRef}
                 onClick={() => setOpen((v) => !v)}
-                className="flex items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-800 hover:border-blue-500"
+                style={color ? { backgroundColor: color, color: readableOn(color), borderColor: color } : undefined}
+                className="flex items-center gap-2 border border-gray-300 px-3 py-2 text-sm font-semibold hover:opacity-90"
             >
                 <span>{currentLabel || 'Статус'}</span>
-                <span className="text-gray-400">▾</span>
+                <span className="opacity-70">▾</span>
             </button>
 
-            {open && (
-                <div className="absolute left-0 z-50 mt-1 w-80 rounded-md border border-gray-200 bg-white shadow-lg">
+            {open && menuBox && createPortal(
+                <>
+                {/* Клик мимо списка закрывает его — как в любом меню. */}
+                <div className="fixed inset-0 z-[998]" onClick={() => { setOpen(false); setAsking(null); }} />
+                <div
+                    className="fixed z-[999] w-80 max-h-[70vh] overflow-y-auto border border-gray-200 bg-white shadow-lg"
+                    style={{ top: menuBox.top, left: menuBox.left }}
+                >
+                    {asking ? (
+                        <div className="p-3">
+                            <p className="text-sm font-semibold text-gray-900">Перевести в «{asking.name}»</p>
+                            <p className="mt-1 text-xs leading-snug text-gray-600">
+                                Напишите причину словами и подробно — по ней потом разбирают, что пошло не так.
+                            </p>
+                            <textarea
+                                autoFocus
+                                rows={4}
+                                value={reason}
+                                onChange={(e) => setReason(e.target.value)}
+                                placeholder="Например: клиент сравнил с «Первым Металлом», там на 12% дешевле за счёт тонкого листа; бюджет не тянет"
+                                className="mt-2 w-full border border-gray-300 px-2 py-1.5 text-[13px]"
+                            />
+                            {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
+                            <div className="mt-2 flex items-center gap-2">
+                                <button
+                                    onClick={() => change(asking.code, reason.trim())}
+                                    disabled={saving || reason.trim().length < 10}
+                                    className="border border-gray-900 bg-gray-900 px-3 py-1.5 text-[13px] font-semibold text-white disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-500"
+                                >
+                                    {saving ? 'Меняем…' : 'Перевести'}
+                                </button>
+                                <button
+                                    onClick={() => { setAsking(null); setReason(''); setError(null); }}
+                                    className="border border-gray-300 px-3 py-1.5 text-[13px] text-gray-700 hover:bg-gray-50"
+                                >
+                                    Назад
+                                </button>
+                                {reason.trim().length > 0 && reason.trim().length < 10 && (
+                                    <span className="text-[11px] text-gray-500">слишком коротко</span>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                    <>
                     {loading && <p className="px-3 py-3 text-sm text-gray-500">Загружаем переходы…</p>}
 
                     {!loading && data && !data.writeEnabled && (
@@ -115,24 +253,50 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, onChanged }
                         </p>
                     )}
 
-                    {!loading && data?.known && data.options.length === 0 && (
-                        <p className="px-3 py-3 text-sm text-gray-600">
-                            Из этого статуса переходы не разрешены.
+                    {!loading && data?.known && !anyAllowed && (
+                        <p className="border-b border-gray-200 px-3 py-2 text-xs leading-snug text-gray-600">
+                            Из этого статуса переходы не настроены — список ниже показан целиком,
+                            но перейти пока некуда. Переходы задаются на экране «Статусы и переходы».
                         </p>
                     )}
 
+                    {/* Этапы цветными блоками, внутри — только разрешённые переходы. */}
                     {Object.entries(grouped).map(([groupName, options]) => (
-                        <div key={groupName}>
-                            <p className="bg-gray-50 px-3 py-1 text-xs text-gray-500">{groupName}</p>
+                        <div key={groupName} style={{ backgroundColor: tint(options[0]?.groupColor) }}>
+                            <p
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-bold"
+                                style={{ color: darken(options[0]?.groupColor) }}
+                            >
+                                <StatusIcon icon={options[0]?.groupIcon} color={darken(options[0]?.groupColor)} size={14} />
+                                {groupName}
+                            </p>
                             {options.map((o) => (
                                 <button
                                     key={o.code}
-                                    onClick={() => change(o.code)}
-                                    disabled={saving}
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-800 hover:bg-blue-50 disabled:text-gray-400"
+                                    onClick={() => {
+                                        if (!o.allowed) return;
+                                        if (o.requiresReason) { setAsking(o); setReason(''); setError(null); return; }
+                                        change(o.code);
+                                    }}
+                                    disabled={saving || !o.allowed || o.current}
+                                    title={
+                                        o.current
+                                            ? 'Текущий статус заказа'
+                                            : o.allowed
+                                                ? `Перевести в «${o.name}»`
+                                                : 'Переход в этот статус не настроен'
+                                    }
+                                    className={`flex w-full items-center gap-2 px-3 py-1.5 pl-8 text-left text-[13px] ${
+                                        o.current
+                                            ? 'font-bold'
+                                            : o.allowed
+                                                ? 'hover:bg-white/60'
+                                                : 'cursor-not-allowed opacity-40'
+                                    }`}
+                                    style={{ color: darken(options[0]?.groupColor) }}
                                 >
-                                    <span className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: o.color || '#e5e7eb' }} />
                                     <span className="truncate">{o.name}</span>
+                                    {o.current && <span className="ml-auto shrink-0 text-[11px]">сейчас</span>}
                                 </button>
                             ))}
                         </div>
@@ -140,7 +304,11 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, onChanged }
 
                     {error && <p className="border-t border-gray-200 px-3 py-2 text-xs text-red-700">{error}</p>}
                     {saving && <p className="border-t border-gray-200 px-3 py-2 text-xs text-gray-500">Меняем статус…</p>}
+                    </>
+                    )}
                 </div>
+                </>,
+                document.body,
             )}
         </div>
     );

@@ -14,6 +14,9 @@ type Entity = {
     site_code: string | null;
     vat_percent: number | null;
     signer_name: string | null;
+    seal_place: string | null;
+    seal_image_path: string | null;
+    signature_image_path: string | null;
     signer_title: string | null;
 };
 
@@ -40,6 +43,74 @@ export default function LegalEntitiesClient() {
 
     useEffect(() => { load(); }, [load]);
 
+    /**
+     * Руководителя берём из ЕГРЮЛ, а не со слов (решение владельца
+     * 02.10.2026): так в счёте стоит тот, кто вправе подписывать.
+     */
+    const [headsBusy, setHeadsBusy] = useState(false);
+
+    const pullHeads = async () => {
+        setHeadsBusy(true);
+        setNote(null);
+        try {
+            const response = await fetch('/api/settings/legal-entities', { method: 'PUT' });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || 'Не удалось получить данные ЕГРЮЛ');
+
+            const filled = (payload.updates || []).filter((row: any) => row.name);
+            const missing = (payload.updates || []).filter((row: any) => !row.name);
+            setNote([
+                filled.length ? `Из ЕГРЮЛ: ${filled.map((row: any) => `${row.entity} — ${row.title || 'руководитель'} ${row.name}`).join('; ')}` : null,
+                missing.length ? `Руками: ${missing.map((row: any) => `${row.entity} (${row.note})`).join('; ')}` : null,
+            ].filter(Boolean).join('. '));
+            await load();
+        } catch (e: any) {
+            setNote(e.message);
+        } finally {
+            setHeadsBusy(false);
+        }
+    };
+
+    /**
+     * Печать и подпись — картинками: рисованная печать владельцу не подошла,
+     * на счёт ставим настоящие оттиски (решение 02.10.2026).
+     */
+    const [imageBusy, setImageBusy] = useState<string | null>(null);
+
+    const uploadImage = async (entityId: number, kind: 'seal' | 'signature', file: File) => {
+        setImageBusy(`${entityId}-${kind}`);
+        setNote(null);
+        try {
+            const body = new FormData();
+            body.append('entityId', String(entityId));
+            body.append('kind', kind);
+            body.append('file', file);
+            const response = await fetch('/api/settings/legal-entities/image', { method: 'POST', body });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || 'Не удалось загрузить');
+            setNote(kind === 'seal' ? 'Печать загружена' : 'Подпись загружена');
+            await load();
+        } catch (e: any) {
+            setNote(e.message);
+        } finally {
+            setImageBusy(null);
+        }
+    };
+
+    const removeImage = async (entityId: number, kind: 'seal' | 'signature') => {
+        setImageBusy(`${entityId}-${kind}`);
+        try {
+            const response = await fetch(`/api/settings/legal-entities/image?entityId=${entityId}&kind=${kind}`, { method: 'DELETE' });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || 'Не удалось убрать');
+            await load();
+        } catch (e: any) {
+            setNote(e.message);
+        } finally {
+            setImageBusy(null);
+        }
+    };
+
     const change = (id: number, patch: Partial<Entity>) => {
         setEntities((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
     };
@@ -57,6 +128,7 @@ export default function LegalEntitiesClient() {
                     site_code: entity.site_code,
                     signer_name: entity.signer_name,
                     signer_title: entity.signer_title,
+                    seal_place: entity.seal_place,
                 }),
             });
             const payload = await response.json();
@@ -73,6 +145,13 @@ export default function LegalEntitiesClient() {
         <div className="min-h-screen bg-gray-50 p-4">
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3 border-b border-gray-200 pb-2">
                 <h1 className="text-xl font-bold text-gray-900">Наши юрлица</h1>
+                <button
+                    onClick={pullHeads}
+                    disabled={headsBusy}
+                    className="border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                >
+                    {headsBusy ? 'Смотрю ЕГРЮЛ…' : 'Подписанты из ЕГРЮЛ'}
+                </button>
                 {note && <span className="text-xs text-gray-600">{note}</span>}
             </div>
 
@@ -155,6 +234,79 @@ export default function LegalEntitiesClient() {
                                 />
                             </label>
                         </div>
+
+                        {/* Картинки для счёта: что загружено, то и ставится. */}
+                        <div className="mt-3 grid grid-cols-2 gap-3">
+                            {([
+                                ['seal', 'Печать'],
+                                ['signature', 'Подпись руководителя'],
+                            ] as Array<['seal' | 'signature', string]>).map(([kind, label]) => {
+                                const path = kind === 'seal' ? entity.seal_image_path : entity.signature_image_path;
+                                const busy = imageBusy === `${entity.id}-${kind}`;
+
+                                return (
+                                    <div key={kind} className="border border-gray-200 p-2">
+                                        <div className="mb-1 flex items-baseline justify-between gap-2">
+                                            <span className="text-[11px] uppercase tracking-wide text-gray-500">{label}</span>
+                                            {path && (
+                                                <button
+                                                    onClick={() => removeImage(entity.id, kind)}
+                                                    disabled={busy}
+                                                    className="text-[11px] font-semibold text-gray-500 hover:underline disabled:text-gray-300"
+                                                >
+                                                    убрать
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {path ? (
+                                            /* eslint-disable-next-line @next/next/no-img-element */
+                                            <img
+                                                src={`/api/settings/legal-entities/image?path=${encodeURIComponent(path)}`}
+                                                alt={label}
+                                                className="mb-1 h-20 w-full object-contain"
+                                            />
+                                        ) : (
+                                            <p className="mb-1 text-[11px] text-gray-500">
+                                                {kind === 'seal' && entity.kind === 'ip'
+                                                    ? 'ИП работает без печати — загружать нечего'
+                                                    : 'Не загружено: в счёте это место останется пустым'}
+                                            </p>
+                                        )}
+
+                                        <label className={`block cursor-pointer border border-gray-300 px-2 py-1 text-center text-[11px] font-semibold ${busy ? 'text-gray-400' : 'text-gray-700 hover:bg-gray-100'}`}>
+                                            {busy ? 'Загружаю…' : path ? 'Заменить' : 'Загрузить'}
+                                            <input
+                                                type="file"
+                                                accept="image/png,image/jpeg,image/webp"
+                                                className="hidden"
+                                                disabled={busy}
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0];
+                                                    e.target.value = '';
+                                                    if (file) uploadImage(entity.id, kind, file);
+                                                }}
+                                            />
+                                        </label>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <label className="mt-3 block">
+                            <span className="mb-1 block text-[11px] uppercase tracking-wide text-gray-500">Место на печати</span>
+                            <input
+                                value={entity.seal_place ?? ''}
+                                onChange={(e) => change(entity.id, { seal_place: e.target.value })}
+                                placeholder="Россия, Самарская область, город Тольятти"
+                                className="w-full border border-gray-300 px-2 py-1"
+                            />
+                            <span className="mt-1 block text-[11px] text-gray-500">
+                                {entity.kind === 'ip'
+                                    ? 'ИП работает без печати — у этого юрлица печать на счёт не ставится, только подпись.'
+                                    : 'Идёт по нижней дуге печати. Из ЕГРЮЛ приходит заготовка, поправьте, если на вашей печати написано иначе.'}
+                            </span>
+                        </label>
                     </div>
                 ))}
             </div>

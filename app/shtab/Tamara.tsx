@@ -20,9 +20,11 @@ export type TamaraState =
     | 'approve'
     | 'alert'
     | 'away'
-    // Только у живой Тамары (ролики): поздоровалась, приняла комплимент.
+    // Только у живой Тамары (ролики): поздоровалась, приняла комплимент,
+    // покрутилась, показывая наряд.
     | 'greet'
-    | 'pleased';
+    | 'pleased'
+    | 'twirl';
 
 export type TamaraMessage = {
     text: string;
@@ -106,7 +108,10 @@ function LiveFigure({ live, state }: { live: LiveSet; state: TamaraState }) {
 
     // Состояние без своего ролика — покой: он честнее, чем застывший кадр.
     useEffect(() => {
-        const next = state !== 'idle' && names.includes(state) ? state : null;
+        // Кружение есть не у каждого образа: без него на слова про наряд она
+        // хотя бы улыбается, как на комплимент.
+        const wanted = state === 'twirl' && !names.includes('twirl') ? 'pleased' : state;
+        const next = wanted !== 'idle' && names.includes(wanted) ? wanted : null;
         if (!next) return;
         const video = refs.current[next];
         if (!video) return;

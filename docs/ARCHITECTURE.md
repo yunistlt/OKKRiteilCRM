@@ -43,6 +43,16 @@
 - Для каждого доменного объекта есть одна каноническая таблица
 - raw_telphin_calls — для звонков, orders — для заказов, raw_order_events — для история
 - Legacy/compatibility таблицы читаются только для fallback, не пишутся напрямую
+- ⚠️ **Звонки в переходе (01.10.2026):** по решению владельца источник правды —
+  `retailcrm_calls` (номер заказа приходит от самой RetailCRM), а наш матчинг
+  `call_order_matches` ошибается примерно в 29% случаев и остаётся фолбэком.
+  ОКК и транскрибация ещё читают `raw_telphin_calls` — перевод висит задачей
+  `C-3` в `docs/own-crm/ROADMAP.md`.
+- ⚠️ **Заказы в переходе:** суть заказа теперь лежит не только в
+  `orders.raw_payload`, но и в 126 колонках `orders` с именами RetailCRM
+  (триггеры `orders_fill_retailcrm_columns`, `order_items_sync`). Читать через
+  `lib/own-crm/orders.ts`, новые разборы `raw_payload` не писать — см.
+  `docs/own-crm/OVERVIEW.md`.
 
 ✅ **ПРАВИЛО 4: Graceful degradation**
 - При недоступности внешнего API (OpenAI, RetailCRM) события сохраняются в бэклог

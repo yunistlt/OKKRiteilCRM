@@ -9,6 +9,8 @@ interface ViewSettingsModalProps {
     selected: string[];
     defaults: string[];
     onSave: (next: string[]) => void;
+    /** Вернуть порядок строк и ширины колонок к виду по умолчанию. */
+    onResetLayout?: () => void;
     onClose: () => void;
 }
 
@@ -16,7 +18,7 @@ interface ViewSettingsModalProps {
  * Окно настройки состава и порядка — как две шестерёнки RetailCRM: слева выбранное
  * в порядке показа, справа полный список по разделам с поиском.
  */
-export default function ViewSettingsModal({ title, registry, selected, defaults, onSave, onClose }: ViewSettingsModalProps) {
+export default function ViewSettingsModal({ title, registry, selected, defaults, onSave, onResetLayout, onClose }: ViewSettingsModalProps) {
     const [current, setCurrent] = useState<string[]>(selected);
     const [search, setSearch] = useState('');
     const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -167,9 +169,20 @@ export default function ViewSettingsModal({ title, registry, selected, defaults,
                     >
                         Сохранить
                     </button>
-                    <button onClick={() => setCurrent(defaults)} className="text-sm text-blue-600 hover:underline">
-                        Сбросить
-                    </button>
+                    <div className="flex items-center gap-4">
+                        {onResetLayout && (
+                            <button
+                                onClick={() => { onResetLayout(); setCurrent(defaults); }}
+                                className="text-sm text-blue-600 hover:underline"
+                                title="Вернуть порядок строк и ширины колонок к виду по умолчанию"
+                            >
+                                Сбросить раскладку
+                            </button>
+                        )}
+                        <button onClick={() => setCurrent(defaults)} className="text-sm text-blue-600 hover:underline">
+                            Сбросить
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

@@ -399,12 +399,46 @@ export async function collectPeriodMetrics(
     //     счётчик «новый/постоянный», иначе ведомость показывала «2 сделки», а
     //     доплату за 2-ю покупку не начисляла (инцидент 54480).
     const ordinalsByOrder = new Map<number, number>();
-    const { data: ordData, error: ordErr } = await supabase.rpc('salary_client_purchase_ordinals', {
-        p_start: start,
-        p_end: end,
-        p_closing: closing,
-        p_deal_statuses: config.deal_statuses,
-    });
+    /**
+     * Эти три запроса друг от друга не зависят, а шли по очереди: расчёт
+     * открытого периода занимал почти 11 секунд и не укладывался в лимит —
+     * экран «Моя зарплата» писал «расчёта пока нет», хотя расчёт есть
+     * (замечание владельца 05.10.2026). Теперь они идут одновременно.
+     */
+    const [ordRes, incRes, scoreRes] = await Promise.all([
+        supabase.rpc('salary_client_purchase_ordinals', {
+            p_start: start,
+            p_end: end,
+            p_closing: closing,
+            p_deal_statuses: config.deal_statuses,
+        }),
+        supabase.rpc('salary_incoming_counts', {
+            p_start: start,
+            p_end: end,
+            p_exclusions: config.source_exclusions,
+            p_dup_status: config.tender_duplicate_rule.duplicate_status,
+            p_ref_statuses: config.tender_duplicate_rule.reference_statuses,
+            p_req_status: config.request_duplicate_rule.duplicate_status,
+            p_excluded_statuses: config.conversion_excluded_statuses,
+            p_dup_reasons: config.tender_duplicate_rule.duplicate_cancel_reasons,
+            p_not_our_statuses: config.not_our_product_rule.statuses,
+            p_not_our_reasons: config.not_our_product_rule.cancel_reasons,
+            p_reason_field: config.cancel_reason_field.code,
+            p_closing: closing,
+            p_est_statuses: config.estimate_rule.statuses,
+            p_est_reasons: config.estimate_rule.cancel_reasons,
+            p_est_patterns: config.estimate_rule.comment_patterns,
+            p_est_min_conf: config.estimate_rule.min_confidence,
+            p_use_history: config.tender_duplicate_rule.use_status_history ?? false,
+        }),
+        supabase
+            .from('okk_order_scores')
+            .select('manager_id,total_score,script_score_pct,lead_in_work_lt_1_day,tz_received')
+            .gte('eval_date', start)
+            .lt('eval_date', end),
+    ]);
+
+    const { data: ordData, error: ordErr } = ordRes;
     if (ordErr) throw ordErr;
     for (const r of (ordData as PurchaseOrdinalRow[]) ?? []) {
         ordinalsByOrder.set(Number(r.order_id), Number(r.ordinal));
@@ -426,28 +460,7 @@ export async function collectPeriodMetrics(
     }
 
     // 3. Входящие за период (знаменатель конверсии)
-    const { data: incData, error: incErr } = await supabase.rpc('salary_incoming_counts', {
-        p_start: start,
-        p_end: end,
-        p_exclusions: config.source_exclusions,
-        p_dup_status: config.tender_duplicate_rule.duplicate_status,
-        p_ref_statuses: config.tender_duplicate_rule.reference_statuses,
-        p_req_status: config.request_duplicate_rule.duplicate_status,
-        p_excluded_statuses: config.conversion_excluded_statuses,
-        p_dup_reasons: config.tender_duplicate_rule.duplicate_cancel_reasons,
-        p_not_our_statuses: config.not_our_product_rule.statuses,
-        p_not_our_reasons: config.not_our_product_rule.cancel_reasons,
-        p_reason_field: config.cancel_reason_field.code,
-        p_closing: closing,
-        p_est_statuses: config.estimate_rule.statuses,
-        p_est_reasons: config.estimate_rule.cancel_reasons,
-        p_est_patterns: config.estimate_rule.comment_patterns,
-        p_est_min_conf: config.estimate_rule.min_confidence,
-        // Признак «тендер/дубль» — из истории статусов, а не только из текущего
-        // (см. миграцию 20260806). Включается версией конфига, поэтому закрытые
-        // периоды пересчитываются как были закрыты.
-        p_use_history: config.tender_duplicate_rule.use_status_history ?? false,
-    });
+    const { data: incData, error: incErr } = incRes;
     if (incErr) throw incErr;
     const incomingByManager = new Map<number, number>();
     for (const r of (incData as { manager_id: number; incoming: number }[]) ?? []) {
@@ -460,11 +473,7 @@ export async function collectPeriodMetrics(
     const scriptByManager = new Map<number, number>();
     const fastContactByManager = new Map<number, number>();
     const fieldsByManager = new Map<number, number>();
-    const { data: scoreData, error: scoreErr } = await supabase
-        .from('okk_order_scores')
-        .select('manager_id,total_score,script_score_pct,lead_in_work_lt_1_day,tz_received')
-        .gte('eval_date', start)
-        .lt('eval_date', end);
+    const { data: scoreData, error: scoreErr } = scoreRes;
     if (scoreErr) throw scoreErr;
     type Agg = { sumScore: number; nScore: number; sumScript: number; nScript: number; fast: number; nFast: number; fields: number; nFields: number };
     const scoreAgg = new Map<number, Agg>();

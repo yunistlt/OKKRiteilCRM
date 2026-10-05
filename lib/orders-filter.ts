@@ -9,6 +9,7 @@
  *   Дата следующего контакта     → data_kontakta
  *   В каком месяце закупка       → kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoialo_pole_dlia_daty
  */
+import { resolveDate } from './relative-date';
 
 export const CUSTOM_FIELD_CODES = {
     category: 'typ_castomer',
@@ -40,6 +41,11 @@ export interface OrdersFilter {
     customerComment: string;
     /** Только заказы, выбившиеся из норматива времени в статусе. */
     overdueOnly: boolean;
+    /**
+     * Поля карточки заказа: код дополнительного поля → что ищем. Человек
+     * включает их шестерёнкой фильтра (решение владельца 05.10.2026).
+     */
+    customFields?: Record<string, string>;
 }
 
 export const EMPTY_FILTER: OrdersFilter = {
@@ -47,8 +53,18 @@ export const EMPTY_FILTER: OrdersFilter = {
     sumFrom: '', sumTo: '', categories: [], control: '',
     contactFrom: '', contactTo: '', createdFrom: '', createdTo: '',
     contragent: '', sferas: [], purchaseFrom: '', purchaseTo: '',
-    managerComment: '', customerComment: '', overdueOnly: false,
+    managerComment: '', customerComment: '', overdueOnly: false, customFields: {},
 };
+
+/**
+ * Последние десять цифр телефона — то, что не зависит от записи номера: «8»
+ * и «+7» в начале у одного и того же номера разные, дальше всё совпадает.
+ * Не похоже на телефон — возвращаем пустую строку.
+ */
+export function phoneTail(value: string): string {
+    const digits = String(value ?? '').replace(/\D+/g, '');
+    return digits.length >= 10 ? digits.slice(-10) : '';
+}
 
 /** Запятые и скобки ломают синтаксис `or` в PostgREST — вычищаем их из пользовательского ввода. */
 function safe(value: string): string {
@@ -58,6 +74,14 @@ function safe(value: string): string {
 export function filterToSearchParams(filter: OrdersFilter): URLSearchParams {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(filter)) {
+        // Поля карточки едут как `cf.<код>=значение`: так они переживают
+        // ссылку, сохранённый фильтр и перезагрузку страницы.
+        if (key === 'customFields') {
+            for (const [code, text] of Object.entries((value ?? {}) as Record<string, string>)) {
+                if (text) params.set(`cf.${code}`, String(text));
+            }
+            continue;
+        }
         if (Array.isArray(value)) {
             if (value.length) params.set(key, value.join(','));
         } else if (typeof value === 'boolean') {
@@ -73,7 +97,13 @@ export function parseOrdersFilter(searchParams: URLSearchParams): OrdersFilter {
     const list = (key: string) => (searchParams.get(key) || '').split(',').filter(Boolean);
     const text = (key: string) => searchParams.get(key) || '';
 
+    const customFields: Record<string, string> = {};
+    searchParams.forEach((value: string, key: string) => {
+        if (key.startsWith('cf.') && value) customFields[key.slice(3)] = value;
+    });
+
     return {
+        customFields,
         number: text('number'),
         customer: text('customer'),
         managers: list('managers').length ? list('managers') : list('manager'),
@@ -99,6 +129,24 @@ export function parseOrdersFilter(searchParams: URLSearchParams): OrdersFilter {
 
 const cf = (code: string) => `raw_payload->customFields->>${code}`;
 
+/**
+ * Колонки заказа под фильтр — те же имена, что у RetailCRM (миграция
+ * 20260928_orders_retailcrm_columns.sql).
+ *
+ * Через JSON фильтр по дате молча не работал: PostgREST отказывался сравнивать
+ * `raw_payload->customFields->>data_kontakta` через gte/lte, запрос падал с
+ * пустой ошибкой, и список оставался прежним (поймано 02.10.2026). Колонки
+ * типизированы (date, boolean) — сравнение честное и по индексу.
+ */
+const COLUMNS = {
+    nextContact: 'data_kontakta',
+    // Имя Postgres укоротил до 63 знаков — так и лежит в базе.
+    purchaseMonth: 'kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoialo_pole_dlia_dat',
+    category: 'typ_castomer',
+    sfera: 'sfera_deiatelnosti',
+    control: 'control',
+} as const;
+
 /** Навешивает условия фильтра на запрос к orders. */
 export function applyOrdersFilter(query: any, filter: OrdersFilter) {
     let q = query;
@@ -107,14 +155,23 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
 
     if (filter.customer) {
         const v = safe(filter.customer);
-        q = q.or(
-            [
-                `raw_payload->>firstName.ilike.%${v}%`,
-                `raw_payload->>lastName.ilike.%${v}%`,
-                `raw_payload->>email.ilike.%${v}%`,
-                `phone.ilike.%${v}%`,
-            ].join(',')
-        );
+        const conditions = [
+            `raw_payload->>firstName.ilike.%${v}%`,
+            `raw_payload->>lastName.ilike.%${v}%`,
+            `raw_payload->>email.ilike.%${v}%`,
+            `phone.ilike.%${v}%`,
+        ];
+
+        /**
+         * Телефон ищем по последним десяти цифрам. В базе он лежит слитно
+         * («79953446862»), а человек набирает как привык — «8 995 344-68-62»,
+         * «+7 (995) 344-68-62» — и поиск молча не находил ничего (Елена
+         * Парфёнова 05.10.2026).
+         */
+        const digits = phoneTail(v);
+        if (digits) conditions.push(`phone.ilike.%${digits}%`);
+
+        q = q.or(conditions.join(','));
     }
 
     if (filter.statuses.length) q = q.in('status', filter.statuses);
@@ -130,26 +187,88 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
     if (filter.sumFrom) q = q.gte('totalsumm', Number(filter.sumFrom));
     if (filter.sumTo) q = q.lte('totalsumm', Number(filter.sumTo));
 
-    if (filter.categories.length) q = q.in(cf(CUSTOM_FIELD_CODES.category), filter.categories);
-    if (filter.sferas.length) q = q.in(cf(CUSTOM_FIELD_CODES.sfera), filter.sferas);
+    if (filter.categories.length) q = q.in(COLUMNS.category, filter.categories);
+    if (filter.sferas.length) q = q.in(COLUMNS.sfera, filter.sferas);
 
-    if (filter.control === 'yes') q = q.eq(cf(CUSTOM_FIELD_CODES.control), 'true');
-    if (filter.control === 'no') q = q.eq(cf(CUSTOM_FIELD_CODES.control), 'false');
+    if (filter.control === 'yes') q = q.eq(COLUMNS.control, true);
+    if (filter.control === 'no') q = q.eq(COLUMNS.control, false);
 
-    if (filter.contactFrom) q = q.gte(cf(CUSTOM_FIELD_CODES.nextContact), filter.contactFrom);
-    if (filter.contactTo) q = q.lte(cf(CUSTOM_FIELD_CODES.nextContact), filter.contactTo);
+    // Даты могут быть смещением («неделю назад»): разворачиваем их здесь, в
+    // момент запроса, — поэтому сохранённый фильтр «заказы на завтра» завтра
+    // означает уже другой день, как в RetailCRM.
+    const contactFrom = resolveDate(filter.contactFrom);
+    const contactTo = resolveDate(filter.contactTo);
+    const purchaseFrom = resolveDate(filter.purchaseFrom);
+    const purchaseTo = resolveDate(filter.purchaseTo);
+    const createdFrom = resolveDate(filter.createdFrom);
+    const createdTo = resolveDate(filter.createdTo);
 
-    if (filter.purchaseFrom) q = q.gte(cf(CUSTOM_FIELD_CODES.purchaseMonth), filter.purchaseFrom);
-    if (filter.purchaseTo) q = q.lte(cf(CUSTOM_FIELD_CODES.purchaseMonth), filter.purchaseTo);
+    if (contactFrom) q = q.gte(COLUMNS.nextContact, contactFrom);
+    if (contactTo) q = q.lte(COLUMNS.nextContact, contactTo);
 
-    if (filter.createdFrom) q = q.gte('created_at', filter.createdFrom);
-    if (filter.createdTo) q = q.lte('created_at', `${filter.createdTo}T23:59:59`);
+    if (purchaseFrom) q = q.gte(COLUMNS.purchaseMonth, purchaseFrom);
+    if (purchaseTo) q = q.lte(COLUMNS.purchaseMonth, purchaseTo);
+
+    if (createdFrom) q = q.gte('created_at', createdFrom);
+    if (createdTo) q = q.lte('created_at', `${createdTo}T23:59:59`);
 
     if (filter.contragent) q = q.ilike('raw_payload->contragent->>legalName', `%${safe(filter.contragent)}%`);
     if (filter.managerComment) q = q.ilike('raw_payload->>managerComment', `%${safe(filter.managerComment)}%`);
     if (filter.customerComment) q = q.ilike('raw_payload->>customerComment', `%${safe(filter.customerComment)}%`);
 
+    /**
+     * Поля карточки заказа. Ищем точное совпадение значения: подстрокой
+     * (ILIKE) запрос шёл перебором всех заказов и со счётчиком не укладывался
+     * в таймаут — список возвращался пустым. Точное совпадение идёт по GIN
+     * (миграция 20261005_orders_custom_fields_index.sql): 3,7 с → 76 мс.
+     */
+    const cf = Object.entries(filter.customFields ?? {})
+        .filter(([code, value]) => String(value ?? '').trim() && /^[a-z0-9_]+$/i.test(code));
+    if (cf.length) {
+        q = q.contains('raw_payload->customFields', Object.fromEntries(
+            cf.map(([code, value]) => [code, String(value).trim()]),
+        ));
+    }
+
     return q;
+}
+
+/**
+ * Фильтр в виде, понятном счётчику статусов в базе (`orders_status_counts`).
+ *
+ * Даты разворачиваем здесь же: в базу уходят готовые числа, а смещения
+ * («неделю назад») остаются делом кода — одно правило на оба пути.
+ */
+export function filterToCountParams(
+    filter: OrdersFilter,
+    norms: Array<{ status: string; normDays: number }>,
+): Record<string, unknown> {
+    return {
+        number: filter.number || '',
+        customer: filter.customer || '',
+        managers: filter.managers.filter(Boolean),
+        // Статусы нужны «Итого по фильтру» (orders_filter_totals); счётчики
+        // колонки их намеренно игнорируют — иначе по колонке не переключиться.
+        statuses: filter.statuses.filter(Boolean),
+        vip: filter.marks.includes('vip'),
+        bad: filter.marks.includes('bad'),
+        sumFrom: filter.sumFrom || '',
+        sumTo: filter.sumTo || '',
+        categories: filter.categories,
+        sferas: filter.sferas,
+        control: filter.control || '',
+        contactFrom: resolveDate(filter.contactFrom),
+        contactTo: resolveDate(filter.contactTo),
+        purchaseFrom: resolveDate(filter.purchaseFrom),
+        purchaseTo: resolveDate(filter.purchaseTo),
+        createdFrom: resolveDate(filter.createdFrom),
+        createdTo: resolveDate(filter.createdTo),
+        contragent: filter.contragent || '',
+        managerComment: filter.managerComment || '',
+        customerComment: filter.customerComment || '',
+        overdueOnly: Boolean(filter.overdueOnly),
+        norms,
+    };
 }
 
 /** Есть ли хоть одно заполненное условие — для подсветки кнопки сброса. */

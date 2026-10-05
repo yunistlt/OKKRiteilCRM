@@ -27,7 +27,6 @@ export default function QaPage() {
         <div className="min-h-full bg-white px-6 py-6 md:px-8">
             <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-300 pb-4">
                 <div>
-                    <h1 className="text-3xl font-black tracking-tight text-slate-950">Режим тестировщика</h1>
                     <p className="mt-1 text-sm text-slate-600">
                         {total} экранов · {UI_AUDIT_VIEWPORTS.length} размера окна · {Object.keys(UI_CHECK_TITLES).length} правил из голдов
                     </p>

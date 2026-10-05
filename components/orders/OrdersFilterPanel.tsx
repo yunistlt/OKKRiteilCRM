@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ViewSettingsModal from './ViewSettingsModal';
 import { EMPTY_FILTER, isFilterEmpty, type OrdersFilter } from '@/lib/orders-filter';
 import { FILTER_FIELDS, DEFAULT_FILTER_FIELDS, normalizeSelection } from '@/lib/orders-view';
+import RelativeDateInput from './RelativeDateInput';
 
 interface Option { value: string; label: string }
 
@@ -27,6 +28,12 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
     const [presets, setPresets] = useState<Preset[]>([]);
     const [fields, setFields] = useState<string[]>(DEFAULT_FILTER_FIELDS);
     const [fieldsOpen, setFieldsOpen] = useState(false);
+    /**
+     * Реестр полей фильтра приходит с сервера: к постоянным добавлены поля
+     * карточки заказа (решение владельца 05.10.2026).
+     */
+    const [registry, setRegistry] = useState(FILTER_FIELDS);
+    const registryRef = useRef(FILTER_FIELDS);
 
     useEffect(() => { setDraft(value); }, [value]);
 
@@ -36,10 +43,28 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
             .then((d) => setOptions({ categories: d.categories || [], sferas: d.sferas || [] }))
             .catch(() => undefined);
 
-        fetch('/api/settings/view?viewKey=orders.filters')
-            .then((r) => r.json())
-            .then((d) => setFields(normalizeSelection(d.settings?.items, FILTER_FIELDS, DEFAULT_FILTER_FIELDS)))
-            .catch(() => undefined);
+        // Сначала реестр, потом выбор: сохранённое поле карточки иначе
+        // выкинулось бы как неизвестное.
+        (async () => {
+            try {
+                const res = await fetch('/api/orders/view-fields');
+                const data = await res.json();
+                if (Array.isArray(data.filters) && data.filters.length) {
+                    registryRef.current = data.filters;
+                    setRegistry(data.filters);
+                }
+            } catch {
+                // Реестр не пришёл — остаются постоянные поля.
+            }
+
+            try {
+                const res = await fetch('/api/settings/view?viewKey=orders.filters');
+                const data = await res.json();
+                setFields(normalizeSelection(data.settings?.items, registryRef.current, DEFAULT_FILTER_FIELDS));
+            } catch {
+                // Выбор не пришёл — остаются поля по умолчанию.
+            }
+        })();
 
         loadPresets();
     }, []);
@@ -77,14 +102,30 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
     const show = (key: string) => fields.includes(key);
 
     return (
-        <div className="bg-white px-6 pb-4">
-            <button onClick={() => setOpen((v) => !v)} className="mb-3 text-sm text-blue-600 hover:underline">
+        /* Высоту не режем: прокрутка внутри шапки неудобна, а полей человек
+           выбирает столько, сколько ему нужно. Держим плотность — мелкие
+           подписи, узкие поля, шесть колонок (решение владельца 01.10.2026). */
+        <div className="flex flex-col bg-white px-4 pb-2">
+            <button onClick={() => setOpen((v) => !v)} className="mb-1 shrink-0 self-start text-[11px] font-bold uppercase tracking-wide text-blue-700 hover:underline">
                 {open ? 'Свернуть фильтр ⌃' : 'Развернуть фильтр ⌄'}
             </button>
 
             {open && (
-                <>
-                    <div className="grid gap-x-6 gap-y-4 md:grid-cols-3 xl:grid-cols-5">
+                /* Enter в любом поле фильтра = «Применить». Лена Парфёнова
+                   05.10.2026: «через интер не ищет, нужно кликать мышью —
+                   применить не удобно». */
+                <div
+                    className="flex flex-col"
+                    onKeyDown={(e) => {
+                        if (e.key !== 'Enter' || e.shiftKey) return;
+                        const el = e.target as HTMLElement;
+                        // В списках и многострочных полях Enter свой смысл имеет.
+                        if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return;
+                        e.preventDefault();
+                        onApply(draft);
+                    }}
+                >
+                    <div className="grid gap-x-3 gap-y-1.5 md:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7">
                         {show('number') && (
                             <Field label="Номер заказа"><Text value={draft.number} onChange={(v) => set({ number: v })} /></Field>
                         )}
@@ -96,13 +137,13 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                         )}
                         {show('marks') && (
                             <Field label="Пометки">
-                                <div className="flex gap-2">
+                                <div className="flex gap-1">
                                     {[{ v: 'vip', l: 'VIP' }, { v: 'bad', l: 'BAD' }].map((m) => (
                                         <button
                                             key={m.v}
                                             onClick={() => set({ marks: draft.marks.includes(m.v) ? draft.marks.filter((x) => x !== m.v) : [...draft.marks, m.v] })}
-                                            className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                                                draft.marks.includes(m.v) ? 'bg-blue-600 text-white' : 'border border-gray-300 text-gray-500 hover:bg-gray-50'
+                                            className={`h-[30px] px-3 text-[11px] font-semibold ${
+                                                draft.marks.includes(m.v) ? 'bg-blue-600 text-white' : 'border border-gray-400 text-gray-500 hover:bg-gray-50'
                                             }`}
                                         >
                                             {m.l}
@@ -113,7 +154,7 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                         )}
                         {show('sum') && (
                             <Field label="Сумма заказа, ₽">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1">
                                     <Text value={draft.sumFrom} onChange={(v) => set({ sumFrom: v })} placeholder="от" />
                                     <span className="text-gray-400">—</span>
                                     <Text value={draft.sumTo} onChange={(v) => set({ sumTo: v })} placeholder="до" />
@@ -134,7 +175,7 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                                 <select
                                     value={draft.control}
                                     onChange={(e) => set({ control: e.target.value })}
-                                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-blue-500 focus:outline-none"
+                                    className="h-[30px] w-full border border-gray-400 bg-white px-2 text-xs text-gray-800 focus:border-blue-500 focus:outline-none"
                                 >
                                     <option value="">Любой</option>
                                     <option value="yes">На контроле</option>
@@ -146,17 +187,17 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                             <Field label="Наименование контрагента"><Text value={draft.contragent} onChange={(v) => set({ contragent: v })} /></Field>
                         )}
                         {show('contact') && (
-                            <Field label="Дата следующего контакта">
+                            <Field label="Дата следующего контакта" wide>
                                 <DateRange from={draft.contactFrom} to={draft.contactTo} onFrom={(v) => set({ contactFrom: v })} onTo={(v) => set({ contactTo: v })} />
                             </Field>
                         )}
                         {show('created') && (
-                            <Field label="Дата оформления заказа">
+                            <Field label="Дата оформления заказа" wide>
                                 <DateRange from={draft.createdFrom} to={draft.createdTo} onFrom={(v) => set({ createdFrom: v })} onTo={(v) => set({ createdTo: v })} />
                             </Field>
                         )}
                         {show('purchase') && (
-                            <Field label="В каком месяце планируете закупку?">
+                            <Field label="В каком месяце планируете закупку?" wide>
                                 <DateRange from={draft.purchaseFrom} to={draft.purchaseTo} onFrom={(v) => set({ purchaseFrom: v })} onTo={(v) => set({ purchaseTo: v })} />
                             </Field>
                         )}
@@ -168,68 +209,81 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                         )}
                         {show('overdueOnly') && (
                             <Field label="Норматив времени">
-                                <label className="flex cursor-pointer items-center gap-2 py-2 text-sm text-gray-800">
+                                <label className="flex cursor-pointer items-center gap-1.5 py-1 text-xs text-gray-800">
                                     <input
                                         type="checkbox"
                                         checked={draft.overdueOnly}
                                         onChange={(e) => set({ overdueOnly: e.target.checked })}
-                                        className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                                        className="h-3.5 w-3.5 border-gray-300 text-blue-600"
                                     />
                                     Только просроченные
                                 </label>
                             </Field>
                         )}
+                        {/* Поля карточки заказа: человек включает их шестерёнкой,
+                            ищем по совпадению текста (решение владельца
+                            05.10.2026). */}
+                        {fields.filter((key) => key.startsWith('cf.')).map((key) => (
+                            <Field key={key} label={registry.find((f) => f.key === key)?.label ?? key}>
+                                <Text
+                                    value={draft.customFields?.[key.slice(3)] ?? ''}
+                                    onChange={(v) => set({
+                                        customFields: { ...(draft.customFields ?? {}), [key.slice(3)]: v },
+                                    })}
+                                />
+                            </Field>
+                        ))}
                     </div>
 
-                    <div className="mt-5 flex flex-wrap items-start gap-3">
+                    <div className="mt-2 flex shrink-0 flex-wrap items-center gap-2">
                         <button
                             onClick={() => onApply(draft)}
-                            className="rounded-md border border-gray-300 bg-gray-50 px-6 py-2 text-sm font-medium text-gray-800 hover:bg-gray-100"
+                            className="border border-gray-400 bg-gray-50 px-4 py-1 text-xs font-semibold text-gray-800 hover:bg-gray-100"
                         >
                             Применить
                         </button>
                         <button
                             onClick={() => { setDraft(EMPTY_FILTER); onApply(EMPTY_FILTER); }}
                             title="Сбросить фильтр"
-                            className="rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-lg leading-none text-red-500 hover:bg-gray-100"
+                            className="border border-gray-400 bg-gray-50 px-2 py-1 text-sm leading-none text-red-500 hover:bg-gray-100"
                         >
                             ✕
                         </button>
                         <button
                             onClick={() => setFieldsOpen(true)}
                             title="Выбрать поля фильтра"
-                            className="px-2 py-2 text-xl leading-none text-blue-600 hover:text-blue-700"
+                            className="px-1 py-1 text-base leading-none text-blue-600 hover:text-blue-700"
                         >
                             ⚙
                         </button>
 
                         {(presets.length > 0 || !isFilterEmpty(draft)) && (
-                            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 border border-gray-200 bg-gray-50 px-2 py-1">
                                 {presets.map((p) => (
                                     <button
                                         key={p.id}
                                         onClick={() => { const next = { ...EMPTY_FILTER, ...p.filters } as OrdersFilter; setDraft(next); onApply(next); }}
                                         title={p.owner_user_id ? 'Личный фильтр' : 'Общий фильтр отдела'}
-                                        className="text-sm text-gray-700 hover:text-blue-600"
+                                        className="text-xs text-gray-700 hover:text-blue-600"
                                     >
                                         {p.name}
                                     </button>
                                 ))}
                                 {!isFilterEmpty(draft) && (
-                                    <button onClick={savePreset} className="ml-auto text-sm text-blue-600 hover:underline">
+                                    <button onClick={savePreset} className="ml-auto text-xs text-blue-600 hover:underline">
                                         Сохранить фильтр
                                     </button>
                                 )}
                             </div>
                         )}
                     </div>
-                </>
+                </div>
             )}
 
             {fieldsOpen && (
                 <ViewSettingsModal
                     title="Фильтры"
-                    registry={FILTER_FIELDS}
+                    registry={registry}
                     selected={fields}
                     defaults={DEFAULT_FILTER_FIELDS}
                     onSave={saveFields}
@@ -240,10 +294,12 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
     );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, wide }: { label: string; children: React.ReactNode; wide?: boolean }) {
+    // Диапазон дат в одну колонку не влезал: дата обрезалась до «02.1…»
+    // (поймано 02.10.2026). Поэтому такие поля занимают две колонки сетки.
     return (
-        <div>
-            <label className="mb-1.5 block text-sm text-gray-500">{label}</label>
+        <div className={wide ? 'md:col-span-2' : undefined}>
+            <label className="mb-0.5 block truncate text-[12px] text-gray-600" title={label}>{label}</label>
             {children}
         </div>
     );
@@ -255,51 +311,82 @@ function Text({ value, onChange, placeholder }: { value: string; onChange: (v: s
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none"
+            className="h-[30px] w-full border border-gray-400 px-2 text-xs text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none"
         />
     );
 }
 
 function DateRange({ from, to, onFrom, onTo }: { from: string; to: string; onFrom: (v: string) => void; onTo: (v: string) => void }) {
+    // Даты выбираются и относительно сегодня («неделю назад», «через месяц») —
+    // так же, как в RetailCRM: конкретное число менеджер обычно не помнит.
     return (
-        <div className="flex items-center gap-2">
-            <input type="date" value={from} onChange={(e) => onFrom(e.target.value)} className="w-full min-w-0 rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-800 focus:border-blue-500 focus:outline-none" />
-            <span className="text-gray-400">—</span>
-            <input type="date" value={to} onChange={(e) => onTo(e.target.value)} className="w-full min-w-0 rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-800 focus:border-blue-500 focus:outline-none" />
+        <div className="flex items-center gap-1">
+            <RelativeDateInput value={from} onChange={onFrom} title="С какой даты" />
+            <span className="shrink-0 text-xs text-gray-400">—</span>
+            <RelativeDateInput value={to} onChange={onTo} title="По какую дату" />
         </div>
     );
 }
 
 function Multi({ options, selected, onChange }: { options: Option[]; selected: string[]; onChange: (v: string[]) => void }) {
     const [open, setOpen] = useState(false);
+    const boxRef = useRef<HTMLDivElement | null>(null);
     const label = selected.length === 0
         ? 'Выберите значения'
         : options.filter((o) => selected.includes(o.value)).map((o) => o.label).join(', ') || `Выбрано: ${selected.length}`;
 
+    // Список закрывается кликом рядом и по Escape: после выбора значений было
+    // непонятно, как его свернуть (замечание владельца 02.10.2026).
+    useEffect(() => {
+        if (!open) return;
+
+        const onDocumentClick = (event: MouseEvent) => {
+            if (!boxRef.current?.contains(event.target as Node)) setOpen(false);
+        };
+        const onKey = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setOpen(false);
+        };
+
+        document.addEventListener('mousedown', onDocumentClick);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDocumentClick);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [open]);
+
     return (
-        <div className="relative">
+        <div className="relative" ref={boxRef}>
             <button
                 onClick={() => setOpen((v) => !v)}
-                className="w-full truncate rounded-md border border-gray-300 px-3 py-2 text-left text-sm hover:border-blue-500"
+                className="h-[30px] w-full truncate border border-gray-400 bg-white px-2 text-left text-xs hover:border-blue-500"
             >
-                <span className={selected.length ? 'text-gray-800' : 'text-gray-400'}>{label}</span>
+                <span className={selected.length ? 'text-gray-900' : 'text-gray-500'}>{label}</span>
             </button>
             {open && (
-                <div className="absolute z-30 mt-1 max-h-64 w-full min-w-[240px] overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg">
+                <div className="absolute z-30 mt-0.5 max-h-60 w-full min-w-[220px] overflow-y-auto border border-gray-200 bg-white shadow-lg">
                     {options.length === 0 ? (
-                        <p className="px-3 py-2 text-sm text-gray-500">Значений нет</p>
+                        <p className="px-2 py-1 text-xs text-gray-500">Значений нет</p>
                     ) : (
                         options.map((o) => (
-                            <label key={o.value} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-gray-800 hover:bg-gray-50">
+                            <label key={o.value} className="flex cursor-pointer items-center gap-1.5 px-2 py-1 text-xs text-gray-800 hover:bg-gray-50">
                                 <input
                                     type="checkbox"
                                     checked={selected.includes(o.value)}
                                     onChange={() => onChange(selected.includes(o.value) ? selected.filter((v) => v !== o.value) : [...selected, o.value])}
-                                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                                    className="h-3.5 w-3.5 border-gray-300 text-blue-600"
                                 />
                                 <span className="truncate">{o.label}</span>
                             </label>
                         ))
+                    )}
+                    {options.length > 0 && (
+                        <button
+                            onClick={() => setOpen(false)}
+                            className="sticky bottom-0 w-full border-t border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                        >
+                            Готово
+                        </button>
                     )}
                 </div>
             )}

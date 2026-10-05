@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getDefaultPathForRole } from '@/lib/rbac';
+import { getDefaultPathForRole, isReadOnlyRole } from '@/lib/rbac';
 import { canAccessPathServer } from '@/lib/rbac-server';
 
 function applyNoStoreHeaders(response: NextResponse) {
@@ -25,13 +25,28 @@ export async function middleware(request: NextRequest) {
         // Служебный доступ консультанта ЦехУспеха: сессии у внешней системы нет,
         // поэтому маршрут закрыт не сессией, а токеном в самом обработчике.
         pathname.startsWith('/api/duty') ||
+        // Связь с ЦехУспехом: сессии у завода нет и учётки мы им не заводим, поэтому оба маршрута
+        // закрыты не сессией, а в самих обработчиках — страница просмотра заказа проверяет подпись
+        // ссылки и её срок, а проверка номера заказа требует ключ X-Api-Key.
+        pathname.startsWith('/api/external/tseh/') ||
         pathname === '/api/payments/tochka' ||
         pathname.startsWith('/api/sync') ||
         pathname.startsWith('/api/matching') ||
         pathname.startsWith('/api/monitoring') ||
         pathname.startsWith('/api/stt') ||
         pathname.startsWith('/api/telphin') ||
-        pathname.startsWith('/api/widget');
+        // События телефонии: Телфин шлёт их своим сервером, сессии у него нет.
+        // Маршрут закрыт не сессией, а ключом TELPHIN_WEBHOOK_SECRET в самом
+        // обработчике (решение владельца 05.10.2026 — нужно оповещение во
+        // время звонка, а не по его записи).
+        pathname.startsWith('/api/calls/webhooks') ||
+        pathname.startsWith('/api/widget') ||
+        // Файлы приложения-установки: браузер обновляет воркер фоновым запросом,
+        // и если тот упирается в редирект на вход, воркер остаётся старым
+        // навсегда — интерфейс после выкатки не обновлялся, пока человек не
+        // чистил кеш руками (инцидент 01.10.2026).
+        pathname === '/messenger-sw.js' ||
+        pathname === '/manifest.webmanifest';
     const isAuthRoute = pathname === '/login';
     const isProtectedRoute = !isPublicRoute;
 
@@ -43,6 +58,18 @@ export async function middleware(request: NextRequest) {
                 return applyNoStoreHeaders(NextResponse.json({ error: 'Неавторизован' }, { status: 401 }));
             }
             return applyNoStoreHeaders(NextResponse.redirect(new URL('/login', request.url)));
+        }
+
+        /**
+         * Роль «только просмотр»: смотреть можно всё, что ей открыто, менять —
+         * ничего. Проверяем здесь, а не в обработчиках: иначе первый же новый
+         * маршрут окажется незакрытым (решение владельца 05.10.2026).
+         */
+        if (isReadOnlyRole(session.user.role) && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
+            return applyNoStoreHeaders(NextResponse.json(
+                { error: 'У вашей роли доступ только на просмотр — изменения закрыты' },
+                { status: 403 },
+            ));
         }
 
         if (!(await canAccessPathServer(session.user.role, pathname))) {

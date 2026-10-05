@@ -13,18 +13,31 @@ import { supabase } from '@/utils/supabase';
 import { getCrmConfig } from '@/lib/retailcrm/leads';
 import { isRetailcrmOutboundWriteEnabled, RETAILCRM_WRITE_BLOCKED_MESSAGE } from '@/lib/retailcrm/outbound-guard';
 import { usableManagerId } from './create-order';
+import { editOwnOrder } from './own-orders';
 
 export type EditableItem = {
     /** id позиции в RetailCRM. Пусто — позиция новая. */
     id?: number | null;
     name: string;
     quantity: number;
+    /** Цена за единицу ДО скидки (в RetailCRM это initialPrice). */
     price: number;
+    /** Скидка рублями на единицу. */
+    discountAmount?: number | null;
+    /** Скидка процентом от цены единицы. */
+    discountPercent?: number | null;
     xmlId?: string | null;
+    /** id товара на сайте — хранится в `offer.externalId`. */
+    siteId?: string | null;
+    /** Артикул товара. */
+    article?: string | null;
 };
 
 export type OrderEdit = {
     items?: EditableItem[];
+    /** Разовая скидка на заказ: рублями и процентом, как в RetailCRM. */
+    discountAmount?: number | null;
+    discountPercent?: number | null;
     customerComment?: string | null;
     managerComment?: string | null;
     statusCode?: string | null;
@@ -34,6 +47,34 @@ export type OrderEdit = {
     contact?: Record<string, unknown>;
     /** Доставка: адрес и стоимость. */
     delivery?: Record<string, unknown>;
+    /** Реквизиты заказчика (ИНН, банк, юрадрес) — на заказе, как в RetailCRM. */
+    contragent?: Record<string, unknown>;
+    /**
+     * Другой заказчик: карточка клиента, которой принадлежит заказ.
+     * Менеджер меняет её, когда заказ завели не на то юрлицо (требование
+     * владельца 02.10.2026, как в RetailCRM — там заказчика переключают
+     * прямо в блоке «Клиент»).
+     */
+    customerId?: number | string | null;
+    /**
+     * Юрлицо (магазин) заказа. От него идут реквизиты продавца, расчётный счёт
+     * и НДС — у АО «ЗВТО» его нет. Менеджер меняет его в карточке: раньше поле
+     * было только для чтения, и заказ, заведённый не на то юрлицо, приходилось
+     * переделывать (Лена Парфёнова 05.10.2026).
+     */
+    site?: string | null;
+    /**
+     * Какими днями считаем срок изготовления: `rabochie` или `kalendarnye`.
+     * Поле наше — в RetailCRM его нет, поэтому пишем прямо в нашу таблицу и
+     * для заказов RetailCRM тоже (просьба Евгении 05.10.2026).
+     */
+    productionDaysUnit?: string | null;
+    /**
+     * Причина отмены словами. Поле наше: в RetailCRM причина — только код из
+     * справочника, а владелец 05.10.2026 просил подробный текст, «это потом
+     * позволит делать анализ глубже».
+     */
+    cancelReasonText?: string | null;
 };
 
 export type EditResult =
@@ -44,13 +85,19 @@ export type EditResult =
 export function describeEdit(edit: OrderEdit): string[] {
     const changed: string[] = [];
     if (edit.items) changed.push('состав заказа');
+    if (edit.contragent && Object.keys(edit.contragent).length) changed.push('реквизиты заказчика');
+    if (edit.discountAmount !== undefined || edit.discountPercent !== undefined) changed.push('разовую скидку');
     if (edit.customerComment !== undefined) changed.push('комментарий клиента');
     if (edit.managerComment !== undefined) changed.push('комментарий менеджера');
     if (edit.statusCode) changed.push('статус');
     if (edit.managerId) changed.push('менеджер');
     if (edit.customFields && Object.keys(edit.customFields).length) changed.push('дополнительные поля');
+    if (edit.customerId) changed.push('заказчика');
     if (edit.contact && Object.keys(edit.contact).length) changed.push('контактные данные');
     if (edit.delivery && Object.keys(edit.delivery).length) changed.push('доставку');
+    if (edit.site) changed.push('юрлицо заказа');
+    if (edit.productionDaysUnit !== undefined) changed.push('единицу срока изготовления');
+    if (edit.cancelReasonText !== undefined) changed.push('причину отмены');
     return changed;
 }
 
@@ -58,10 +105,9 @@ export function describeEdit(edit: OrderEdit): string[] {
 export function validateItems(items: EditableItem[]): string[] {
     const problems: string[] = [];
 
-    if (!items.length) {
-        problems.push('В заказе должна остаться хотя бы одна позиция');
-    }
-
+    // Пустой состав — не ошибка: заявка приходит до просчёта, позиций ещё нет,
+    // а карточку надо сохранять (внести телефон, реквизиты). Решение владельца
+    // 02.10.2026 — иначе менеджер не может сохранить страницу вообще.
     items.forEach((item, index) => {
         if (!item.name?.trim()) problems.push(`Позиция ${index + 1}: не указано название`);
         if (!(Number(item.quantity) > 0)) problems.push(`Позиция ${index + 1}: количество должно быть больше нуля`);
@@ -78,7 +124,7 @@ export function validateItems(items: EditableItem[]): string[] {
 async function findOrder(orderKey: number) {
     const byCrm = await supabase
         .from('orders')
-        .select('id, order_id, number, site')
+        .select('id, order_id, number, site, is_own')
         .eq('order_id', orderKey)
         .maybeSingle();
 
@@ -88,7 +134,7 @@ async function findOrder(orderKey: number) {
 
     const byRow = await supabase
         .from('orders')
-        .select('id, order_id, number, site')
+        .select('id, order_id, number, site, is_own')
         .eq('id', orderKey)
         .maybeSingle();
 
@@ -110,10 +156,6 @@ async function findOrder(orderKey: number) {
 }
 
 export async function editOrder(orderKey: number, edit: OrderEdit): Promise<EditResult> {
-    if (!(await isRetailcrmOutboundWriteEnabled())) {
-        return { ok: false, reason: RETAILCRM_WRITE_BLOCKED_MESSAGE };
-    }
-
     if (edit.items) {
         const problems = validateItems(edit.items);
         if (problems.length) {
@@ -126,21 +168,70 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
         return { ok: false, reason: 'Заказ не найден' };
     }
 
+    // Единица срока — наша колонка, её храним у себя при любом источнике заказа.
+    if (edit.productionDaysUnit !== undefined || edit.cancelReasonText !== undefined) {
+        await supabase
+            .from('orders')
+            .update({
+                ...(edit.productionDaysUnit !== undefined ? { srok_izgot_edinica: edit.productionDaysUnit || null } : {}),
+                ...(edit.cancelReasonText !== undefined ? { prichina_otmeny_text: edit.cancelReasonText || null } : {}),
+            })
+            .eq('order_id', (order as any).order_id ?? orderKey);
+    }
+
+    // Свой заказ правим у себя: в RetailCRM его нет, и рубильник исходящих
+    // записей к нему не относится — он про чужие заказы.
+    if ((order as any).is_own) {
+        await editOwnOrder(Number((order as any).id), edit);
+        return { ok: true, changed: describeEdit(edit) };
+    }
+
+    // Магазин заказа RetailCRM живёт в RetailCRM: её API его не меняет, и молча
+    // проглотить правку нельзя — менеджер решит, что юрлицо сменилось.
+    if (edit.site) {
+        return { ok: false, reason: 'Юрлицо можно сменить только у заказов нашей базы — у заказов RetailCRM магазин меняется в ней' };
+    }
+
+    if (!(await isRetailcrmOutboundWriteEnabled())) {
+        return { ok: false, reason: RETAILCRM_WRITE_BLOCKED_MESSAGE };
+    }
+
     const crmOrderId = (order as any).order_id;
     const site = (order as any).site;
     const orderData: any = {};
 
-    if (edit.items) {
+    if (edit.items?.length) {
         // RetailCRM заменяет состав целиком: присылаем все позиции, которые должны
         // остаться. Позиция без id считается новой, пропавшая — удалённой.
+        // Пустой массив не отправляем: карточка шлёт состав при любой правке, и
+        // пустой список стёр бы позиции заказа в CRM.
         orderData.items = edit.items.map((item) => ({
             ...(item.id ? { id: item.id } : {}),
             productName: item.name.trim(),
             quantity: Number(item.quantity),
             initialPrice: Number(item.price),
+            // Скидку позиции отдаём их же полями — пересчёт цены делает RetailCRM.
+            ...(item.discountAmount ? { discountManualAmount: Number(item.discountAmount) } : {}),
+            ...(item.discountPercent ? { discountManualPercent: Number(item.discountPercent) } : {}),
             ...(item.xmlId ? { offer: { xmlId: item.xmlId } } : {}),
         }));
     }
+
+    // Другой заказчик: RetailCRM ждёт карточку клиента объектом `customer`.
+    if (edit.customerId) {
+        orderData.customer = { id: Number(edit.customerId) };
+    }
+
+    // Реквизиты заказчика: RetailCRM принимает их объектом `contragent`.
+    if (edit.contragent && Object.keys(edit.contragent).length) {
+        orderData.contragent = Object.fromEntries(
+            Object.entries(edit.contragent).filter(([, value]) => value !== undefined),
+        );
+    }
+
+    // Разовая скидка на заказ. Ноль отправляем тоже: так скидку снимают.
+    if (edit.discountAmount !== undefined) orderData.discountManualAmount = Number(edit.discountAmount) || 0;
+    if (edit.discountPercent !== undefined) orderData.discountManualPercent = Number(edit.discountPercent) || 0;
 
     if (edit.customerComment !== undefined) orderData.customerComment = edit.customerComment ?? '';
     if (edit.managerComment !== undefined) orderData.managerComment = edit.managerComment ?? '';
@@ -161,8 +252,29 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
 
     if (edit.delivery && Object.keys(edit.delivery).length) {
         orderData.delivery = {};
-        if (edit.delivery.address !== undefined) {
-            orderData.delivery.address = { text: String(edit.delivery.address ?? '') };
+        /**
+         * Адрес и его части. RetailCRM держит их одним объектом `address`,
+         * поэтому части кладём рядом со строкой: иначе город и индекс, которые
+         * менеджер разобрал кнопкой, никуда не сохранятся (просьба Лены
+         * Парфёновой 05.10.2026).
+         */
+        const addressParts = ['address', 'region', 'city', 'index'] as const;
+        if (addressParts.some((key) => edit.delivery?.[key] !== undefined)) {
+            orderData.delivery.address = {
+                ...(edit.delivery.address !== undefined ? { text: String(edit.delivery.address ?? '') } : {}),
+                ...(edit.delivery.region !== undefined ? { region: String(edit.delivery.region ?? '') } : {}),
+                ...(edit.delivery.city !== undefined ? { city: String(edit.delivery.city ?? '') } : {}),
+                ...(edit.delivery.index !== undefined ? { index: String(edit.delivery.index ?? '') } : {}),
+            };
+        }
+        if (edit.delivery.date !== undefined) {
+            orderData.delivery.date = String(edit.delivery.date ?? '') || undefined;
+        }
+        if (edit.delivery.time !== undefined) {
+            orderData.delivery.time = String(edit.delivery.time ?? '') || undefined;
+        }
+        if (edit.delivery.code !== undefined && String(edit.delivery.code ?? '')) {
+            orderData.delivery.code = String(edit.delivery.code);
         }
         if (edit.delivery.cost !== undefined) {
             orderData.delivery.cost = Number(edit.delivery.cost) || 0;

@@ -126,8 +126,8 @@ export function documentAttachmentNames(attachments?: EmailAttachmentMeta[] | nu
  * сайта-магазина webasyst: блоки «Email:», «Телефон:», «ПОЛУЧАТЕЛЬ»). Нужно, когда From = адрес
  * робота (noreply@webasyst.biz), а настоящий клиент — в теле. Возвращает то, что нашлось.
  */
-export function extractLeadContact(body?: string | null): { email?: string; phone?: string; name?: string } {
-    const out: { email?: string; phone?: string; name?: string } = {};
+export function extractLeadContact(body?: string | null): { email?: string; phone?: string; name?: string; company?: string } {
+    const out: { email?: string; phone?: string; name?: string; company?: string } = {};
     if (!body) return out;
 
     // 1. Попробуем извлечь из пересылаемого сообщения (Fwd/Forwarded)
@@ -157,6 +157,38 @@ export function extractLeadContact(body?: string | null): { email?: string; phon
     const phoneM = body.match(/(?:тел(?:ефон)?|phone)\s*[\.:：]?\s*(\+?\d[\d()\-\s]{5,}\d)/i);
     if (phoneM) {
         out.phone = phoneM[1].replace(/[()\-\s]/g, '');
+    }
+
+    /**
+     * Телефон из подписи, где слова «тел» нет вовсе: «8(846)201-00-17».
+     *
+     * Клиент пишет сам и подписывается названием, именем и номером — так было в
+     * письме ЭЛКО, и телефон терялся (разбор заказа 1039А, 02.10.2026).
+     * Берём строку, которая почти целиком состоит из номера: иначе в телефон
+     * попали бы ИНН, расчётный счёт и номера из текста письма.
+     */
+    if (!out.phone) {
+        for (const line of body.split(/\r?\n/)) {
+            const text = line.trim();
+            if (!text || text.length > 40) continue;
+            const match = text.match(/^\+?[78]?\s*\(?\d{3,4}\)?[\d\-\s]{6,12}$/);
+            if (!match) continue;
+            const digits = text.replace(/\D/g, '');
+            // Российский номер — 10 цифр без кода страны или 11 с ним.
+            if (digits.length === 10 || (digits.length === 11 && /^[78]/.test(digits))) {
+                out.phone = digits.length === 11 ? `+7${digits.slice(1)}` : `+7${digits}`;
+                break;
+            }
+        }
+    }
+
+    /**
+     * Название компании из подписи: строка с организационно-правовой формой.
+     * Нужна, чтобы завести карточку контрагента, а не безымянную заявку.
+     */
+    if (!out.company) {
+        const companyM = body.match(/^\s*((?:ООО|ОАО|ЗАО|ПАО|НАО|АО|ИП)\s*[«"']?[^\r\n]{2,80})$/im);
+        if (companyM) out.company = companyM[1].replace(/[«»"']/g, '').trim();
     }
 
     // 4. Извлечение имени получателя/плательщика (для форм с сайта)

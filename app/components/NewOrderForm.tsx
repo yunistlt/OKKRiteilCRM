@@ -5,7 +5,7 @@
 // вписать руками: заказ важнее подсказки.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { formatRub } from '@/lib/format';
+import { formatRub, priceSourceLabel } from '@/lib/format';
 import { NumberInput } from '@/components/ui/NumberInput';
 
 type CatalogItem = {
@@ -13,6 +13,7 @@ type CatalogItem = {
     name: string;
     price: number;
     priceLive: boolean;
+    priceSource?: 'live' | 'cache' | 'none';
     category: string;
     active: boolean;
 };
@@ -119,7 +120,7 @@ export default function NewOrderForm() {
                     <span className="text-base font-bold text-gray-900">{formatRub(total)}</span>
                     <button
                         onClick={submit}
-                        disabled={saving || rows.length === 0}
+                        disabled={saving}
                         className="bg-gray-900 px-4 py-2 font-semibold text-white hover:bg-gray-700 disabled:bg-gray-300"
                     >
                         {saving ? 'Создаю…' : 'Создать заказ'}
@@ -187,8 +188,11 @@ export default function NewOrderForm() {
                                     >
                                         <div className="text-gray-900">{item.name}</div>
                                         <div className="text-[11px] text-gray-500">
-                                            {formatRub(item.price)}
-                                            {item.priceLive ? ' · цена с сайта' : ' · цена из витрины'}
+                                            {item.priceSource === 'none' ? 'Цена не указана' : formatRub(item.price)}
+                                            {' · '}
+                                            <span className={item.priceSource === 'none' ? 'text-amber-800' : ''}>
+                                                {priceSourceLabel(item.priceSource, item.priceLive)}
+                                            </span>
                                             {item.category ? ` · ${item.category}` : ''}
                                             {!item.active ? ' · снят с продажи' : ''}
                                         </div>

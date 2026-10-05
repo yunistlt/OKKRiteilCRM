@@ -98,7 +98,6 @@ export default function NotificationsSettingsPage() {
 
   return (
     <div style={{ padding: 16, maxWidth: 1100 }}>
-      <h1 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>Уведомления</h1>
       <div style={{ fontSize: 13, color: '#777', margin: '0 0 16px' }}>
         Каждый тип сообщения уходит своему адресату. Меняется по одному типу — остальные
         сообщения при этом не переезжают.

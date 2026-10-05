@@ -1,6 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { fetchRetailCrmOrder } from '@/lib/retailcrm/orders';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
+import { queueOrderForProduction } from '@/lib/own-crm/tseh-outbox';
 
 // Перевод заказа в «Передано в производство» после поступления оплаты.
 // Код статуса берётся из справочника (slug RetailCRM), с возможностью override через env.
@@ -49,6 +50,38 @@ export async function moveOrderToProductionAfterPayment(
 ): Promise<MoveToProductionResult> {
   if (!orderId) return { moved: false, notMovedReason: 'нет id заказа' };
   try {
+    /**
+     * Свой заказ переводим у себя.
+     *
+     * Раньше перевод шёл только через RetailCRM: статус читался оттуда и писался
+     * туда же. Для заказов нашей базы это не работало — оплата приходила, а
+     * заказ оставался на «Счёт на оплате» (заказ 54691, 02.10.2026). К тому же
+     * запись в RetailCRM выключена на время переезда.
+     */
+    const { data: own } = await supabase
+      .from('orders')
+      .select('id, status, is_own')
+      .eq('order_id', orderId)
+      .maybeSingle();
+
+    if ((own as any)?.is_own) {
+      const current = String((own as any).status || '');
+      const { set: blocked, prodName, names } = await loadStatusMeta();
+      if (blocked.has(current)) {
+        return { moved: false, notMovedReason: `уже в статусе «${names[current] || current}»` };
+      }
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: PRODUCTION_STATUS, updated_at: new Date().toISOString() })
+        .eq('id', (own as any).id);
+      if (error) {
+        return { moved: false, notMovedReason: `статус не записался: ${error.message}` };
+      }
+      // Заказ встал в очередь, из которой ЦехУспех забирает его сам.
+      await queueOrderForProduction(orderId);
+      return { moved: true, statusName: prodName };
+    }
+
     // Текущий статус и site можно передать (если заказ уже фетчили) — иначе тянем сами.
     // site обязателен: orders/edit отклоняет чужой site заказа (см. updateExistingOrderInCrm).
     let current = opts.currentStatus ? String(opts.currentStatus) : '';

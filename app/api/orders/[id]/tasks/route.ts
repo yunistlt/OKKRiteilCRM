@@ -8,6 +8,8 @@ export const dynamic = 'force-dynamic';
 const CreateSchema = z.object({
     title: z.string().min(1).max(300),
     dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    /** Время срока: «перезвонить в 14:30». Пусто — срок на весь день. */
+    dueTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
 });
 
 const UpdateSchema = z.object({
@@ -28,6 +30,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         .eq('order_number', String(id))
         .order('done')
         .order('due_date', { nullsFirst: false })
+        .order('due_time', { nullsFirst: false })
         .order('created_at');
 
     if (error) {
@@ -67,6 +70,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             order_number: String(id),
             title: body.title,
             due_date: body.dueDate || null,
+            due_time: body.dueTime || null,
             created_by: author,
         })
         .select()

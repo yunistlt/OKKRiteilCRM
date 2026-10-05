@@ -1,4 +1,5 @@
 'use client';
+import OrderNumberLink from '@/components/ui/OrderNumberLink';
 
 import { Phone, PhoneOff } from 'lucide-react';
 
@@ -31,7 +32,9 @@ export function IncomingCallAlert({ call, onAnswer, onReject }: IncomingCallAler
         {call.orderNumber && (
           <div className="mt-2 border border-blue-200 bg-white px-2 py-1">
             <span className="text-[10px] font-black uppercase text-gray-400">Заказ</span>
-            <div className="text-xs font-bold text-gray-900">№ {call.orderNumber}</div>
+            <div className="text-xs font-bold text-gray-900">
+              № <OrderNumberLink number={call.orderNumber} />
+            </div>
           </div>
         )}
       </div>

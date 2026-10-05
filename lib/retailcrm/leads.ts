@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { isOwnCrmManager } from '@/lib/own-crm/own-order-insert';
 import { resolveLeadSite, reportSiteSubstitution } from './lead-site';
 import { fetchRetailCrmOrder } from './orders';
 import {
@@ -7,6 +8,8 @@ import {
     unspecifiedLabel,
     type LeadFieldHints,
 } from './lead-defaults';
+import { routeNewOrder } from '@/lib/own-crm/own-order-insert';
+import { assignManagerForNewOrder } from '@/lib/own-crm/assign-manager';
 
 export async function getCrmConfig() {
     const url = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
@@ -334,6 +337,20 @@ function isFormWithoutTZ(params: {
  * Статус «Новая» (novyi-1). Менеджер назначается сразу, если передан.
  * Возвращает id и номер созданного заказа.
  */
+/**
+ * Заявка без менеджера не создаётся (требование владельца 02.10.2026): её
+ * никто не ведёт, она не попадает ни в план дня, ни в зарплату, ни в ОКК.
+ * Если поток не назвал менеджера — выбираем так же, как автоприём почты.
+ */
+async function ensureManager(orderData: any): Promise<void> {
+    const assignment = await assignManagerForNewOrder({
+        managerId: orderData?.managerId,
+        email: orderData?.email,
+        phone: orderData?.phone,
+    });
+    orderData.managerId = assignment.managerId;
+}
+
 export async function createEmailLead(params: {
     email: string;
     name?: string;
@@ -483,7 +500,8 @@ ${bodyPart}${attLine}${duplicateReason}`;
     }
     if (assignedManagerId) orderData.managerId = assignedManagerId;
 
-    const orderResult = await postRetailCrm('orders/create', 'order', orderData, site);
+    await ensureManager(orderData);
+    const orderResult = (await routeNewOrder(orderData)) ?? await postRetailCrm('orders/create', 'order', orderData, site);
     if (!orderResult.success) {
         const errorMessage = orderResult.errors ? JSON.stringify(orderResult.errors) : (orderResult.errorMsg || 'Unknown error');
         throw new Error(`Email lead create failed: ${errorMessage}`);
@@ -495,7 +513,7 @@ ${bodyPart}${attLine}${duplicateReason}`;
 // Форматирует найденные в каталоге ЗМК позиции с реальной ценой — для менеджера.
 // Цена показывается только менеджеру в комментарии заказа; клиенту в чате она не озвучивается.
 export function formatMatchedCatalogProducts(
-    products?: Array<{ name: string; price: number; url?: string; category?: string; priceSource?: 'live' | 'cache' }>
+    products?: Array<{ name: string; price: number; url?: string; category?: string; priceSource?: 'live' | 'cache' | 'none' }>
 ): string {
     if (!products || products.length === 0) return '';
     const lines = products
@@ -506,7 +524,8 @@ export function formatMatchedCatalogProducts(
                 const note = p.priceSource === 'cache' ? ' (из кэша, сверьте на сайте)' : ' (актуально с сайта)';
                 priceStr = `${Math.round(p.price).toLocaleString('ru-RU')} ₽${note}`;
             } else {
-                priceStr = 'цена не указана';
+                // Цены нет ни живой, ни в выгрузке: на сайте её не задали.
+                priceStr = 'цены на сайте нет — надо актуализировать';
             }
             return `${i + 1}. ${p.name} — ${priceStr}${p.url ? ` — ${p.url}` : ''}`;
         });
@@ -527,7 +546,7 @@ export async function createLeadInCrm(params: {
     history?: Array<{ role: string; content: string }>;
     visitedPages?: Array<{ url: string; title: string }>;
     managerId?: number | null;
-    matchedCatalogProducts?: Array<{ name: string; price: number; url?: string; category?: string; priceSource?: 'live' | 'cache' }>;
+    matchedCatalogProducts?: Array<{ name: string; price: number; url?: string; category?: string; priceSource?: 'live' | 'cache' | 'none' }>;
     corporateDetails?: CorporateLeadDetails | null;
     orderMethod?: string;
     fieldHints?: LeadFieldHints;
@@ -545,19 +564,31 @@ export async function createLeadInCrm(params: {
         ...params.fieldHints,
     };
 
+    /**
+     * Заявка менеджера нашей CRM клиента в RetailCRM не заводит.
+     *
+     * Курс на свою CRM: карточку найдёт или создаст у себя `insertOwnOrder`
+     * (по ИНН, затем по названию с почтой или телефоном). Раньше карточка
+     * появлялась в RetailCRM, у нас её не было, и в заказе пустовали компания и
+     * реквизиты — разбор заказа 1039А (решение владельца 02.10.2026).
+     */
+    const ownOrder = params.managerId ? await isOwnCrmManager(params.managerId) : false;
+
     // 1. Клиент всегда корпоративный (B2B)
-    const customerLookup = await ensureCorporateCustomerId({
-        details: params.corporateDetails,
-        name: params.corporateDetails?.contactName || params.name,
-        phone: params.phone,
-        email: params.email,
-        fieldHints,
-    }, site);
+    const customerLookup = ownOrder
+        ? { id: null as number | null, hint: null as string | null }
+        : await ensureCorporateCustomerId({
+            details: params.corporateDetails,
+            name: params.corporateDetails?.contactName || params.name,
+            phone: params.phone,
+            email: params.email,
+            fieldHints,
+        }, site);
     let customerId: number | null = customerLookup.id;
     const existingCustomerHint = customerLookup.hint;
     let isCorp = customerId !== null;
 
-    if (!customerId) {
+    if (!customerId && !ownOrder) {
         // Откат на физлицо: контрагента завести не удалось — лид терять нельзя.
         const existing = params.phone ? await findCustomerByPhone(params.phone) : null;
         if (existing) {
@@ -643,7 +674,8 @@ ${historyLog.split('\n').slice(-10).join('\n')}
     // Магазин — тот же проверенный, что выбран в начале функции. Раньше здесь
     // заново брался магазин из окружения, и заявка с сайта уходила в него мимо
     // проверки.
-    const orderResult = await postRetailCrm('orders/create', 'order', orderData, site);
+    await ensureManager(orderData);
+    const orderResult = (await routeNewOrder(orderData)) ?? await postRetailCrm('orders/create', 'order', orderData, site);
 
     if (!orderResult.success) {
         console.error('Failed to create order:', JSON.stringify(orderResult, null, 2));
@@ -723,7 +755,8 @@ ${params.summary?.trim() || 'не распознано — уточнить у �
     }
     if (params.managerId) orderData.managerId = params.managerId;
 
-    const orderResult = await postRetailCrm('orders/create', 'order', orderData, site);
+    await ensureManager(orderData);
+    const orderResult = (await routeNewOrder(orderData)) ?? await postRetailCrm('orders/create', 'order', orderData, site);
     if (!orderResult.success) {
         const errorMessage = orderResult.errors ? JSON.stringify(orderResult.errors) : (orderResult.errorMsg || 'Unknown error');
         throw new Error(`Secretary order create failed: ${errorMessage}`);

@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import MailComposer from 'nodemailer/lib/mail-composer';
 import { randomUUID } from 'crypto';
+import { brandAttachment, wrapInBrand } from '@/lib/email-brand';
 import { appendToSentFolder } from './email/imap';
 
 /**
@@ -51,13 +52,13 @@ export async function sendAppEmail({ to, subject, html, fromName = 'OKKRiteil CR
             from: `"${fromName}" <${process.env.SMTP_USER}>`,
             to,
             subject,
-            html,
+            html: wrapInBrand(html),
             replyTo,
-            attachments: (attachments || []).map((a) => ({
+            attachments: [brandAttachment(), ...(attachments || []).map((a) => ({
                 filename: a.filename || 'attachment',
                 content: a.content,
                 contentType: a.contentType || undefined,
-            })),
+            }))],
         });
         return { sent: true };
     } catch (error: any) {
@@ -68,29 +69,34 @@ export async function sendAppEmail({ to, subject, html, fromName = 'OKKRiteil CR
 
 // ── Письма по заказу (переписка, привязанная к заказу RetailCRM) ──────────────
 
+/** Текст письма из его HTML — для текстовой части MIME и для ленты переписки. */
+export function htmlToPlainText(html: string): string {
+    return String(html ?? '')
+        .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
 /**
  * Служебный тег RetailCRM в теме письма: `[#N/NNNNN]`, где NNNNN — номер заказа,
  * а N — порядковый номер сообщения в переписке по заказу. По этому тегу почтовая
  * интеграция RetailCRM привязывает письмо к заказу (см. docs/email-secretary/OVERVIEW.md,
  * lib/email/classify.ts). Исходящие письма по заказу ОБЯЗАНЫ нести этот тег.
  */
-export function buildOrderThreadSubject(orderNumber: string | number, text: string, seq = 1): string {
-    return `[#${seq}/${orderNumber}] ${text}`.trim();
-}
+// Разбор и сборка темы живут отдельно (`lib/email-subject.ts`): ими пользуется
+// и браузер, а сюда тянется nodemailer.
+import { buildOrderThreadSubject } from './email-subject';
 
-/** Убирает из темы служебный тег `[#N/NNNNN]` и цепочку Re:/Fwd: — остаётся человеческая часть. */
-export function stripOrderThreadTag(subject: string): string {
-    return (subject || '')
-        .replace(/\[#\d+\/\d+\]/g, '')
-        .replace(/^(\s*(re|fwd|fw)\s*:\s*)+/i, '')
-        .trim();
-}
-
-/** Достаёт номер заказа из служебного тега темы `[#N/NNNNN]`, иначе null. */
-export function parseOrderNumberFromSubject(subject: string): string | null {
-    const m = subject.match(/\[#\d+\/(\d+)\]/);
-    return m ? m[1] : null;
-}
+export { buildOrderThreadSubject, stripOrderThreadTag, parseOrderNumberFromSubject } from './email-subject';
 
 export interface SendOrderEmailInput {
     to: string;
@@ -141,15 +147,23 @@ export async function sendOrderEmail(input: SendOrderEmailInput): Promise<SendOr
             from: `"${fromName}" <${user}>`,
             to: input.to,
             subject,
-            html: input.html,
+            html: wrapInBrand(input.html),
+            // Текстовая часть обязательна: без неё письмо в папке «Отправленные»
+            // лежит одним HTML, и лента переписки по заказу показывает пустоту.
+            text: htmlToPlainText(input.html),
             replyTo: input.replyTo,
             messageId,
             date: new Date(),
-            attachments: (input.attachments || []).map((a) => ({
-                filename: a.filename || 'attachment',
-                content: a.content,
-                contentType: a.contentType || undefined,
-            })),
+            attachments: [
+                // Логотип письма вкладываем картинкой: ссылку почтовые клиенты
+                // блокируют, и шапка оставалась бы пустой.
+                brandAttachment(),
+                ...(input.attachments || []).map((a) => ({
+                    filename: a.filename || 'attachment',
+                    content: a.content,
+                    contentType: a.contentType || undefined,
+                })),
+            ],
         });
         raw = await new Promise<Buffer>((resolve, reject) =>
             composer.compile().build((err, msg) => (err ? reject(err) : resolve(msg)))

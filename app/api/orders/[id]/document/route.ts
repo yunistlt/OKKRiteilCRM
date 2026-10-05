@@ -8,7 +8,8 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { orderDocumentData } from '@/lib/own-crm/documents';
-import { generateInvoicePDF, generateProposalPDF } from '@/lib/pdf-generator';
+import { supabase } from '@/utils/supabase';
+import { buildOrderDocumentPdf } from '@/lib/own-crm/order-document-pdf';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -20,9 +21,25 @@ export async function GET(request: Request, { params }: { params: { id: string }
     }
 
     const kind = new URL(request.url).searchParams.get('kind') === 'invoice' ? 'invoice' : 'proposal';
-    const orderId = Number(params.id);
+
+    /**
+     * В маршрут приходит либо идентификатор заказа (кнопки в карточке), либо его
+     * НОМЕР — форма письма прикладывает КП по номеру, а у своих заказов он с
+     * кириллической «А» («1020А»). Раньше номер молча превращался в NaN, и
+     * менеджер получал «Неверный номер заказа» (Ирина 02.10.2026).
+     */
+    const raw = decodeURIComponent(String(params.id));
+    let orderId = Number(raw);
     if (!Number.isFinite(orderId)) {
-        return NextResponse.json({ error: 'Неверный номер заказа' }, { status: 400 });
+        const { data: found } = await supabase
+            .from('orders')
+            .select('order_id')
+            .eq('number', raw)
+            .maybeSingle();
+        orderId = Number(found?.order_id);
+    }
+    if (!Number.isFinite(orderId)) {
+        return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 });
     }
 
     // Счёт можно выставить от любого нашего юрлица: их несколько, и у каждого
@@ -42,49 +59,12 @@ export async function GET(request: Request, { params }: { params: { id: string }
         );
     }
 
-    const items = data.items.map((item) => ({
-        name: item.name,
-        quantity: item.quantity,
-        price: item.price,
-    }));
+    const built = await buildOrderDocumentPdf(data, kind);
 
-    const pdf = kind === 'invoice'
-        ? await generateInvoicePDF({
-            invoice_number: data.orderNumber,
-            title: `Счёт по заказу №${data.orderNumber}`,
-            items,
-            discount_pct: 0,
-            vat_pct: data.vatPercent,
-            payer_company: data.payerCompany || undefined,
-            payer_name: data.payerName || undefined,
-            payer_inn: data.payerInn || undefined,
-            payer_kpp: data.payerKpp || undefined,
-            payer_address: data.payerAddress || undefined,
-            seller_name: data.seller?.name,
-            seller_inn: data.seller?.inn,
-            seller_kpp: data.seller?.kpp,
-            seller_bank: data.seller?.bank,
-            seller_bik: data.seller?.bik,
-            seller_ks: data.seller?.ks,
-            seller_rs: data.seller?.rs,
-            seller_address: data.seller?.address,
-        })
-        : await generateProposalPDF({
-            title: `Коммерческое предложение по заказу №${data.orderNumber}`,
-            items,
-            discount_pct: 0,
-            client_company: data.payerCompany || undefined,
-            client_name: data.payerName || undefined,
-        });
-
-    const fileName = kind === 'invoice'
-        ? `Счёт №${data.orderNumber}.pdf`
-        : `КП №${data.orderNumber}.pdf`;
-
-    return new NextResponse(new Uint8Array(pdf), {
+    return new NextResponse(new Uint8Array(built.content), {
         headers: {
             'Content-Type': 'application/pdf',
-            'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+            'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(built.fileName)}`,
         },
     });
 }

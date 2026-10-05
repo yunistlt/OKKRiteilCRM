@@ -21,6 +21,23 @@ export default function PwaBootstrap() {
             window.location.reload();
         });
 
+        // Старые воркеры кешировали код приложения «навсегда», и после деплоя
+        // интерфейс оставался прежним, пока человек не чистил кеш руками
+        // (инцидент 01.10.2026). Выносим мусор сами при каждой загрузке: всё,
+        // что не текущий кеш воркера, удаляем.
+        if ('caches' in window) {
+            caches
+                .keys()
+                .then((keys) =>
+                    Promise.all(
+                        keys
+                            .filter((key) => key !== 'okk-messenger-pwa-v3')
+                            .map((key) => caches.delete(key)),
+                    ),
+                )
+                .catch(() => undefined);
+        }
+
         navigator.serviceWorker
             .register('/messenger-sw.js', { scope: '/' })
             .then((registration) => {

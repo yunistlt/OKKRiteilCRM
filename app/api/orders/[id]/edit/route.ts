@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
+import { fieldProblems, problemsText } from '@/lib/own-crm/edit-problems';
 import { editOrder } from '@/lib/own-crm/edit-order';
 
 export const dynamic = 'force-dynamic';
@@ -14,17 +15,46 @@ const itemSchema = z.object({
     name: z.string().trim().min(1),
     quantity: z.coerce.number().positive(),
     price: z.coerce.number().min(0),
+    // Скидка позиции: рублями на единицу и/или процентом, как в RetailCRM.
+    discountAmount: z.coerce.number().min(0).optional().nullable(),
+    discountPercent: z.coerce.number().min(0).max(100).optional().nullable(),
     xmlId: z.string().trim().optional().nullable(),
+    /** id товара на сайте и артикул — по ним название ведёт на карточку. */
+    siteId: z.string().trim().max(40).optional().nullable(),
+    article: z.string().trim().max(200).optional().nullable(),
 });
 
 const bodySchema = z.object({
     items: z.array(itemSchema).optional(),
-    customerComment: z.string().max(5000).optional().nullable(),
-    managerComment: z.string().max(5000).optional().nullable(),
+    /** Разовая скидка на заказ. */
+    discountAmount: z.coerce.number().min(0).optional().nullable(),
+    discountPercent: z.coerce.number().min(0).max(100).optional().nullable(),
+    /**
+     * Комментарии копятся годами: лента по заказу 53603 к 05.10.2026 доросла до
+     * 6 947 знаков, и прежний предел в 5 000 ронял ЛЮБОЕ сохранение карточки —
+     * карточка шлёт комментарий целиком (Ирина Гордеева: «нажимаю сохранить и
+     * выйти, коммент не сохраняет»). Предел оставлен только от явного мусора.
+     */
+    customerComment: z.string().max(100000).optional().nullable(),
+    managerComment: z.string().max(100000).optional().nullable(),
     statusCode: z.string().trim().max(100).optional().nullable(),
     managerId: z.coerce.number().int().positive().optional().nullable(),
     customFields: z.record(z.string(), z.any()).optional(),
     contact: z.record(z.string(), z.any()).optional(),
+    /**
+     * Реквизиты заказчика снаружи не правятся — ЗАКОН владельца: их хозяин
+     * карточка клиента, в заказ они подтягиваются сами. В карточке заказа они
+     * и показаны только для чтения; схема закрывает обход через запрос.
+     *
+     * Перенос реквизитов из карточки в заказ идёт внутренним вызовом
+     * (app/api/orders/[id]/requisites), эта схема ему не мешает.
+     */
+    /** Другой заказчик: карточка клиента, которой принадлежит заказ. */
+    customerId: z.coerce.number().int().positive().optional().nullable(),
+    /** Юрлицо (магазин) заказа: реквизиты продавца, счёт и НДС. */
+    site: z.string().trim().max(100).optional().nullable(),
+    productionDaysUnit: z.enum(['rabochie', 'kalendarnye']).optional().nullable(),
+    cancelReasonText: z.string().trim().max(5000).optional().nullable(),
     delivery: z.record(z.string(), z.any()).optional(),
 });
 
@@ -48,7 +78,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     const parsed = bodySchema.safeParse(payload);
     if (!parsed.success) {
-        return NextResponse.json({ error: 'Правка заполнена неверно', details: parsed.error.issues }, { status: 400 });
+        // Говорим, какое поле и чем не угодило: «Правка заполнена неверно»
+        // без подробностей менеджер разгадать не может (Женя 05.10.2026).
+        const problems = fieldProblems(parsed.error.issues);
+        return NextResponse.json(
+            { error: problemsText(problems), problems, details: parsed.error.issues },
+            { status: 400 },
+        );
     }
 
     const result = await editOrder(orderRowId, parsed.data as any);

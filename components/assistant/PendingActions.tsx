@@ -1,4 +1,5 @@
 'use client';
+import OrderNumberLink from '@/components/ui/OrderNumberLink';
 
 import { useCallback, useEffect, useState } from 'react';
 
@@ -88,7 +89,7 @@ export default function PendingActions() {
                 <div key={action.id} className="border-b border-gray-200 px-3 py-2 last:border-b-0">
                     <div className="text-xs font-bold text-gray-900">
                         {KIND_LABELS[action.kind].title}
-                        {action.order_number ? ` · заказ ${action.order_number}` : ''}
+                        {action.order_number ? <> · заказ <OrderNumberLink number={action.order_number} /></> : ''}
                     </div>
 
                     <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-[11px] leading-snug text-gray-700">

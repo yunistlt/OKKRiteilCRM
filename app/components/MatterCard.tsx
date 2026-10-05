@@ -20,6 +20,7 @@ import RiskAmount from './RiskAmount';
 import MatterEventForm from './MatterEventForm';
 import MatterMoneyBlock from './MatterMoneyBlock';
 import MatterLinkForm from './MatterLinkForm';
+import MatterDocumentForm from './MatterDocumentForm';
 
 type Card = {
   matter: MatterRowUi;
@@ -27,6 +28,18 @@ type Card = {
   links: any[];
   documents: any[];
   facts: any[];
+};
+
+const DOC_KIND_LABELS: Record<string, string> = {
+  pretenziya: 'Претензия',
+  otvet: 'Ответ на претензию',
+  dogovor: 'Договор',
+  akt: 'Акт',
+  isk: 'Исковое заявление',
+  otzyv: 'Отзыв на иск',
+  reshenie: 'Решение суда',
+  list: 'Исполнительный лист',
+  other: 'Другое',
 };
 
 export default function MatterCard({ id }: { id: number }) {
@@ -196,13 +209,22 @@ export default function MatterCard({ id }: { id: number }) {
             {documents.length === 0 && <div className="text-xs text-gray-500">Документов нет.</div>}
             {documents.map((doc) => (
               <div key={doc.id} className="border-b border-gray-100 py-1 text-xs">
-                <div className="font-semibold text-gray-800">{doc.title || doc.file_name}</div>
-                <div className="text-gray-500">{dictName(dictionaries, 'event_kind', doc.doc_kind) }</div>
+                <div className="flex items-baseline justify-between gap-2">
+                  <a
+                    href={`/api/legal/matters/${matter.id}/documents?docId=${doc.id}`}
+                    className="font-semibold text-blue-700 hover:underline"
+                  >
+                    {doc.title || doc.file_name}
+                  </a>
+                  <span className="text-gray-500">{doc.direction === 'out' ? 'отправили' : 'получили'}</span>
+                </div>
+                <div className="text-gray-500">
+                  {DOC_KIND_LABELS[doc.doc_kind] || dictName(dictionaries, 'event_kind', doc.doc_kind)}
+                  {doc.extract_status && doc.extract_status !== 'completed' ? ' · текст не прочитан' : ''}
+                </div>
               </div>
             ))}
-            <div className="mt-1 text-[11px] text-amber-700">
-              Загрузка документов и разбор ботом — в разработке, пока не работает.
-            </div>
+            <MatterDocumentForm matterId={matter.id} onSaved={load} />
           </Panel>
 
           <Panel title="Ответственные">

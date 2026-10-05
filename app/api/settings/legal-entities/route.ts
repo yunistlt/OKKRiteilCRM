@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { sellerOptions } from '@/lib/own-crm/documents';
+import { refreshSignersFromEgrul } from '@/lib/own-crm/legal-entity-head';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,7 @@ export async function GET() {
     const [{ data: entities }, sellers] = await Promise.all([
         supabase
             .from('legal_entities')
-            .select('id, short_name, full_name, inn, kind, active, site_code, vat_percent, signer_name, signer_title, note')
+            .select('id, short_name, full_name, inn, kind, active, site_code, vat_percent, signer_name, signer_title, seal_place, seal_image_path, signature_image_path, note')
             .order('sort_order', { ascending: true }),
         sellerOptions().catch(() => []),
     ]);
@@ -36,7 +37,22 @@ const saveSchema = z.object({
     site_code: z.string().trim().max(100).nullable().optional(),
     signer_name: z.string().trim().max(200).nullable().optional(),
     signer_title: z.string().trim().max(200).nullable().optional(),
+    seal_place: z.string().trim().max(200).nullable().optional(),
 });
+
+/** Подписанты из ЕГРЮЛ: руководителя по ИНН отдаёт Dadata. */
+export async function PUT() {
+    const session = await getSession();
+    if (!session?.user) {
+        return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
+    }
+
+    try {
+        return NextResponse.json({ ok: true, updates: await refreshSignersFromEgrul() });
+    } catch (e: any) {
+        return NextResponse.json({ error: e.message }, { status: 502 });
+    }
+}
 
 export async function POST(request: Request) {
     const session = await getSession();

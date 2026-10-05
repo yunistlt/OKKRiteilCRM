@@ -128,7 +128,15 @@ export function PhonePanel() {
         onClick={() => setIsOpen(true)}
         data-ui-audit-zone="phone"
         // В мессенджере на телефоне своя шапка с кнопками — не наезжаем на неё.
-        className={`fixed right-16 top-3 z-[60] items-center gap-2 bg-gray-900 px-3 py-2 text-xs font-black uppercase tracking-widest text-white hover:bg-blue-600 ${pathname.startsWith('/messenger') ? 'hidden md:flex' : 'flex'}`}
+        // На «Моём дне» кнопки телефона нет: экран про одно следующее действие,
+        // а звонок начинается из карточки заказа (требование владельца 01.10.2026).
+        className={`fixed right-16 top-3 z-[60] items-center gap-2 bg-gray-900 px-3 py-2 text-xs font-black uppercase tracking-widest text-white hover:bg-blue-600 ${
+            pathname.startsWith('/analytics')
+                ? 'hidden'
+                : pathname.startsWith('/messenger')
+                    ? 'hidden md:flex'
+                    : 'flex'
+        }`}
       >
         <Phone size={16} />
         Телефон

@@ -11,6 +11,7 @@ import {
   toRetailCrmPaidAt,
 } from '@/lib/retailcrm/payments';
 import { fetchRetailCrmOrder } from '@/lib/retailcrm/orders';
+import { addOwnPayment } from '@/lib/own-crm/payments';
 
 // Единственный источник правды по оплатам — банковский синк (выписка). Дубль оплаты
 // (напр. вручную «оплаченный» счёт invoicejur на ту же сумму, что и наш банковский платёж)
@@ -189,6 +190,59 @@ async function pushMatchedPaymentToCrm(
   row: PointPaymentRow,
 ): Promise<{ movedToProduction: boolean; productionStatusName?: string; productionNotMovedReason?: string }> {
   const amountRub = kopecksToRubles(Number(row.amount_kopecks));
+
+  // Свой заказ: в RetailCRM его нет, платёж писать некуда — ведём в своём
+  // журнале оплат (решение владельца 30.09.2026, менеджер целиком у нас).
+  if (row.matched_order_id) {
+    const { data: own } = await supabase
+      .from('orders')
+      .select('id, number, is_own')
+      .eq('order_id', row.matched_order_id)
+      .maybeSingle();
+
+    if ((own as any)?.is_own) {
+      await addOwnPayment({
+        orderId: Number((own as any).id),
+        orderNumber: String((own as any).number ?? row.matched_order_number ?? ''),
+        amount: amountRub,
+        paidAt: String(row.payment_date || (row.payment_datetime || '').slice(0, 10)),
+        method: 'Банковский перевод',
+        payerName: row.payer_name ?? null,
+        purpose: row.purpose ?? null,
+        pointPaymentId: Number(row.id),
+        createdBy: 'разнос оплат',
+      });
+
+      await supabase
+        .from('point_payments')
+        .update({
+          retailcrm_synced_at: new Date().toISOString(),
+          retailcrm_error: null,
+          crm_posting: 'posted_auto',
+          posting_checked_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id);
+
+      await clearPushFailure(row.id).catch(() => undefined);
+
+      /**
+       * Свой заказ после оплаты переводим в производство так же, как заказ
+       * RetailCRM. Раньше здесь стоял отказ «передают руками»: механизм умел
+       * только RetailCRM, и оплаченный заказ висел на «Счёт на оплате»
+       * (02.10.2026, заказ 54836).
+       *
+       * Передача в сам ЦехУспех — отдельная работа (раздел E бэклога): туда
+       * заказ пока попадает руками, но статус в нашей базе уже меняется.
+       */
+      const moved = await moveOrderToProductionAfterPayment(row.matched_order_id);
+      return {
+        movedToProduction: moved.moved,
+        productionStatusName: moved.statusName,
+        productionNotMovedReason: moved.notMovedReason,
+      };
+    }
+  }
 
   // Тянем заказ один раз: для сверки дублей оплат и для гарда производства (статус/site).
   const order = row.matched_order_id ? await fetchRetailCrmOrder(row.matched_order_id) : null;

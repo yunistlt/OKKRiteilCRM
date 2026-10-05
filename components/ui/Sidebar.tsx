@@ -3,23 +3,14 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import type { AppRole } from '@/lib/auth';
 import { canAccessPathWithRules } from '@/lib/rbac';
+import { ROLE_LABELS } from '@/lib/access-control';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { resolveMessengerAvatarSrc } from '@/lib/messenger/avatar';
+import { NAV_GROUPS, type NavGroup } from '@/lib/nav';
 
-interface NavItem {
-    name: string;
-    href: string;
-    icon: string;
-    agent?: string;
-    allowed?: AppRole[];
-}
-
-interface NavGroup {
-    title: string;
-    items: NavItem[];
-}
+const BUILD_SHA = process.env.NEXT_PUBLIC_BUILD_SHA || '';
+const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME || '';
 
 export default function Sidebar() {
     const pathname = usePathname();
@@ -57,70 +48,25 @@ export default function Sidebar() {
         return () => window.removeEventListener('open-mobile-sidebar', handleOpenMobileSidebar);
     }, []);
 
-    const groups: NavGroup[] = [
-        {
-            title: 'Управление',
-            items: [
-                { name: 'Центр Управления', href: '/', icon: '🏠', allowed: ['admin', 'okk', 'rop'] },
-                { name: 'Штаб', href: '/shtab', icon: '🧭', allowed: ['admin'] },
-                { name: 'Заказы', href: '/orders', icon: '🧾', allowed: ['admin', 'okk', 'rop', 'manager'] },
-                { name: 'Клиенты', href: '/clients', icon: '🏢', allowed: ['admin', 'okk', 'rop', 'manager'] },
-                { name: 'Статусы и переходы', href: '/settings/statuses/board', icon: '🔀', allowed: ['admin'] },
-                { name: 'Контроль Качества', href: '/okk', icon: '📋', agent: 'maxim' },
-                { name: 'Все ИИ-агенты', href: '/agents', icon: '🧠', allowed: ['admin', 'okk', 'rop', 'manager'] },
-                { name: 'Согласование Отмен', href: '/settings/ai-tools', icon: '🤖', agent: 'anna', allowed: ['admin', 'okk'] },
-            ]
-        },
-        {
-            title: 'Аналитика',
-            items: [
-                { name: 'Хаб Аналитики', href: '/analytics', icon: '📊', allowed: ['admin', 'okk', 'rop'] },
-            ]
-        },
-        {
-            title: 'Зарплата',
-            items: [
-                { name: 'Зарплата ОП', href: '/salary', icon: '💰', allowed: ['admin', 'rop'] },
-                { name: 'Моя зарплата', href: '/salary/my', icon: '🧾', allowed: ['admin', 'rop', 'manager'] },
-                { name: 'Настройки мотивации', href: '/salary/settings', icon: '⚙️', allowed: ['admin', 'rop'] },
-            ]
-        },
-        {
-            title: 'Связь',
-            items: [
-                { name: 'Ловец Лидов', href: '/okk/lead-catcher', icon: '🎯', agent: 'elena' },
-                { name: 'Мессенджер', href: '/messenger', icon: '💬' },
-            ]
-        },
-        {
-            title: 'Юридический отдел',
-            items: [
-                { name: 'Претензионно-исковая работа', href: '/legal/matters', icon: '⚖️', allowed: ['admin', 'jurist'] },
-                { name: 'Юридический отдел', href: '/legal', icon: '📑', allowed: ['admin', 'okk', 'rop', 'manager', 'jurist'] },
-            ]
-        },
-        {
-            title: 'Система',
-            items: [
-                { name: 'Статус Систем', href: '/settings/status', icon: '🛰️', agent: 'igor', allowed: ['admin'] },
-                { name: 'Доступы и права', href: '/settings/access', icon: '🛡️', allowed: ['admin'] },
-                { name: 'Менеджеры', href: '/settings/managers', icon: '👤', allowed: ['admin'] },
-                { name: 'Наши юрлица', href: '/settings/legal-entities', icon: '🏛️', allowed: ['admin', 'rop'] },
-                { name: 'Статусы Заказов', href: '/settings/statuses', icon: '📂', allowed: ['admin'] },
-                { name: 'Бот-РОП', href: '/settings/sales-rop', icon: '📋', allowed: ['admin', 'rop'] },
-                { name: 'Уведомления', href: '/settings/notifications', icon: '🔔', allowed: ['admin'] },
-                { name: 'Правила (Rules)', href: '/settings/rules', icon: '⚖️', allowed: ['admin'] },
-                { name: 'Режим тестировщика', href: '/settings/qa', icon: '🧪', allowed: ['admin'] },
-            ]
-        },
-        {
-            title: 'AI Центр',
-            items: [
-                { name: 'Настройка Промпта', href: '/settings/ai', icon: '✍️', allowed: ['admin'] },
-                { name: 'Примеры обучения', href: '/settings/ai/training-examples', icon: '📚', allowed: ['admin'] },
-            ]
-        }
-    ];
+    /**
+     * Сколько оповещений человек ещё не прочитал. Спрашиваем нечасто: это
+     * подсказка, а не рабочий экран.
+     */
+    const [unreadCount, setUnreadCount] = useState(0);
+    useEffect(() => {
+        if (!user) return;
+        const load = () => {
+            fetch('/api/notifications')
+                .then((r) => (r.ok ? r.json() : null))
+                .then((d) => { if (d) setUnreadCount(Number(d.unread ?? 0)); })
+                .catch(() => undefined);
+        };
+        load();
+        const timer = setInterval(load, 120_000);
+        return () => clearInterval(timer);
+    }, [user]);
+
+    const groups: NavGroup[] = NAV_GROUPS;
 
     const visibleGroups = groups
         .map((group) => ({
@@ -202,9 +148,20 @@ export default function Sidebar() {
             `}>
                 {/* Logo Section */}
                 <div className={`flex ${isCollapsed && !isMobileOpen ? 'px-3 py-5 flex-col items-center gap-3' : 'p-6 items-center justify-between'}`}>
-                    <Link href="/" className="text-xl font-black tracking-tighter text-blue-400 group">
-                        OKK<span className="text-white group-hover:text-blue-200">{isCollapsed ? '' : 'CRM'}</span>
-                    </Link>
+                    <div className="min-w-0">
+                        <Link href="/" className="text-xl font-black tracking-tighter text-blue-400 group">
+                            OKK<span className="text-white group-hover:text-blue-200">{isCollapsed ? '' : 'CRM'}</span>
+                        </Link>
+                        {/* Номер сборки: по нему видно, дошло ли обновление до прода. */}
+                        {BUILD_SHA && (
+                            <p
+                                className="mt-0.5 font-mono text-[10px] leading-none text-gray-500"
+                                title={BUILD_TIME ? `Собрано ${new Date(BUILD_TIME).toLocaleString('ru-RU')}` : undefined}
+                            >
+                                {isCollapsed && !isMobileOpen ? BUILD_SHA : `сборка ${BUILD_SHA}`}
+                            </p>
+                        )}
+                    </div>
                     <button 
                         onClick={() => setIsCollapsed(!isCollapsed)}
                         className="hidden md:flex h-10 w-10 shrink-0 items-center justify-center border border-white/15 bg-white/15 text-white hover:bg-blue-500 hover:border-blue-300/40"
@@ -263,6 +220,15 @@ export default function Sidebar() {
                                                 </div>
                                             )}
 
+                                            {/* Непрочитанные оповещения — числом прямо на пункте
+                                                меню: колокольчик в шапке налезал на телефон
+                                                (решение владельца 05.10.2026). */}
+                                            {item.href === '/notifications' && unreadCount > 0 && (
+                                                <span className="ml-auto min-w-[18px] bg-red-600 px-1 text-center text-[10px] font-bold leading-[18px] text-white">
+                                                    {unreadCount > 99 ? '99+' : unreadCount}
+                                                </span>
+                                            )}
+
                                             {/* Tooltip for collapsed mode */}
                                             {isCollapsed && !isMobileOpen && (
                                                 <div className="absolute left-full ml-4 px-2 py-1 bg-gray-800 text-white text-[10px] opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50">
@@ -291,7 +257,11 @@ export default function Sidebar() {
                             {(!isCollapsed || isMobileOpen) && (
                                 <div className="flex flex-col min-w-0">
                                     <span className="text-sm font-black truncate">{displayName}</span>
-                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{user.role}</span>
+                                    {/* Название роли по-русски: в интерфейсе кодов
+                                        быть не должно (закон проекта). */}
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                                        {ROLE_LABELS[user.role] ?? user.role}
+                                    </span>
                                 </div>
                             )}
                             {(!isCollapsed || isMobileOpen) && (

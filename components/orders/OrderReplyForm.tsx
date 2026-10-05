@@ -2,15 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import { Loader, Send } from 'lucide-react';
+import { stripOrderThreadTag } from '@/lib/email-subject';
 
 interface OrderReplyFormProps {
     orderNumber: string;
     onClose: () => void;
     onSent?: () => void;
+    /**
+     * Ответ на конкретное письмо: адрес, тема и цитата приходят от него.
+     * Раньше форма всегда начиналась с чистого листа, и менеджер вручную искал,
+     * кому и на что отвечает (просьба Жени Матвеевой 05.10.2026).
+     */
+    replyTo?: { to?: string | null; subject?: string | null; quote?: string | null } | null;
 }
 
 interface ThreadState {
     to: string | null;
+    /** Подпись менеджера заказа — подставляется в пустое письмо. */
+    signature?: string | null;
     subjectText: string;
     hasThread: boolean;
     thread: Array<{ from: string | null; fromName: string | null; receivedAt: string | null; preview: string }>;
@@ -20,30 +29,24 @@ interface ThreadState {
  * Ответ клиенту по заказу. Почта у компании одна, поэтому письмо привязывается к заказу
  * служебным тегом в теме — его добавляет сервер, менеджеру этого видеть не нужно.
  */
-export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderReplyFormProps) {
+export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }: OrderReplyFormProps) {
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
     // Вложения: клиенту часто нужно приложить КП, счёт или чертёж.
     const [files, setFiles] = useState<File[]>([]);
-    const [attaching, setAttaching] = useState<'proposal' | 'invoice' | null>(null);
+    /**
+     * КП и счёт собирает сервер — через браузер они больше не ходят.
+     * Раньше документ скачивался сюда и уходил обратно строкой base64: вместе с
+     * паспортами и сертификатами письмо упиралось в лимит запроса и падало
+     * непонятной ошибкой (Ирина 02.10.2026).
+     */
+    const [documents, setDocuments] = useState<Array<'proposal' | 'invoice'>>([]);
+    /** Файлы заказа, уже лежащие у нас: их письму достаточно назвать по номеру. */
+    const [attachedFileIds] = useState<number[]>([]);
 
-    /** Приложить к письму документ по этому заказу: КП или счёт. */
-    const attachOrderDocument = async (kind: 'proposal' | 'invoice') => {
-        setAttaching(kind);
-        try {
-            const response = await fetch(`/api/orders/${orderNumber}/document?kind=${kind}`);
-            if (!response.ok) {
-                const payload = await response.json().catch(() => ({}));
-                throw new Error(payload.error || 'Документ не получился');
-            }
-            const blob = await response.blob();
-            const name = kind === 'invoice' ? `Счёт №${orderNumber}.pdf` : `КП №${orderNumber}.pdf`;
-            setFiles((prev) => [...prev, new File([blob], name, { type: 'application/pdf' })]);
-        } catch (e) {
-            setError(e instanceof Error ? e.message : 'Документ не получился');
-        } finally {
-            setAttaching(null);
-        }
+    /** Отметить, что к письму нужно приложить КП или счёт по этому заказу. */
+    const attachOrderDocument = (kind: 'proposal' | 'invoice') => {
+        setDocuments((prev) => (prev.includes(kind) ? prev.filter((k) => k !== kind) : [...prev, kind]));
     };
     const [error, setError] = useState<string | null>(null);
     const [done, setDone] = useState(false);
@@ -52,8 +55,12 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
     const [subject, setSubject] = useState('');
     const [body, setBody] = useState('');
     const [thread, setThread] = useState<ThreadState | null>(null);
-    const [templates, setTemplates] = useState<Array<{ id: string; code: string; name: string }>>([]);
+    const [templates, setTemplates] = useState<Array<{ id: string; code: string; name: string; mode?: string }>>([]);
     const [applyingTemplate, setApplyingTemplate] = useState(false);
+    // Черновик: письмо часто пишут не за один присест — ждут расчёт или уходят на звонок.
+    const [savingDraft, setSavingDraft] = useState(false);
+    const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+    const [draftNote, setDraftNote] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -64,12 +71,43 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                 if (cancelled) return;
                 if (!res.ok) throw new Error(data.error || 'Не удалось загрузить переписку');
                 setThread(data);
-                setTo(data.to || '');
-                setSubject(data.subjectText || `По заказу №${orderNumber}`);
+                setTo(replyTo?.to || data.to || '');
+                // Отвечаем — тема письма с «Re:», иначе обычная тема по заказу.
+                // Номер заказа в тему ставит сервер — здесь только человеческая
+                // часть. Поэтому чистим тему исходного письма от тега и от
+                // цепочки Re:, иначе номер встал бы в тему дважды.
+                const human = replyTo?.subject ? stripOrderThreadTag(replyTo.subject) : '';
+                setSubject(human ? `Re: ${human}` : data.subjectText || `По заказу №${orderNumber}`);
+                // Подпись ставим сразу: менеджер дописывает письмо над ней, как в RetailCRM.
+                // При ответе под подписью цитируем исходное письмо.
+                const quote = replyTo?.quote
+                    ? `\n\n${String(replyTo.quote).split('\n').map((line) => `> ${line}`).join('\n')}`
+                    : '';
+                if (data.signature || quote) setBody(`\n\n${data.signature ?? ''}${quote}`);
 
                 const tplRes = await fetch('/api/settings/templates?kind=email&active=true');
                 const tplData = await tplRes.json();
                 if (!cancelled && tplRes.ok) setTemplates(tplData.email || []);
+
+                // Недописанное письмо возвращаем на место, вместе с тем, что
+                // человек уже набрал: иначе он начинает заново.
+                // Отвечаем на конкретное письмо — черновик не подставляем: он
+                // перебил бы адрес, тему и цитату чужим недописанным текстом.
+                const draftRes = replyTo
+                    ? null
+                    : await fetch(`/api/orders/${orderNumber}/email-draft`);
+                const draftData = draftRes ? await draftRes.json().catch(() => null) : null;
+                if (!cancelled && draftRes?.ok && draftData?.draft) {
+                    if (draftData.draft.to) setTo(draftData.draft.to);
+                    if (draftData.draft.subject) setSubject(draftData.draft.subject);
+                    if (draftData.draft.body) setBody(draftData.draft.body);
+                    setDraftSavedAt(draftData.draft.savedAt || null);
+                    setDraftNote(
+                        (draftData.draft.attachments || []).length
+                            ? `Черновик восстановлен. К нему прикладывали: ${(draftData.draft.attachments || []).join(', ')} — вложения нужно приложить заново.`
+                            : 'Черновик восстановлен.',
+                    );
+                }
             } catch (e) {
                 if (!cancelled) setError(e instanceof Error ? e.message : 'Не удалось загрузить переписку');
             } finally {
@@ -77,7 +115,7 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
             }
         })();
         return () => { cancelled = true; };
-    }, [orderNumber]);
+    }, [orderNumber, replyTo]);
 
 
     const applyTemplate = async (code: string) => {
@@ -87,14 +125,52 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
         try {
             const res = await fetch(`/api/orders/${orderNumber}/email-template/${code}`);
             const data = await res.json();
-            if (!res.ok || !data.ok) throw new Error(data.details || data.error || 'Шаблон не собрался');
+            if (!res.ok || !data.ok) {
+                throw new Error(
+                    data.details
+                        || (data.error === 'ai_failed' ? 'ИИ не смог написать письмо — напишите руками.' : null)
+                        || (data.error === 'template_without_prompt' ? 'У шаблона нет задания для ИИ — поправьте его в настройках.' : null)
+                        || 'Шаблон не собрался',
+                );
+            }
             setSubject(data.subject || '');
             // Тело приходит готовым HTML — в поле показываем текстом, разметку уберём при отправке.
-            setBody(htmlToPlainText(data.html || ''));
+            // Подпись дописываем, если шаблон её не содержит: письмо без подписи не уходит.
+            const templateBody = htmlToPlainText(data.html || '');
+            const sign = thread?.signature;
+            setBody(sign && !templateBody.includes('С уважением') ? `${templateBody}\n\n${sign}` : templateBody);
+            // Письмо от ИИ читает человек: он отвечает за то, что уйдёт клиенту.
+            setDraftNote(data.byAi ? 'Письмо написал ИИ по данным заказа — прочитайте и поправьте перед отправкой.' : null);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Шаблон не собрался');
         } finally {
             setApplyingTemplate(false);
+        }
+    };
+
+    /** Сохранить письмо, не отправляя. Вложения не храним — только их названия. */
+    const saveDraft = async () => {
+        setError(null);
+        setSavingDraft(true);
+        try {
+            const res = await fetch(`/api/orders/${orderNumber}/email-draft`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: to.trim(),
+                    subject: subject.trim(),
+                    body,
+                    attachments: files.map((f) => f.name),
+                }),
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !data?.ok) throw new Error(data?.error || 'Черновик не сохранился');
+            setDraftSavedAt(data.savedAt);
+            setDraftNote('Черновик сохранён — письмо не отправлено.');
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Черновик не сохранился');
+        } finally {
+            setSavingDraft(false);
         }
     };
 
@@ -113,28 +189,52 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                 .map((line) => (line.trim() ? `<p>${line.replace(/</g, '&lt;')}</p>` : '<p>&nbsp;</p>'))
                 .join('');
 
-            // Вложения отправляем вместе с письмом: читаем файлы в браузере и
-            // передаём содержимое строкой — отдельного хранилища для этого не нужно.
-            const attachments = await Promise.all(files.map(async (file) => ({
-                filename: file.name,
-                contentType: file.type || 'application/octet-stream',
-                contentBase64: Buffer.from(await file.arrayBuffer()).toString('base64'),
-            })));
+            /**
+             * Файлы с компьютера сперва кладём в заказ, а письму передаём только
+             * их номера.
+             *
+             * Раньше содержимое шло прямо в теле письма строкой base64: паспорт
+             * и сертификат на пять мегабайт превращались в семь, запрос не
+             * проходил, и менеджер видел «Unexpected token R» (Ирина 02.10.2026).
+             * Попутно файл остаётся в разделе «Файлы» заказа — его видно всем,
+             * кто работает с заказом.
+             */
+            const orderFileIds: number[] = [...attachedFileIds];
+            for (const file of files) {
+                const form = new FormData();
+                form.append('file', file);
+                const up = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files/upload`, { method: 'POST', body: form });
+                const payload = await up.json().catch(() => null);
+                if (!up.ok || !payload?.file?.id) {
+                    throw new Error(payload?.error || `Файл «${file.name}» не загрузился — попробуйте ещё раз`);
+                }
+                orderFileIds.push(Number(payload.file.id));
+            }
 
             const res = await fetch('/api/orders/send-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 // force: письмо пишет человек, он и решает, сколько раз отвечать по заказу.
                 // Защита от двойного клика — блокировка кнопки на время отправки.
-                body: JSON.stringify({ orderNumber, to: to.trim(), subjectText: subject.trim(), html, force: true, attachments }),
+                body: JSON.stringify({ orderNumber, to: to.trim(), subjectText: subject.trim(), html, force: true, documents, orderFileIds }),
             });
 
-            const data = await res.json();
+            // Ответ не всегда JSON: при слишком тяжёлом письме сервер отвечает
+            // текстом, и разбор падал технической ошибкой «Unexpected token…».
+            const data = await res.json().catch(() => null);
+            if (!data) {
+                throw new Error(res.status === 413
+                    ? 'Письмо слишком тяжёлое — уберите часть вложений и отправьте отдельным письмом'
+                    : `Сервер ответил ошибкой (${res.status}) — письмо не ушло`);
+            }
             if (!res.ok || !data.ok) {
                 throw new Error(data.error === 'smtp_not_configured'
                     ? 'Почта не настроена на сервере — письмо не отправлено.'
                     : (data.error || 'Письмо не ушло'));
             }
+
+            // Письмо ушло — черновик больше не нужен, иначе он всплывёт снова.
+            await fetch(`/api/orders/${orderNumber}/email-draft`, { method: 'DELETE' }).catch(() => undefined);
 
             setDone(true);
             onSent?.();
@@ -188,7 +288,9 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                             <option key={t.id} value={t.code}>{t.name}</option>
                         ))}
                     </select>
-                    <p className="mt-1 text-[11px] text-gray-500">Тема и текст подставятся из шаблона, дальше правьте руками.</p>
+                    <p className="mt-1 text-[11px] text-gray-500">
+                        Тема и текст подставятся из шаблона, дальше правьте руками. Шаблоны с пометкой «ИИ» пишут письмо под этот заказ.
+                    </p>
                 </div>
             )}
 
@@ -231,22 +333,35 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
 
             {error && <p className="mt-2 border border-red-300 bg-red-50 px-2 py-1.5 text-xs text-red-700">{error}</p>}
 
+            {draftNote && (
+                <p className="mt-2 border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-600">
+                    {draftNote}
+                    {draftSavedAt && <span className="ml-1 text-gray-400">({new Date(draftSavedAt).toLocaleString('ru-RU')})</span>}
+                </p>
+            )}
+
             <div className="mt-3 flex items-center gap-3">
                 {/* Документы по заказу прикладываются одной кнопкой: искать их на
                     диске незачем, они формируются из этой же карточки. */}
                 <button
                     onClick={() => attachOrderDocument('proposal')}
-                    disabled={attaching !== null}
-                    className="border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                    className={`border px-3 py-2 text-sm font-bold ${
+                        documents.includes('proposal')
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                    }`}
                 >
-                    {attaching === 'proposal' ? 'Готовлю КП…' : 'Приложить КП'}
+                    {documents.includes('proposal') ? 'КП приложено ✓' : 'Приложить КП'}
                 </button>
                 <button
                     onClick={() => attachOrderDocument('invoice')}
-                    disabled={attaching !== null}
-                    className="border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                    className={`border px-3 py-2 text-sm font-bold ${
+                        documents.includes('invoice')
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                    }`}
                 >
-                    {attaching === 'invoice' ? 'Готовлю счёт…' : 'Приложить счёт'}
+                    {documents.includes('invoice') ? 'Счёт приложен ✓' : 'Приложить счёт'}
                 </button>
                 <label className="cursor-pointer border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100">
                     Файл с компьютера
@@ -257,6 +372,13 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                         onChange={(e) => setFiles((prev) => [...prev, ...Array.from(e.target.files || [])])}
                     />
                 </label>
+                <button
+                    onClick={saveDraft}
+                    disabled={savingDraft || sending}
+                    className="border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                >
+                    {savingDraft ? 'Сохраняем…' : 'Сохранить черновик'}
+                </button>
                 <button
                     onClick={send}
                     disabled={sending}

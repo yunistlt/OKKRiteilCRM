@@ -14,6 +14,16 @@ describe('moodOf', () => {
         expect(moodOf('отлично , мне нужен пдф , сладкая')).toBe('pleased');
     });
 
+    it('про наряд — кружится', () => {
+        expect(moodOf('покрутись')).toBe('twirl');
+        expect(moodOf('Красивое платье!')).toBe('twirl');
+        expect(moodOf('красавица, покажи наряд')).toBe('twirl');
+        expect(moodOf('Привет, классный костюм')).toBe('greet');
+        expect(moodOf('Сделай отчёт по продажам костюмов спецодежды за месяц и пришли пдф с разбивкой по менеджерам')).toBe(
+            'explain',
+        );
+    });
+
     it('поручение ласковым словом — это дело, а не комплимент', () => {
         expect(
             moodOf(

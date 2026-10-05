@@ -3,6 +3,7 @@
 import { supabase } from '@/utils/supabase';
 import { revalidatePath } from 'next/cache';
 import { resolveManagerRoles, setManagerRoleChoice } from '@/lib/salary/roles';
+import { returnManagerOrders, takeoverEveryone, takeoverEveryonePreview, takeoverManagerOrders, takeoverPreview } from '@/lib/own-crm/takeover';
 
 // ── Реестр ЗП: участие (пофамильно) + роль из групп RetailCRM ────────────────
 
@@ -65,6 +66,75 @@ export async function saveManagerExtensions(items: { managerId: number; extensio
         return { success: true };
     } catch (e: any) {
         return { success: false, error: e.message };
+    }
+}
+
+/**
+ * Кто работает в нашей CRM.
+ *
+ * Включение — это переезд: менеджер работает только у нас, и его заказы
+ * RetailCRM тоже становятся нашими (решение владельца 01.10.2026). Поэтому
+ * вместе с флагом забираем все его заказы: иначе он работал бы в двух системах,
+ * а заявки живут месяцами и годами.
+ *
+ * Выключение флага возвращает заказы под RetailCRM: синхронизация снова начнёт
+ * их обновлять. Наработанное у нас за это время при этом затрётся снимком из
+ * RetailCRM — правки наружу не уходили (см. TAKEOVER_ROLLBACK_NOTE).
+ */
+export async function saveOwnCrmManagers(items: { managerId: number; ownCrm: boolean }[]) {
+    try {
+        const taken: Array<{ managerId: number; orders: number }> = [];
+
+        for (const { managerId, ownCrm } of items) {
+            const { error } = await supabase.from('managers').update({ own_crm: ownCrm }).eq('id', managerId);
+            if (error) {
+                const missing = error.code === '42703' || (error.message || '').includes('own_crm');
+                if (missing) return { success: false, errorType: 'COLUMN_MISSING' as const };
+                throw error;
+            }
+
+            if (ownCrm) {
+                const result = await takeoverManagerOrders(managerId);
+                taken.push({ managerId, orders: result.taken });
+            } else {
+                const returned = await returnManagerOrders(managerId);
+                taken.push({ managerId, orders: -returned });
+            }
+        }
+
+        revalidatePath('/settings/managers');
+        revalidatePath('/orders');
+        return { success: true, taken };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
+/** Сколько заказов заберёт переезд — спрашиваем до того, как нажали. */
+export async function previewOwnCrmTakeover(managerId: number) {
+    return takeoverPreview(managerId);
+}
+
+/**
+ * Переезд всего отдела одним действием (решение владельца 02.10.2026:
+ * 04.10.2026 включаем свою CRM всем сотрудникам).
+ */
+export async function previewStaffTakeover() {
+    try {
+        return { success: true as const, rows: await takeoverEveryonePreview() };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
+}
+
+export async function runStaffTakeover() {
+    try {
+        const result = await takeoverEveryone();
+        revalidatePath('/settings/managers');
+        revalidatePath('/orders');
+        return { success: true as const, ...result };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
     }
 }
 

@@ -1,7 +1,13 @@
 import { SignJWT, decodeJwt, jwtVerify } from 'jose';
 import { cookies, headers } from 'next/headers';
 
-export type AppRole = 'admin' | 'okk' | 'rop' | 'manager' | 'jurist' | 'demo';
+/**
+ * Роли системы. `logistics` — Лариса и Катя: отгрузка, доставка, закупки.
+ * Им нужны заказы, клиенты, письма и звонки, но не зарплата (решение владельца
+ * 05.10.2026). Роль заводится ещё в двух местах: тип `app_role` и ограничение
+ * `users_role_check` — без них вход ломается.
+ */
+export type AppRole = 'admin' | 'okk' | 'rop' | 'manager' | 'jurist' | 'demo' | 'logistics' | 'logistics_view';
 
 export type SessionUser = {
     id: string;
@@ -41,7 +47,7 @@ type RequestLike = {
 };
 
 function normalizeRole(rawRole: unknown): AppRole | null {
-    if (rawRole === 'admin' || rawRole === 'okk' || rawRole === 'rop' || rawRole === 'manager' || rawRole === 'jurist' || rawRole === 'demo') {
+    if (rawRole === 'admin' || rawRole === 'okk' || rawRole === 'rop' || rawRole === 'manager' || rawRole === 'jurist' || rawRole === 'demo' || rawRole === 'logistics' || rawRole === 'logistics_view') {
         return rawRole;
     }
     return null;

@@ -1,8 +1,11 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { formatEventValue, COMMUNICATION_FIELD_PATTERNS } from '@/lib/order-events';
+import { formatEventValue, MAIL_FEED_FIELD_PATTERNS } from '@/lib/order-events';
 import { buildFieldLabelResolver } from '@/lib/order-field-labels';
+import { loadOrderCalls } from '@/lib/own-crm/order-calls';
+import { loadOrderMail } from '@/lib/own-crm/order-mail';
+import { clientCardIdForOrder } from '@/lib/own-crm/clients';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,33 +29,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
         if (orderError) throw orderError;
 
-        // 2. Звонки заказа.
-        //
-        // Связь берём из call_order_link: привязку сделала RetailCRM, а наш
-        // матчинг по номеру телефона остался запасным путём и ошибается
-        // примерно в трети случаев. Сортировка по времени разговора, а не по
-        // времени сопоставления: второе отстаёт, иногда на несколько суток.
-        const { data: matches } = await supabase
-            .from('call_order_link')
-            .select('telphin_call_id, source, started_at')
-            .eq('order_id', id)
-            .order('started_at', { ascending: false });
-
-        const callIds = ((matches ?? []) as any[]).map((m) => m.telphin_call_id).filter(Boolean);
-
-        let calls: any[] = [];
-        if (callIds.length > 0) {
-            // Step B: Fetch calls and their transcriptions
-            const { data: callsData, error: callsError } = await supabase
-                .from('raw_telphin_calls')
-                .select('*')
-                .in('telphin_call_id', callIds)
-                .order('started_at', { ascending: false });
-
-            if (callsError) console.error('[Details] Error fetching calls:', callsError);
-
-            calls = callsData || [];
-        }
+        // 2. Звонки заказа — все разговоры, о которых знаем: см. lib/own-crm/order-calls.ts.
+        const calls = await loadOrderCalls({
+            orderNumber: String(order.number ?? order.order_id),
+            orderRowId: Number(order.id),
+        });
 
         // 3. Коммуникации (письма, сообщения, комментарии) — из истории заказа
         //    (order_history_log; raw_order_events заморожена, см. lib/order-events.ts)
@@ -60,21 +41,93 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             .from('order_history_log')
             .select('field, old_value, new_value, occurred_at')
             .eq('retailcrm_order_id', order.order_id)
-            .or(COMMUNICATION_FIELD_PATTERNS.map((p) => `field.ilike.${p}`).join(','))
+            .or(MAIL_FEED_FIELD_PATTERNS.map((p) => `field.ilike.${p}`).join(','))
             .order('occurred_at', { ascending: false })
             .limit(10);
 
-        // Normalize events for frontend. Тип — русская подпись поля (ЗАКОН «только
-        // человеческий язык»), код поля остаётся в fieldCode.
+        // Лента «Письма и сообщения»: настоящая переписка из своих таблиц
+        // (входящие Катерины и письма, отправленные из карточки) плюс
+        // email-события истории RetailCRM. Комментарии менеджера сюда не
+        // попадают — у них своё поле (замечания Евгении 02.10.2026).
         const fieldLabel = await buildFieldLabelResolver();
-        const emails = events?.map(e => ({
-            id: e.occurred_at, // use timestamp as id
-            date: e.occurred_at,
-            type: fieldLabel(e.field),
-            fieldCode: e.field,
-            text: formatEventValue(e.new_value),
-            source: 'retailcrm'
-        })) || [];
+        const mail = await loadOrderMail({
+            orderNumber: String(order.number ?? order.order_id),
+            orderId: order.order_id,
+        });
+
+        /**
+         * Советы бота-РОПа по заказу: текст лежит в задаче дня, отдельной
+         * таблицы под них нет и не нужно. Карточка показывает их своим окном
+         * рядом с комментарием менеджера (решение владельца 05.10.2026).
+         */
+        const { data: ropTasks } = await supabase
+            .from('sales_rop_task')
+            .select('plan_date, reason_text, note_written_at')
+            .eq('order_id', order.order_id)
+            .not('reason_text', 'is', null)
+            .order('plan_date', { ascending: false })
+            .limit(10);
+
+        const ropNotes = ((ropTasks ?? []) as any[])
+            .filter((row) => String(row.reason_text ?? '').trim())
+            .map((row) => ({ date: row.plan_date, text: String(row.reason_text).trim() }));
+
+        /**
+         * Название компании заказчика. В заказе `customer` часто лежит одним
+         * идентификатором — у своих заявок там только `{id, type}`, — и поле
+         * «Компания» в карточке показывало прочерк, хотя карточка клиента
+         * заполнена (Лена Парфёнова 05.10.2026, заказ 900048). Берём название
+         * оттуда, где оно живёт, — из карточки клиента.
+         */
+        const customerId = (order as any).raw_payload?.customer?.id ?? (order as any).customer?.id ?? null;
+        /**
+         * Какую карточку открывать по кнопкам «карточка заказчика» и «править в
+         * карточке клиента». Заказ бывает заведён на живого человека, а не на
+         * компанию — тогда это компания, где он контактное лицо (см.
+         * lib/own-crm/clients.ts). Нет и её — отдаём null, карточка объясняет
+         * менеджеру, что завести.
+         */
+        const clientCardId = await clientCardIdForOrder(customerId);
+        let clientCompanyName: string | null = null;
+        if (clientCardId) {
+            const { data: client } = await supabase
+                .from('clients')
+                .select('company_name, "legalName", full_name')
+                .eq('id', String(clientCardId))
+                .maybeSingle();
+            const row = client as any;
+            clientCompanyName = row?.company_name || row?.legalName || row?.full_name || null;
+        }
+
+        const emails = [
+            ...mail.map((entry) => ({
+                id: entry.id,
+                date: entry.date,
+                type: entry.party ? `${entry.type} · ${entry.party}` : entry.type,
+                fieldCode: entry.source,
+                text: entry.text,
+                // Тема и текст письма — карточка показывает именно их. Без этих
+                // полей лента писала «Без темы» и «текст не сохранён», хотя
+                // письмо лежало в базе целиком.
+                subject: entry.subject,
+                body: entry.body,
+                party: entry.party,
+                partyEmail: entry.partyEmail,
+                attachments: entry.attachments,
+                source: entry.source,
+            })),
+            ...((events ?? []).map((e) => ({
+                id: `history-${e.occurred_at}-${e.field}`,
+                date: e.occurred_at,
+                type: fieldLabel(e.field),
+                fieldCode: e.field,
+                text: formatEventValue(e.new_value),
+                subject: null,
+                body: null,
+                attachments: 0,
+                source: 'retailcrm',
+            }))),
+        ].sort((left, right) => String(right.date ?? '').localeCompare(String(left.date ?? '')));
 
         // 4. История изменений заказа — канонический order_history_log
         const { data: rawHistory } = await supabase
@@ -104,11 +157,39 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         }
 
 
+        // Статусы в истории лежат кодами ('novyi-1'). Человеку нужен их русский
+        // вид и цвет — как в RetailCRM (закон: в интерфейсе только человеческий язык).
+        const [{ data: statusDict }, { data: ownStatusRows }, { data: ownGroupRows }] = await Promise.all([
+            supabase.from('retailcrm_dictionaries').select('item_code, item_name').eq('entity_type', 'status'),
+            supabase.from('crm_statuses').select('external_code, group_id'),
+            supabase.from('crm_status_groups').select('id, color'),
+        ]);
+
+        const groupColor = new Map<string, string | null>(
+            ((ownGroupRows as any[]) ?? []).map((g) => [String(g.id), g.color || null]),
+        );
+        const statusPalette: Record<string, { name: string; color: string | null }> = {};
+        for (const row of ((statusDict as any[]) ?? [])) {
+            statusPalette[row.item_code] = { name: row.item_name || row.item_code, color: null };
+        }
+        for (const row of ((ownStatusRows as any[]) ?? [])) {
+            const code = row.external_code;
+            if (!code) continue;
+            statusPalette[code] = {
+                name: statusPalette[code]?.name ?? code,
+                color: groupColor.get(String(row.group_id)) ?? null,
+            };
+        }
+
+        const asStatus = (value: string) => statusPalette[value]?.name ?? value;
+
         const history = ((rawHistory as any[]) ?? []).map((h) => ({
             field: h.field,
             field_label: fieldLabel(h.field),
-            old_value: formatEventValue(h.old_value),
-            new_value: formatEventValue(h.new_value),
+            old_value: h.field === 'status' ? asStatus(formatEventValue(h.old_value)) : formatEventValue(h.old_value),
+            new_value: h.field === 'status' ? asStatus(formatEventValue(h.new_value)) : formatEventValue(h.new_value),
+            old_status_code: h.field === 'status' ? formatEventValue(h.old_value) || null : null,
+            new_status_code: h.field === 'status' ? formatEventValue(h.new_value) || null : null,
             user_data: h.user_data?.id != null
                 ? userNames.get(Number(h.user_data.id)) ?? { firstName: 'RetailCRM', lastName: '' }
                 : { firstName: 'Система', lastName: '' },
@@ -139,7 +220,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
         // Return structured data
         return NextResponse.json({
-            statusColor: (statusRow as any)?.color || null,
+            // Палитра статусов — для плашек в истории, как в RetailCRM.
+            statusPalette,
+            statusColor: groupColor.get(String(((ownStatusRows as any[]) ?? []).find((r) => r.external_code === order.status)?.group_id)) || (statusRow as any)?.color || null,
             statusName: (statusRow as any)?.name || null,
             statusGroup: (statusRow as any)?.group_name || null,
             order: {
@@ -148,16 +231,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             },
             priority: priority, // Return priority data
             insights: metrics?.insights || null,
-            calls: calls.map(c => ({
-                id: c.telphin_call_id,
-                date: c.started_at,
-                type: c.direction,
-                duration: c.duration_sec,
-                transcription: c.transcript || c.call_transcriptions?.[0]?.transcription_text || null,
-                summary: c.summary || c.call_transcriptions?.[0]?.summary || null,
-                link: c.recording_url
-            })),
+            calls,
             emails: emails,
+            ropNotes,
+            clientCompanyName,
+            clientCardId,
             history: history || [],
             raw_payload: order.raw_payload
         });

@@ -9,8 +9,11 @@
  * он пропал в RetailCRM — запасной. 30.09.2026 это спасло приём заявок.
  */
 import { supabase } from '@/utils/supabase';
+import { itemTotalWithDiscount, orderTotals } from './discount';
+import { assignManagerForNewOrder } from './assign-manager';
 import { postRetailCrm, ensureCorporateCustomerId } from '@/lib/retailcrm/leads';
 import { resolveLeadSite, reportSiteSubstitution } from '@/lib/retailcrm/lead-site';
+import { isOwnCrmManager, insertOwnOrder } from './own-order-insert';
 
 export type NewOrderItem = {
     /** Название позиции — то, что увидит клиент в счёте. */
@@ -18,10 +21,16 @@ export type NewOrderItem = {
     quantity: number;
     /** Цена за единицу до скидки. */
     price: number;
+    /** Скидка рублями на единицу — как `discountManualAmount` в RetailCRM. */
+    discountAmount?: number | null;
+    /** Скидка процентом от цены единицы — как `discountManualPercent`. */
+    discountPercent?: number | null;
     /** Артикул с сайта, если позицию выбрали из каталога. */
     article?: string | null;
-    /** Идентификатор товара на сайте — по нему потом сверяем цену. */
+    /** Идентификатор товара на сайте — по нему сверяем цену и строим ссылку. */
     xmlId?: string | null;
+    /** То же id сайта, явно: уходит в `offer.externalId`, как у RetailCRM. */
+    siteId?: string | null;
 };
 
 export type NewOrder = {
@@ -38,6 +47,10 @@ export type NewOrder = {
     statusCode?: string | null;
     customerComment?: string | null;
     managerComment?: string | null;
+    /** Разовая скидка на заказ, рублями. */
+    discountAmount?: number | null;
+    /** Разовая скидка на заказ, процентом. */
+    discountPercent?: number | null;
 };
 
 export type CreatedOrder = { id: number; number: string; site: string };
@@ -68,23 +81,26 @@ export async function usableManagerId(managerId: number | null | undefined): Pro
     return known ? Number(managerId) : null;
 }
 
-/** Сумма позиции с учётом количества — считаем на нашей стороне, чтобы показать человеку. */
+/** Сумма позиции с учётом количества и скидки — считаем сами, чтобы показать человеку. */
 export function itemTotal(item: NewOrderItem): number {
-    return Math.max(0, Number(item.price || 0) * Number(item.quantity || 0));
+    return itemTotalWithDiscount(item);
 }
 
-/** Сумма заказа — сумма позиций. */
-export function orderTotal(items: NewOrderItem[]): number {
-    return items.reduce((sum, item) => sum + itemTotal(item), 0);
+/** Сумма заказа: позиции со скидками, минус разовая скидка, плюс доставка. */
+export function orderTotal(
+    items: NewOrderItem[],
+    options: { discountAmount?: number | null; discountPercent?: number | null; deliveryCost?: number | null } = {},
+): number {
+    return orderTotals(items, options).total;
 }
 
 /** Проверка до отправки: что не так с заказом, человеческим языком. */
 export function validateNewOrder(order: NewOrder): string[] {
     const problems: string[] = [];
 
-    if (!order.items.length) {
-        problems.push('В заказе нет ни одной позиции');
-    }
+    // Позиций может не быть: заявка приходит до просчёта — менеджер заводит её
+    // сразу после звонка, а состав добавляет, когда посчитает (решение владельца
+    // 02.10.2026, то же правило, что и при сохранении карточки).
 
     order.items.forEach((item, index) => {
         if (!item.name?.trim()) {
@@ -111,6 +127,22 @@ export async function createManagerOrder(order: NewOrder): Promise<CreatedOrder>
     if (problems.length) {
         throw new Error(problems.join('; '));
     }
+
+    // У заявки обязательно есть менеджер (требование владельца 02.10.2026):
+    // если учётка не даёт годного (у админской номер 999, которого в CRM нет),
+    // выбираем так же, как автоприём почты, а не создаём заказ-сироту.
+    const assignment = await assignManagerForNewOrder({
+        managerId: order.managerId,
+        email: order.email,
+        phone: order.phone,
+    });
+    const managerId = assignment.managerId;
+
+    // Менеджер, переведённый на нашу базу, получает заказ здесь же: в
+    // RetailCRM он не уходит (решение владельца 30.09.2026). Смотрим на того,
+    // кого НАЗНАЧИЛИ: иначе заявка без менеджера уходила бы в RetailCRM даже
+    // после назначения на Женю.
+    const ownManager = await isOwnCrmManager(managerId);
 
     const choice = await resolveLeadSite();
     await reportSiteSubstitution(choice);
@@ -147,9 +179,13 @@ export async function createManagerOrder(order: NewOrder): Promise<CreatedOrder>
     if (order.email) orderData.email = order.email;
     if (order.customerComment) orderData.customerComment = order.customerComment;
     if (order.managerComment) orderData.managerComment = order.managerComment;
-    const managerId = await usableManagerId(order.managerId);
-    if (managerId) orderData.managerId = managerId;
+    orderData.managerId = managerId;
     if (customerId) orderData.customer = { id: customerId, type: 'customer_corporate' };
+
+    if (ownManager) {
+        const own = await insertOwnOrder({ ...orderData, managerId });
+        return { id: own.id, number: own.number, site: own.order.site };
+    }
 
     const result = await postRetailCrm('orders/create', 'order', orderData, site);
     if (!result?.success) {

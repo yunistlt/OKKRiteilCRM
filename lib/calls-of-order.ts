@@ -42,8 +42,21 @@ export type OrderCall = {
     durationSec: number;
     direction: 'incoming' | 'outgoing';
     managerId: number | null;
-    /** Откуда привязка: 'crm' — точно, 'match' — наша догадка. */
-    source: 'crm' | 'match';
+    /** Откуда привязка: 'own' — установили в ОКК, 'crm' — из RetailCRM, 'match' — старая догадка по телефону. */
+    source: 'own' | 'crm' | 'match';
+    /** Чем именно привязали: okk_card / manual / okk_auto / retailcrm / by_phone_*. */
+    matchType: string;
+    /** Человеческое объяснение привязки — его видно в карточке. */
+    explanation: string | null;
+    /**
+     * Был ли разговор с клиентом.
+     *
+     * Закон владельца 05.10.2026: «звонок считается состоявшимся, когда был
+     * разговор с клиентом. Никаких автодозвонов, никаких автоответчиков».
+     * Телфин отдаёт попытку дозвона как отвеченный звонок с длительностью —
+     * здесь она отделена от разговора.
+     */
+    answered: boolean;
 };
 
 /**
@@ -67,7 +80,7 @@ export async function callsByOrders(
     for (let i = 0; i < orderIds.length; i += 300) {
         let q = supabase
             .from('call_order_link')
-            .select('order_id, telphin_call_id, started_at, duration_sec, direction, manager_id, source')
+            .select('order_id, telphin_call_id, started_at, duration_sec, direction, manager_id, source, match_type, explanation, answered')
             .in('order_id', orderIds.slice(i, i + 300));
         if (opts.from) q = q.gte('started_at', opts.from);
         if (opts.to) q = q.lte('started_at', opts.to);
@@ -85,7 +98,10 @@ export async function callsByOrders(
             durationSec: Number(r.duration_sec ?? 0),
             direction: r.direction === 'incoming' ? 'incoming' : 'outgoing',
             managerId: r.manager_id === null || r.manager_id === undefined ? null : Number(r.manager_id),
-            source: r.source === 'crm' ? 'crm' : 'match',
+            source: r.source === 'own' ? 'own' : r.source === 'crm' ? 'crm' : 'match',
+            matchType: String(r.match_type ?? ''),
+            explanation: r.explanation ?? null,
+            answered: Boolean(r.answered),
         });
         result.set(Number(r.order_id), list);
     }
@@ -100,7 +116,7 @@ export async function callsByOrders(
  * запустить разбор. Спрашиваем сначала CRM (она знает точно), потом наш
  * матчинг.
  */
-export async function orderOfCall(telphinCallId: string): Promise<{ orderId: number; source: 'crm' | 'match' } | null> {
+export async function orderOfCall(telphinCallId: string): Promise<{ orderId: number; source: 'own' | 'crm' | 'match' } | null> {
     // Развилка «CRM или матчинг» разрешена в представлении, и порядок там же:
     // строка из CRM идёт первой, наша догадка подставляется, только если CRM
     // про этот заказ промолчала.
@@ -108,12 +124,16 @@ export async function orderOfCall(telphinCallId: string): Promise<{ orderId: num
         .from('call_order_link')
         .select('order_id, source')
         .eq('telphin_call_id', telphinCallId)
-        .order('source', { ascending: true }) // 'crm' раньше 'match' по алфавиту
-        .limit(1);
+        .limit(5);
 
-    const row = ((data ?? []) as any[])[0];
-    if (!row) return null;
-    return { orderId: Number(row.order_id), source: row.source === 'crm' ? 'crm' : 'match' };
+    // Порядок по точности, а не по алфавиту: набранный из карточки заказа —
+    // самый надёжный, матчинг по телефону — последний.
+    const rank = { own: 0, crm: 1, match: 2 } as const;
+    const rows = ((data ?? []) as any[])
+        .map((r) => ({ orderId: Number(r.order_id), source: (r.source === 'own' ? 'own' : r.source === 'crm' ? 'crm' : 'match') as 'own' | 'crm' | 'match' }))
+        .sort((a, b) => rank[a.source] - rank[b.source]);
+
+    return rows[0] ?? null;
 }
 
 /** Звонки по одному заказу. */

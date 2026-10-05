@@ -24,7 +24,7 @@ const bodySchema = z.object({
     inn: z.string().trim().max(20).optional().nullable(),
     phone: z.string().trim().max(50).optional().nullable(),
     email: z.string().trim().max(200).optional().nullable(),
-    items: z.array(itemSchema).min(1),
+    items: z.array(itemSchema),
     managerId: z.coerce.number().int().positive().optional().nullable(),
     customerComment: z.string().trim().max(5000).optional().nullable(),
     managerComment: z.string().trim().max(5000).optional().nullable(),

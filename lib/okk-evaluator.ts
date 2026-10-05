@@ -685,7 +685,7 @@ export async function collectFacts(orderId: number) {
     let calls: any[] = [];
     const { data: links } = await supabase
         .from('call_order_link')
-        .select('telphin_call_id, started_at, duration_sec, direction, source')
+        .select('telphin_call_id, started_at, duration_sec, direction, source, answered')
         .eq('order_id', orderId);
 
     const linkRows = (links ?? []) as any[];
@@ -708,7 +708,10 @@ export async function collectFacts(orderId: number) {
                 duration_sec: raw.duration_sec ?? l.duration_sec,
                 direction: raw.direction ?? l.direction,
                 telphin_call_id: String(l.telphin_call_id),
-                matched_by: l.source === 'crm' ? 'retailcrm' : 'phone_matching',
+                // Был ли разговор с клиентом — решено в связи, одним правилом
+                // на весь проект (закон владельца 05.10.2026).
+                answered: l.answered,
+                matched_by: l.source === 'own' ? 'okk_card' : l.source === 'crm' ? 'retailcrm' : 'phone_matching',
             };
         });
     }
@@ -752,8 +755,20 @@ export async function collectFacts(orderId: number) {
     // Сохраняем результат классификации, чтобы использовать в обосновании
     const callAnalysisResults: Record<string, { is_human: boolean; reason: string }> = {};
 
-    // Сначала фильтруем звонки > 15 секунд, так как короткие очевидно недозвон
-    const potentialConnectedCalls = calls.filter((c: any) => (c.duration_sec || 0) > 15);
+    /**
+     * Закон владельца 05.10.2026: «звонок считается состоявшимся, когда был
+     * разговор с клиентом. Никакие автодозвоны, никакие автоответчики».
+     *
+     * Телфин отдаёт попытку дозвона как отвеченный звонок с длительностью: у
+     * заказа 39775 верхний уровень говорил «48 секунд», а единственное плечо
+     * разговора — failed, 0 секунд, без записи. Раньше такой звонок проходил
+     * как разговор по правилу «дольше 15 секунд», и ОКК ставил менеджеру в
+     * заслугу разговор, которого не было. Теперь попытка отсекается сразу:
+     * `answered` считается в связи звонка с заказом по плечам разговора.
+     */
+    const potentialConnectedCalls = calls.filter(
+        (c: any) => c.answered !== false && (c.duration_sec || 0) > 15,
+    );
     const connectedCalls: any[] = [];
 
     for (const call of potentialConnectedCalls) {

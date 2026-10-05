@@ -140,6 +140,26 @@ export async function fetchEmailContentByUid(uid: number, folder = 'INBOX'): Pro
 }
 
 /**
+ * Имя папки «Отправленные» этого ящика — снаружи: его спрашивает крон, который
+ * читает исходящие письма (у Яндекса это «Отправленные», у других «Sent»).
+ */
+export async function findSentFolder(): Promise<string | null> {
+    const { user, pass, host, port } = getImapConfig();
+    if (!user || !pass) return null;
+
+    const client = new ImapFlow({ host, port, secure: true, auth: { user, pass }, logger: false });
+    try {
+        await client.connect();
+        return await resolveSentFolder(client);
+    } catch (e: any) {
+        console.warn('[imap] не смог получить список папок:', e.message);
+        return null;
+    } finally {
+        await client.logout().catch(() => {});
+    }
+}
+
+/**
  * Находит имя папки «Отправленные» в ящике: сначала по special-use \Sent,
  * затем по типичным именам Яндекса. Нужна для дозаписи копий исходящих писем,
  * чтобы они появлялись в «Отправленных» и подхватывались почтовой интеграцией RetailCRM.

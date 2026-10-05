@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { STATUS_ICONS } from '@/components/orders/StatusIcon';
+import { mutedOnColor, textOnColor } from '@/lib/status-color';
 
 interface CrmStatus {
     id: string;
@@ -11,11 +13,14 @@ interface CrmStatus {
     ordering: number;
     norm_days: number | null;
     is_working: boolean;
+    /** Нельзя перевести заказ сюда, не написав причину словами. */
+    requires_reason: boolean;
     active: boolean;
     external_code: string | null;
 }
 
 interface CrmGroup {
+    icon?: string | null;
     id: string;
     code: string;
     name: string;
@@ -127,8 +132,8 @@ export default function StatusBoardClient() {
     return (
         <div className="flex flex-col bg-white">
             <div className="px-6 pt-5">
-                <h1 className="text-2xl font-semibold text-gray-900">Статусы и переходы</h1>
-                <p className="mt-1 max-w-3xl text-sm text-gray-500">
+                {/* Название раздела — в шапке приложения, здесь только пояснение. */}
+                <p className="max-w-3xl text-sm text-gray-500">
                     Это статусы нашей будущей CRM — отдельные от RetailCRM. Строка: из какого статуса
                     переходим, колонка: в какой. Галочка разрешает переход. Клик по статусу открывает его
                     настройку, клик по группе — состав группы.
@@ -187,10 +192,10 @@ export default function StatusBoardClient() {
                             <button
                                 key={g.id}
                                 onClick={() => setEditGroup(g)}
-                                style={{ backgroundColor: g.color || '#f1f5f9' }}
-                                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-800 hover:border-blue-500 hover:text-blue-700"
+                                style={{ backgroundColor: g.color || '#f1f5f9', color: textOnColor(g.color || '#f1f5f9') }}
+                                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:border-blue-500"
                             >
-                                {g.name} <span className="text-gray-500">{statuses.filter((s) => s.group_id === g.id).length}</span>
+                                {g.name} <span style={{ color: mutedOnColor(g.color || '#f1f5f9') }}>{statuses.filter((s) => s.group_id === g.id).length}</span>
                             </button>
                         ))}
                     </div>
@@ -213,8 +218,8 @@ export default function StatusBoardClient() {
                                     <th
                                         key={`top-${b.id ?? 'none'}-${i}`}
                                         colSpan={b.span}
-                                        style={{ backgroundColor: b.color }}
-                                        className="border border-gray-200 px-2 py-1 text-center text-[11px] font-semibold text-gray-800"
+                                        style={{ backgroundColor: b.color, color: textOnColor(b.color) }}
+                                        className="border border-gray-200 px-2 py-1 text-center text-[11px] font-semibold"
                                     >
                                         <button
                                             onClick={() => { const g = groups.find((x) => x.id === b.id); if (g) setEditGroup(g); }}
@@ -235,12 +240,12 @@ export default function StatusBoardClient() {
                                     <th
                                         key={s.id}
                                         className="border border-gray-200 p-0 align-bottom"
-                                        style={{ backgroundColor: s.color || groupOf(s)?.color || '#f8fafc', minWidth: 112, maxWidth: 112 }}
+                                        style={{ backgroundColor: groupOf(s)?.color || '#f8fafc', color: textOnColor(groupOf(s)?.color || '#f8fafc'), minWidth: 112, maxWidth: 112 }}
                                     >
                                         <button
                                             onClick={() => setEditStatus(s)}
                                             title="Настроить статус"
-                                            className="block h-full w-full px-2 py-2 text-left text-xs font-medium leading-snug text-gray-800 hover:underline"
+                                            className="block h-full w-full px-2 py-2 text-left text-xs font-medium leading-snug hover:underline"
                                         >
                                             {s.name}
                                         </button>
@@ -262,14 +267,14 @@ export default function StatusBoardClient() {
                                     {band && (
                                         <th
                                             rowSpan={band.span}
-                                            style={{ backgroundColor: band.color }}
+                                            style={{ backgroundColor: band.color, color: textOnColor(band.color) }}
                                             className="sticky left-0 z-20 border border-gray-200 px-1 py-2 align-top"
                                         >
                                             <button
                                                 onClick={() => { const g = groups.find((x) => x.id === band!.id); if (g) setEditGroup(g); }}
                                                 disabled={!band.id}
                                                 title={band.id ? 'Настроить группу' : undefined}
-                                                className="text-[11px] font-semibold text-gray-800 hover:underline disabled:cursor-default"
+                                                className="text-[11px] font-semibold hover:underline disabled:cursor-default"
                                                 style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', whiteSpace: 'nowrap' }}
                                             >
                                                 {band.name}
@@ -278,22 +283,23 @@ export default function StatusBoardClient() {
                                     )}
                                     <th
                                         className="sticky left-8 z-10 border border-gray-200 p-0 text-left"
-                                        style={{ backgroundColor: from.color || groupOf(from)?.color || '#f8fafc', minWidth: 220, maxWidth: 220 }}
+                                        style={{ backgroundColor: groupOf(from)?.color || '#f8fafc', color: textOnColor(groupOf(from)?.color || '#f8fafc'), minWidth: 220, maxWidth: 220 }}
                                     >
                                         <div className="px-3 py-2">
                                             <button
                                                 onClick={() => setEditStatus(from)}
                                                 title="Настроить статус"
-                                                className="block w-full text-left text-xs font-medium leading-snug text-gray-800 hover:underline"
+                                                className="block w-full text-left text-xs font-medium leading-snug hover:underline"
                                             >
                                                 {from.name}
                                             </button>
-                                            <span className="mt-0.5 block text-[10px] font-normal text-gray-500">
+                                            <span className="mt-0.5 block text-[10px] font-normal" style={{ color: mutedOnColor(groupOf(from)?.color || '#f8fafc') }}>
                                                 {groupOf(from) ? (
                                                     <button
                                                         onClick={() => setEditGroup(groupOf(from)!)}
                                                         title="Настроить группу"
-                                                        className="text-gray-500 underline decoration-dotted hover:text-blue-600"
+                                                        className="underline decoration-dotted"
+                                                        style={{ color: mutedOnColor(groupOf(from)?.color || '#f8fafc') }}
                                                     >
                                                         {groupOf(from)!.name}
                                                     </button>
@@ -368,10 +374,12 @@ function StatusModal({ status, groups, onClose, onSaved }: {
                     id: draft.id,
                     name: draft.name.trim(),
                     groupId: draft.group_id ?? null,
-                    color: draft.color ?? null,
+                    // Цвет статуса не храним — он всегда цвет его группы.
+                    color: null,
                     ordering: draft.ordering ?? 100,
                     normDays: draft.norm_days ?? null,
                     isWorking: draft.is_working ?? true,
+                    requiresReason: draft.requires_reason ?? false,
                     active: draft.active ?? true,
                 }),
             });
@@ -430,22 +438,29 @@ function StatusModal({ status, groups, onClose, onSaved }: {
                     />
                 </Labeled>
                 <Labeled label="Цвет">
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="color"
-                            value={draft.color || '#eef2f7'}
-                            onChange={(e) => setDraft({ ...draft, color: e.target.value })}
-                            className="h-9 w-14 cursor-pointer rounded border border-gray-300"
+                    {/* Цвет назначается группе, у статуса своего цвета нет
+                        (решение владельца 01.10.2026): иначе доска и список
+                        заказов расходились в цвете одного и того же этапа. */}
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <span
+                            className="h-6 w-6 border border-gray-300"
+                            style={{ backgroundColor: groups.find((g) => g.id === draft.group_id)?.color || '#f1f5f9' }}
                         />
-                        <button onClick={() => setDraft({ ...draft, color: null })} className="text-sm text-blue-600 hover:underline">
-                            Цвет группы
-                        </button>
+                        <span>
+                            {draft.group_id
+                                ? `Берётся у группы «${groups.find((g) => g.id === draft.group_id)?.name ?? 'Без группы'}»`
+                                : 'Группа не выбрана — цвета не будет'}
+                        </span>
                     </div>
                 </Labeled>
             </div>
 
             <div className="mt-4 space-y-2">
                 <Check label="Рабочий статус — заказ считается в работе" checked={draft.is_working ?? true} onChange={(v) => setDraft({ ...draft, is_working: v })} />
+                {/* Решение владельца 05.10.2026: как в RetailCRM — при смене
+                    статуса спрашиваем причину окном. Где спрашивать, решает
+                    галочка, а не зашитый в код список статусов. */}
+                <Check label="Спрашивать причину словами — без неё в статус не пустим" checked={draft.requires_reason ?? false} onChange={(v) => setDraft({ ...draft, requires_reason: v })} />
                 <Check label="Используется" checked={draft.active ?? true} onChange={(v) => setDraft({ ...draft, active: v })} />
             </div>
 
@@ -474,6 +489,12 @@ function GroupModal({ group, statuses, onClose, onSaved }: {
 }) {
     const [draft, setDraft] = useState<Partial<CrmGroup>>(group);
     const [members, setMembers] = useState<string[]>(statuses.filter((s) => s.group_id === group.id).map((s) => s.id));
+    // Поиск по составу: статусов под шестьдесят, нужный глазами не находится
+    // (просьба владельца 05.10.2026 — искал «Дубль заявки» и не нашёл).
+    const [query, setQuery] = useState('');
+    const needle = query.trim().toLowerCase();
+    // Отметки хранятся в members, поэтому скрытые поиском статусы не теряются.
+    const shown = needle ? statuses.filter((s) => s.name.toLowerCase().includes(needle)) : statuses;
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const isNew = !group.id;
@@ -491,6 +512,7 @@ function GroupModal({ group, statuses, onClose, onSaved }: {
                     id: draft.id,
                     name: draft.name.trim(),
                     color: draft.color ?? null,
+                    icon: draft.icon ?? null,
                     ordering: draft.ordering ?? 100,
                     active: draft.active ?? true,
                     members,
@@ -538,12 +560,48 @@ function GroupModal({ group, statuses, onClose, onSaved }: {
                         className="h-9 w-full cursor-pointer rounded border border-gray-300"
                     />
                 </Labeled>
+                {/* Иконка этапа: по ней менеджер узнаёт этап быстрее, чем читает
+                    название. В RetailCRM так же, но по API они её не отдают. */}
+                <Labeled label="Иконка">
+                    <div className="flex flex-wrap gap-1">
+                        <button
+                            type="button"
+                            onClick={() => setDraft({ ...draft, icon: null })}
+                            title="Без иконки"
+                            className={`flex h-8 w-8 items-center justify-center border text-xs ${!draft.icon ? 'border-blue-600 bg-blue-50' : 'border-gray-300'}`}
+                        >
+                            —
+                        </button>
+                        {STATUS_ICONS.map((item) => (
+                            <button
+                                key={item.code}
+                                type="button"
+                                onClick={() => setDraft({ ...draft, icon: item.code })}
+                                title={item.label}
+                                className={`flex h-8 w-8 items-center justify-center border ${draft.icon === item.code ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}
+                            >
+                                <item.Icon size={16} strokeWidth={2.5} />
+                            </button>
+                        ))}
+                    </div>
+                </Labeled>
             </div>
 
-            <p className="mb-2 mt-4 text-sm text-gray-500">Состав группы — снятые останутся без группы</p>
+            <div className="mb-2 mt-4 flex items-center gap-3">
+                <p className="text-sm text-gray-500">Состав группы — снятые останутся без группы</p>
+                <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Поиск статуса"
+                    className="ml-auto w-56 rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                />
+            </div>
             <div className="max-h-[40vh] overflow-y-auto rounded-md border border-gray-200">
                 {statuses.length === 0 && <p className="px-3 py-3 text-sm text-gray-500">Статусов пока нет.</p>}
-                {statuses.map((s) => (
+                {statuses.length > 0 && shown.length === 0 && (
+                    <p className="px-3 py-3 text-sm text-gray-500">Такого статуса нет — проверьте написание.</p>
+                )}
+                {shown.map((s) => (
                     <label key={s.id} className="flex cursor-pointer items-center gap-2 border-b border-gray-100 px-3 py-2 text-sm last:border-b-0 hover:bg-gray-50">
                         <input
                             type="checkbox"
@@ -551,7 +609,8 @@ function GroupModal({ group, statuses, onClose, onSaved }: {
                             onChange={() => setMembers((prev) => prev.includes(s.id) ? prev.filter((c) => c !== s.id) : [...prev, s.id])}
                             className="h-4 w-4 rounded border-gray-300 text-blue-600"
                         />
-                        <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: s.color || '#e5e7eb' }} />
+                        {/* Цвет — всегда цвет группы: у статуса своего нет. */}
+                        <span className="h-3 w-3" style={{ backgroundColor: members.includes(s.id) ? (draft.color || '#eef2f7') : '#e5e7eb' }} />
                         <span className="flex-1">{s.name}</span>
                         {s.group_id && s.group_id !== group.id && <span className="text-xs text-gray-400">сейчас в другой группе</span>}
                     </label>

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
-import { parseOrdersFilter, applyOrdersFilter, applyOverdueFilter } from '@/lib/orders-filter';
+import { parseOrdersFilter, applyOrdersFilter, applyOverdueFilter, filterToCountParams } from '@/lib/orders-filter';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,15 +20,32 @@ export async function GET(req: Request) {
     const pageSize = Math.min(200, Math.max(10, parseInt(searchParams.get('pageSize') || '50', 10)));
     const filter = parseOrdersFilter(searchParams);
 
-    // Менеджер видит только свои заказы — как в остальных разделах.
-    if (session.user.role === 'manager' && session.user.retail_crm_manager_id) {
-        filter.managers = [String(session.user.retail_crm_manager_id)];
-    }
+    /**
+     * Порядок строк: по любой колонке, вверх или вниз (решение владельца
+     * 05.10.2026). Сортируем только по настоящим колонкам таблицы — внутрь
+     * `raw_payload` порядок не наводим: на 30 000 заказов это перебор всей
+     * таблицы, запрос не укладывается в таймаут и список возвращается пустым.
+     */
+    const SORTABLE: Record<string, string> = {
+        number: 'number',
+        status: 'status',
+        createdAt: 'created_at',
+        totalSumm: 'totalsumm',
+        daysInStatus: 'status_since',
+        manager: 'manager_id',
+    };
+    const sortKey = SORTABLE[String(searchParams.get('sort') ?? '')] ?? 'created_at';
+    const sortAsc = searchParams.get('dir') === 'asc';
+
+    // Менеджер видит заказы всех менеджеров (решение владельца 02.10.2026): без общего
+    // списка не распознать ни дубли, ни постоянных клиентов — это двойная работа.
+    // Фильтр «Менеджеры» остаётся за пользователем и больше не перезаписывается.
 
     // Нормативы читаем до запроса: по ним собирается условие просрочки.
+    // Оттуда же берём порядок показа — он утверждён на доске «Статусы и переходы».
     const { data: ownStatuses } = await supabase
         .from('crm_statuses')
-        .select('external_code, norm_days')
+        .select('external_code, name, norm_days, ordering, group_id, active')
         .not('external_code', 'is', null);
     const normByStatus = new Map<string, number | null>(
         ((ownStatuses || []) as any[]).map((s) => [s.external_code, s.norm_days])
@@ -46,31 +63,38 @@ export async function GET(req: Request) {
 
     const from = (page - 1) * pageSize;
 
-    const [listResult, statusResult] = await Promise.all([
+    const [listResult, statusResult, totalsResult] = await Promise.all([
         base()
             .select('order_id, number, status, created_at, status_since, manager_id, totalsumm, raw_payload', { count: 'exact' })
-            .order('created_at', { ascending: false })
+            .order(sortKey, { ascending: sortAsc, nullsFirst: false })
             .range(from, from + pageSize - 1),
-        // Количества по статусам считаем без фильтра по статусу, иначе в колонке
-        // останется только выбранный — навигация сломается.
-        (() => {
-            const q = applyOrdersFilter(
-                supabase.from('orders').select('status').is('crm_deleted_at', null),
-                { ...filter, statuses: [] }
-            );
-            return filter.overdueOnly ? applyOverdueFilter(q, norms) : q;
-        })(),
+        // Количества по статусам считает база: выборкой их посчитать нельзя —
+        // Supabase отдаёт максимум 1000 строк, и на 30 тысячах заказов целые
+        // этапы пропадали из колонки. Фильтр по самому статусу не применяем,
+        // иначе в колонке останется только выбранный и по ней не переключиться.
+        supabase.rpc('orders_status_counts', { p: filterToCountParams({ ...filter, statuses: [] }, norms) }),
+        // Итого по фильтру — тоже из базы: по странице его посчитать нельзя,
+        // соврёт так же, как врали счётчики статусов.
+        supabase.rpc('orders_filter_totals', { p: filterToCountParams(filter, norms) }),
     ]);
 
     if (listResult.error) {
         console.error('[orders/list] Не удалось прочитать заказы:', listResult.error);
-        return NextResponse.json({ error: 'read_failed', details: listResult.error.message }, { status: 500 });
+        return NextResponse.json({
+        error: 'read_failed', details: listResult.error.message }, { status: 500 });
     }
 
     const rows = listResult.data || [];
     const managerIds = Array.from(new Set(rows.map((r: any) => r.manager_id).filter(Boolean)));
 
-    const [{ data: managers }, { data: statusDict }, { data: statusColors }, { data: groupDict }, { data: cfDict }] = await Promise.all([
+    const [
+        { data: managers },
+        { data: statusDict },
+        { data: statusColors },
+        { data: groupDict },
+        { data: cfDict },
+        { data: ownGroups },
+    ] = await Promise.all([
         managerIds.length
             ? supabase.from('managers').select('id, first_name, last_name').in('id', managerIds)
             : Promise.resolve({ data: [] as any[] }),
@@ -78,6 +102,9 @@ export async function GET(req: Request) {
         supabase.from('statuses').select('code, color, group_name'),
         supabase.from('retailcrm_dictionaries').select('item_code, item_name').eq('entity_type', 'statusGroup'),
         supabase.from('retailcrm_dictionaries').select('dictionary_code, item_code, item_name').eq('entity_type', 'customField').in('dictionary_code', ['typ_castomer', 'sfera_deiatelnosti']),
+        // Порядок групп — наш, с доски «Статусы и переходы»: его утверждал
+        // человек, а не RetailCRM. Связь по external_code.
+        supabase.from('crm_status_groups').select('id, name, external_code, ordering, color, icon'),
     ]);
 
     const managerNames = new Map<number, string>(
@@ -89,50 +116,140 @@ export async function GET(req: Request) {
     const cfNames = new Map<string, string>(
         ((cfDict || []) as any[]).map((d) => [`${d.dictionary_code}:${d.item_code}`, d.item_name])
     );
-    const statusColorMap = new Map<string, string | null>(
-        ((statusColors || []) as any[]).map((s) => [s.code, s.color || null])
+    // Цвет плашки статуса — цвет его этапа, как в RetailCRM: пастельные цвета
+    // из таблицы statuses слишком бледные, и список выглядел выцветшим.
+    const groupColorById = new Map<string, string | null>(
+        ((ownGroups || []) as any[]).map((g) => [String(g.id), g.color || null]),
     );
+    // Иконка этапа — её видит менеджер раньше, чем читает название статуса.
+    const groupIconById = new Map<string, string | null>(
+        ((ownGroups || []) as any[]).map((g) => [String(g.id), g.icon || null]),
+    );
+    const statusIconMap = new Map<string, string | null>(
+        ((ownStatuses || []) as any[])
+            .filter((s) => s.external_code && s.group_id)
+            .map((s) => [String(s.external_code), groupIconById.get(String(s.group_id)) ?? null]),
+    );
+    const statusColorMap = new Map<string, string | null>([
+        ...((statusColors || []) as any[]).map((s) => [s.code, s.color || null] as [string, string | null]),
+        ...((ownStatuses || []) as any[])
+            .filter((s) => s.external_code && s.group_id && groupColorById.get(String(s.group_id)))
+            .map((s) => [String(s.external_code), groupColorById.get(String(s.group_id))!] as [string, string | null]),
+    ]);
 
     // Дерево статусов с количествами для левой колонки.
     const counts = new Map<string, number>();
     for (const row of ((statusResult.data || []) as any[])) {
         if (!row.status) continue;
-        counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
+        counts.set(row.status, Number(row.orders_count ?? 0));
     }
 
     const groupNames = new Map<string, string>(((groupDict || []) as any[]).map((g) => [g.item_code, g.item_name]));
-    const grouped = new Map<string, { groupName: string; statuses: Array<{ code: string; label: string; count: number; color: string | null; ordering: number }> }>();
 
-    for (const st of ((statusDict || []) as any[])) {
-        const count = counts.get(st.item_code) ?? 0;
-        if (!count) continue;
-        const key = st.group_code || '__none__';
-        if (!grouped.has(key)) {
-            grouped.set(key, {
-                groupName: st.group_code ? (groupNames.get(st.group_code) || 'Прочее') : 'Без группы',
-                statuses: [],
-            });
-        }
-        grouped.get(key)!.statuses.push({
-            code: st.item_code,
-            label: st.item_name || st.item_code,
-            count,
-            color: statusColorMap.get(st.item_code) || null,
-            ordering: st.ordering ?? 999,
-        });
+    // Наш порядок: группы и статусы идут так, как их выстроили на доске
+    // «Статусы и переходы». Раньше колонка сортировалась по числу заказов, и
+    // сверху оказывался «Отменен» — работа начинается не с него.
+    const groupOrderByCode = new Map<string, number>(
+        ((ownGroups || []) as any[])
+            .filter((g) => g.external_code)
+            .map((g) => [String(g.external_code), Number(g.ordering ?? 999)]),
+    );
+    const statusOrderByCode = new Map<string, number>(
+        ((ownStatuses || []) as any[])
+            .filter((s) => s.external_code)
+            .map((s) => [String(s.external_code), Number(s.ordering ?? 999)]),
+    );
+    // ЗАКОН: состав и порядок левой колонки берём с доски «Статусы и переходы»
+    // (`crm_status_groups` / `crm_statuses`), а не из групп RetailCRM. Статус,
+    // переставленный человеком в другую группу, должен ехать туда же и здесь.
+    const ownGroupById = new Map<string, { name: string; ordering: number; code: string | null }>(
+        ((ownGroups || []) as any[]).map((g) => [
+            String(g.id),
+            { name: String(g.name || 'Без названия'), ordering: Number(g.ordering ?? 999), code: g.external_code ? String(g.external_code) : null },
+        ]),
+    );
+    const ownGroupIdByStatus = new Map<string, string>(
+        ((ownStatuses || []) as any[])
+            .filter((s) => s.external_code && s.group_id)
+            .map((s) => [String(s.external_code), String(s.group_id)]),
+    );
+
+    type TreeStatus = { code: string; label: string; count: number; color: string | null; icon: string | null; ordering: number };
+    const grouped = new Map<string, { groupName: string; groupCode: string | null; ordering: number; statuses: TreeStatus[] }>();
+
+    const pushStatus = (key: string, group: { groupName: string; groupCode: string | null; ordering: number }, status: TreeStatus) => {
+        if (!grouped.has(key)) grouped.set(key, { ...group, statuses: [] });
+        grouped.get(key)!.statuses.push(status);
+    };
+
+    // ЗАКОН: в колонке всегда видны ВСЕ активные статусы с доски, в её порядке,
+    // даже с нулём заказов. Менеджер должен видеть пустой этап, а не догадываться,
+    // что он есть (требование владельца 01.10.2026).
+    const shownCodes = new Set<string>();
+    for (const own of ((ownStatuses || []) as any[])) {
+        if (own.active === false) continue;
+        const code = String(own.external_code);
+        const group = own.group_id ? ownGroupById.get(String(own.group_id)) : undefined;
+        if (!group) continue; // статус без группы на доске — показывать его негде
+
+        shownCodes.add(code);
+        pushStatus(
+            String(own.group_id),
+            { groupName: group.name, groupCode: group.code, ordering: group.ordering },
+            {
+                code,
+                // Название — из справочника RetailCRM (закон «имена из RetailCRM»),
+                // своё имя с доски — только если в справочнике его нет.
+                label: statusNames.get(code) || String(own.name || code),
+                count: counts.get(code) ?? 0,
+                color: statusColorMap.get(code) || null,
+                icon: statusIconMap.get(code) || null,
+                ordering: Number(own.ordering ?? 999),
+            },
+        );
     }
 
-    const statusTree = Array.from(grouped.entries())
-        .map(([groupCode, value]) => ({
-            groupCode: groupCode === '__none__' ? null : groupCode,
+    // Статус, которого на доске нет, но заказы в нём есть: показываем по группе
+    // RetailCRM последним, чтобы заказы не пропали из колонки.
+    for (const st of ((statusDict || []) as any[])) {
+        const code = String(st.item_code);
+        if (shownCodes.has(code)) continue;
+        const count = counts.get(code) ?? 0;
+        if (!count) continue;
+
+        const key = st.group_code ? `rc:${st.group_code}` : '__none__';
+        pushStatus(
+            key,
+            {
+                groupName: st.group_code ? (groupNames.get(st.group_code) || 'Прочее') : 'Без группы',
+                groupCode: st.group_code ? String(st.group_code) : null,
+                ordering: st.group_code ? (groupOrderByCode.get(String(st.group_code)) ?? 9999) : 9999,
+            },
+            {
+                code,
+                label: st.item_name || code,
+                count,
+                color: statusColorMap.get(code) || null,
+                icon: statusIconMap.get(code) || null,
+                ordering: Number(st.ordering ?? 9999),
+            },
+        );
+    }
+
+    const statusTree = Array.from(grouped.values())
+        .map((value) => ({
+            groupCode: value.groupCode,
             groupName: value.groupName,
             total: value.statuses.reduce((sum, s) => sum + s.count, 0),
             color: value.statuses.find((s) => s.color)?.color ?? null,
+            icon: value.statuses.find((s) => s.icon)?.icon ?? null,
+            ordering: value.ordering,
             statuses: value.statuses
                 .sort((a, b) => a.ordering - b.ordering || a.label.localeCompare(b.label))
                 .map(({ ordering, ...rest }) => rest),
         }))
-        .sort((a, b) => b.total - a.total);
+        .sort((a, b) => a.ordering - b.ordering || a.groupName.localeCompare(b.groupName))
+        .map(({ ordering, ...rest }) => rest);
 
     const orders = rows.map((row: any) => {
         const payload = row.raw_payload ?? {};
@@ -142,6 +259,7 @@ export async function GET(req: Request) {
             status: row.status,
             statusLabel: statusNames.get(row.status) || row.status,
             statusColor: statusColorMap.get(row.status) || null,
+            statusIcon: statusIconMap.get(row.status) || null,
             createdAt: row.created_at,
             managerName: managerNames.get(Number(row.manager_id)) || null,
             totalSumm: row.totalsumm != null ? Number(row.totalsumm) : null,
@@ -167,18 +285,38 @@ export async function GET(req: Request) {
                 quantity: i?.quantity ?? null,
             })),
             itemsTotal: Array.isArray(payload.items) ? payload.items.length : 0,
+            // Названия товаров и город поставки — по ним сверяют дубли.
+            itemNames: (Array.isArray(payload.items) ? payload.items : [])
+                .map((i: any) => i?.offer?.name || i?.productName)
+                .filter(Boolean),
+            // Сначала «Город доставки (менеджерам ОП)» — его менеджер и
+            // заполняет; адрес доставки берём, только если поле пустое.
+            deliveryCity: payload.customFields?.gorod_dostavki_menedzheram_op
+                || payload.delivery?.address?.city
+                || null,
+            // Дополнительные поля заказа: из них собираются колонки и фильтры,
+            // которые человек включает сам.
+            customFields: payload.customFields ?? {},
         };
     });
 
     return NextResponse.json({
         ok: true,
         orders,
+        // По каким колонкам список умеет сортировать — шапка таблицы рисует
+        // стрелку только у них, чтобы не обещать того, чего нет.
+        sortable: Object.keys(SORTABLE),
         statusTree,
         pagination: {
             page,
             pageSize,
             totalCount: listResult.count ?? 0,
             totalPages: Math.max(1, Math.ceil((listResult.count ?? 0) / pageSize)),
+        },
+        // Итого по всему фильтру, а не по странице.
+        totals: {
+            count: Number((totalsResult.data as any)?.[0]?.orders_count ?? listResult.count ?? 0),
+            sum: Number((totalsResult.data as any)?.[0]?.total_sum ?? 0),
         },
     });
 }
