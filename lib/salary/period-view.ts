@@ -112,7 +112,21 @@ export async function loadPeriodView(
         };
     }
 
-    // Открытый период — считаем на лету (тот же движок, что и «Пересчитать»/закрытие).
+    /**
+     * Открытый период считаем на лету — но результат держим минуту.
+     *
+     * Расчёт тянет метрики по всем заказам месяца; экран «Моя зарплата»,
+     * ведомость и симулятор просят одно и то же, и каждый раз считать заново
+     * нет смысла. Минута — это свежесть, которой хватает: данные за период
+     * меняются реже (замечание владельца 05.10.2026 — «зп за сентябрь не
+     * показывает», расчёт не укладывался в лимит).
+     */
+    const cacheKey = `${year}-${month}-${includeEngineers ? 'e' : ''}`;
+    const cached = openPeriodCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < 60_000) {
+        return { ...base, status: 'open', live: true, rows: cached.rows, engineerRows: cached.engineerRows };
+    }
+
     const computedAt = new Date().toISOString();
     const [calc, eng] = await Promise.all([
         calculatePeriod(year, month),
@@ -128,5 +142,14 @@ export async function loadPeriodView(
         computed_at: computedAt,
     }));
 
+    openPeriodCache.set(cacheKey, { at: Date.now(), rows, engineerRows });
     return { ...base, status: 'open', live: true, rows, engineerRows };
+}
+
+/** Посчитанный открытый период: ключ «год-месяц», живёт минуту. */
+const openPeriodCache = new Map<string, { at: number; rows: CalcRow[]; engineerRows: EngineerCalcRow[] }>();
+
+/** Сбросить кэш — после правки настроек мотивации или пересчёта. */
+export function dropOpenPeriodCache(): void {
+    openPeriodCache.clear();
 }
