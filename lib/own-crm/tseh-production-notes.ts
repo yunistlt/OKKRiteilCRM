@@ -64,15 +64,24 @@ export async function saveProductionComment(orderNumber: string, comment: string
     if (error) throw new Error(error.message);
 }
 
-/** Отмечает или снимает отметку «передать в производство» с файла заказа. */
-export async function setFileForProduction(fileId: number, orderNumber: string, on: boolean): Promise<void> {
-    // Номер заказа в условии — чтобы отметка не могла уйти файлу чужого заказа.
-    const { error } = await supabase
+/**
+ * Отмечает или снимает отметку «передать в производство» с файла заказа.
+ * Возвращает false, если такого файла у этого заказа нет — отметка тогда не применена.
+ *
+ * Номер заказа стоит в условии запроса, поэтому чужой файл отметку не получит. Но обновление
+ * нуля строк в Postgres не ошибка, и раньше вызывающий не мог отличить «записал» от «не нашёл»:
+ * галочка в интерфейсе осталась бы стоять, хотя в базе ничего не изменилось. Поэтому ответ
+ * явный (нашла соседняя сессия на своей вкладке, 04.10.2026).
+ */
+export async function setFileForProduction(fileId: number, orderNumber: string, on: boolean): Promise<boolean> {
+    const { data, error } = await supabase
         .from('order_files')
         .update({ for_production: on })
         .eq('id', fileId)
-        .eq('order_number', orderNumber);
+        .eq('order_number', orderNumber)
+        .select('id');
     if (error) throw new Error(error.message);
+    return ((data as any[]) || []).length > 0;
 }
 
 /** Файлы, отмеченные для производства. По ним ЦехУспех забирает вложения заказа. */
