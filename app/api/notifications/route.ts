@@ -121,26 +121,42 @@ export async function GET() {
         });
     }
 
-    // Звонки: чей номер — ищем только для своих, чтобы не дёргать базу зря.
-    for (const call of ((calls.data ?? []) as any[])) {
+    /**
+     * Звонки: чей номер. Раньше на каждый звонок шёл свой запрос к заказам —
+     * сто звонков превращались в сто запросов, и страница оповещений
+     * загружалась минуту (замечание владельца 05.10.2026). Теперь спрашиваем
+     * один раз по всем номерам сразу.
+     */
+    const callRows = ((calls.data ?? []) as any[]).slice(0, 40);
+    const tails = new Map<string, string>();
+    for (const call of callRows) {
         const tail = phoneTail(call.from_number_normalized || call.from_number || '');
-        let number: string | null = null;
-        let manager: number | null = null;
+        if (tail) tails.set(String(call.telphin_call_id), tail);
+    }
 
-        if (tail) {
-            const { data } = await supabase
-                .from('orders')
-                .select('number, manager_id')
-                .ilike('phone', `%${tail}%`)
-                .is('crm_deleted_at', null)
-                .order('createdAt', { ascending: false })
-                .limit(1);
-            const row = ((data ?? []) as any[])[0];
-            number = row ? String(row.number) : null;
-            manager = row?.manager_id ?? null;
+    const byTail = new Map<string, { number: string; manager: number | null }>();
+    const uniqueTails = Array.from(new Set(tails.values()));
+    if (uniqueTails.length) {
+        const { data } = await supabase
+            .from('orders')
+            .select('number, phone, manager_id')
+            .is('crm_deleted_at', null)
+            .or(uniqueTails.map((tail) => `phone.ilike.%${tail}%`).join(','))
+            .order('createdAt', { ascending: false })
+            .limit(500);
+
+        for (const row of ((data ?? []) as any[])) {
+            const tail = phoneTail(String(row.phone ?? ''));
+            // Берём первый — заказы отсортированы от свежих к старым.
+            if (tail && !byTail.has(tail)) {
+                byTail.set(tail, { number: String(row.number), manager: row.manager_id ?? null });
+            }
         }
+    }
 
-        if (onlyMine && Number(manager) !== Number(managerId)) continue;
+    for (const call of callRows) {
+        const found = byTail.get(tails.get(String(call.telphin_call_id)) ?? '') ?? null;
+        if (onlyMine && Number(found?.manager) !== Number(managerId)) continue;
 
         items.push({
             id: `call-${call.telphin_call_id}`,
@@ -148,7 +164,7 @@ export async function GET() {
             at: call.started_at,
             text: `Входящий звонок ${call.from_number}`,
             note: null,
-            orderNumber: number,
+            orderNumber: found?.number ?? null,
             read: readIds.has(`call-${call.telphin_call_id}`),
         });
     }
