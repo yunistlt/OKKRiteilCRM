@@ -43,6 +43,8 @@ interface OrderDetails {
     emails: any[];
     /** Советы бота-РОПа — своим окном, а не в комментарии менеджера. */
     ropNotes?: Array<{ date: string | null; text: string }>;
+    /** Название компании заказчика из его карточки — в заказе его может не быть. */
+    clientCompanyName?: string | null;
     history: any[];
     /** Названия и цвета статусов — для плашек в истории. */
     statusPalette?: Record<string, { name: string; color: string | null }>;
@@ -904,7 +906,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         ]);
         const [primaryPhone, secondaryPhone, thirdPhone] = normalizedPhones;
         const segments = Array.isArray(contact.segments) ? contact.segments.map((segment: any) => segment.name).filter(Boolean).join(', ') : null;
-        const companyName = pickValue(customer.nickName, customer.companyName, customer.name);
+        // Название компании: из заказа, а если его там нет — из карточки
+        // клиента (решение после замечания Лены 05.10.2026).
+        const companyName = pickValue(customer.nickName, customer.companyName, customer.name, data.clientCompanyName);
         const productCategory = names.field('typ_castomer', pickValue(customFields.typ_castomer, customFields.tovarnaya_kategoriya, customFields.product_category, payload.category));
         const nextContact = pickValue(customFields.data_kontakta, customFields.next_contact_date, customFields.follow_up_date);
         const purchaseForm = names.field('typ_customer_margin', pickValue(customFields.typ_customer_margin, customFields.purchase_form, customFields.forma_zakupki));
