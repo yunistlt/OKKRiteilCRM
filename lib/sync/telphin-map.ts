@@ -28,7 +28,6 @@ export type RawTelphinCall = {
     duration_sec: number;
     recording_url: string | null;
     raw_payload: any;
-    ingested_at: string;
 };
 
 export function telphinCallToRaw(r: any): RawTelphinCall {
@@ -82,7 +81,13 @@ export function telphinCallToRaw(r: any): RawTelphinCall {
         duration_sec: r.duration || 0,
         recording_url: recordingUrl,
         raw_payload: r,
-        ingested_at: new Date().toISOString(),
+        /**
+         * `ingested_at` не передаём намеренно: у колонки есть `default now()`,
+         * и при повторной заливке того же звонка (скользящее окно синка) он
+         * сохранит время ПЕРВОГО появления. Раньше поле переписывалось каждым
+         * проходом, и по нему нельзя было понять, когда звонок доехал до нас, —
+         * а на этом держится оповещение о входящем.
+         */
     };
 }
 

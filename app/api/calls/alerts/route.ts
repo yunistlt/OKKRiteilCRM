@@ -25,11 +25,29 @@ export async function GET(req: Request) {
         ? new Date(since)
         : new Date(Date.now() - 5 * 60 * 1000);
 
+    /**
+     * Считаем от того момента, когда звонок ПОЯВИЛСЯ У НАС, а не когда он
+     * начался.
+     *
+     * Телефония приезжает синхронизацией, с задержкой в несколько минут.
+     * Оповещение опрашивает нас раз в минуту и отбирало звонки по времени
+     * самого разговора — к моменту появления в базе оно было уже старше
+     * прошлой проверки, и звонок не показывался НИКОГДА (жалоба Евгении
+     * 05.10.2026: «сейчас звонок поступил, но не отобразился в срм, никакого
+     * оповещения нет»).
+     *
+     * Отсечку по времени разговора оставляем, чтобы переобработка старых
+     * записей не поднимала вчерашние звонки: показываем только то, что
+     * началось в последние полчаса.
+     */
+    const freshFrom = new Date(Date.now() - 30 * 60 * 1000);
+
     const { data: calls, error } = await supabase
         .from('raw_telphin_calls')
         .select('telphin_call_id, from_number, from_number_normalized, started_at')
         .eq('direction', 'incoming')
-        .gt('started_at', from.toISOString())
+        .gt('ingested_at', from.toISOString())
+        .gt('started_at', freshFrom.toISOString())
         .order('started_at', { ascending: false })
         .limit(10);
 
