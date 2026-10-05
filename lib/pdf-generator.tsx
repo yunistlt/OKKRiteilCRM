@@ -236,12 +236,23 @@ function formatMoney(n: number): string {
 
 // ── Компонент PDF ─────────────────────────────────────────────────────────────
 function ProposalPDF({ data }: { data: ProposalData }) {
-    const subtotal = data.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const discountAmt = data.items.reduce((sum, item) => sum + Number(item.discount || 0), 0)
-        || Math.round(subtotal * ((data.discount_pct || 0) / 100));
-    const total = data.items.reduce((sum, item) => sum + Number(item.discount || 0), 0) > 0
-        ? subtotal
-        : subtotal - discountAmt;
+    /**
+     * Счёт как в RetailCRM: подытог по базовым ценам, из него вычитаются скидки
+     * позиций, а разовая скидка на заказ считается от уже уценённой стоимости.
+     *
+     * Раньше подытог считался по ценам СО скидкой, а скидка показывалась рядом
+     * справочно — на глаз выходило, будто её вычтут ещё раз (замечание
+     * владельца 05.10.2026).
+     */
+    const subtotal = data.items.reduce(
+        (sum, item) => sum + (item.initial_price ?? item.price) * item.quantity, 0,
+    );
+    const itemsDiscount = data.items.reduce((sum, item) => sum + Number(item.discount || 0), 0);
+    const orderDiscount = Number(data.discount_amount) > 0
+        ? Number(data.discount_amount)
+        : Math.round((subtotal - itemsDiscount) * ((data.discount_pct || 0) / 100));
+    const discountAmt = itemsDiscount + orderDiscount;
+    const total = Math.max(0, subtotal - discountAmt);
     const vatPct = Number(data.vat_pct ?? 0);
     const vatAmt = vatPct > 0 ? Math.round(total * (vatPct / 100) / (1 + vatPct / 100)) : 0;
 
@@ -328,9 +339,13 @@ function ProposalPDF({ data }: { data: ProposalData }) {
                     <Text style={[invStyles.tblHeaderText, { width: 54 }]}>Фото</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cName]}>Наименование</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cQty]}>Кол-во</Text>
+                    {/* Порядок колонок как в RetailCRM: базовая цена, скидка, сумма
+                        со скидкой. Так строка читается сама: 92 448 − 18 489,6 = 73 958,4.
+                        Раньше в «Цене» стояла цена УЖЕ со скидкой, и арифметика не
+                        сходилась на глаз (замечание владельца 05.10.2026). */}
                     <Text style={[invStyles.tblHeaderText, invStyles.cPrice]}>Цена, ₽</Text>
-                    <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Сумма, ₽</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Скидка, ₽</Text>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Сумма, ₽</Text>
                 </View>
                 {data.items.map((item, idx) => (
                     <View key={idx} style={[invStyles.tblRow, idx % 2 === 1 ? invStyles.tblAlt : {}]} wrap={false}>
@@ -349,10 +364,17 @@ function ProposalPDF({ data }: { data: ProposalData }) {
                             {item.description && <Text style={invStyles.cellGray}>{item.description}</Text>}
                         </View>
                         <Text style={[invStyles.cell, invStyles.cQty]}>{item.quantity} {item.unit || 'шт.'}</Text>
-                        <Text style={[invStyles.cell, invStyles.cPrice]}>{formatMoney(item.price)}</Text>
-                        <Text style={[invStyles.cell, invStyles.cTotal]}>{formatMoney(item.price * item.quantity)}</Text>
+                        {/* Цена — базовая, до скидки: `initial_price`. Если её не
+                            передали (старые документы), берём цену как есть. */}
+                        <Text style={[invStyles.cell, invStyles.cPrice]}>
+                            {formatMoney(item.initial_price ?? item.price)}
+                        </Text>
                         <Text style={[invStyles.cell, invStyles.cTotal]}>
                             {item.discount ? formatMoney(item.discount) : '—'}
+                        </Text>
+                        {/* Сумма — к оплате за строку: цена × количество минус скидка. */}
+                        <Text style={[invStyles.cell, invStyles.cTotal]}>
+                            {formatMoney((item.initial_price ?? item.price) * item.quantity - (item.discount || 0))}
                         </Text>
                     </View>
                 ))}
