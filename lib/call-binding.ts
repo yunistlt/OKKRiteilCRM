@@ -22,6 +22,7 @@ import { findOrderCandidatesByPhone } from '@/lib/call-matching';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { cachedAiResult } from '@/lib/ai-cache';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
+import { cutForAi } from '@/lib/email/classify';
 
 export type BindMethod = 'okk_card' | 'okk_auto' | 'manual' | 'ai_suggested';
 
@@ -263,7 +264,9 @@ async function orderNumberFromSpeech(text: string): Promise<string | null> {
 Найди НОМЕР ЗАКАЗА или СЧЁТА, который называют собеседники (часто прописью: «сорок девять триста восемьдесят восемь»).
 Это 4–7 цифр. Размеры, количества, цены, даты и телефоны номером заказа НЕ являются.
 Верни JSON: {"number": "49388"} либо {"number": null}, если номера не называли.`;
-    const user = text.slice(0, 4000);
+    // Режем целыми символами: обрубленное эмодзи ломает запрос к разбору
+    // (поймано на письмах 05.10.2026).
+    const user = cutForAi(text, 4000);
 
     try {
         const { value } = await cachedAiResult<any>({

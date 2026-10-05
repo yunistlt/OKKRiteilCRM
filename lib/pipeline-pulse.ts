@@ -35,7 +35,6 @@ const THRESHOLDS = {
      */
     jobTypeDeadHours: 26,
     /** синхронизация заказов из RetailCRM идёт круглосуточно */
-    ordersMinutes: 180,
 } as const;
 
 export type PulseCheck = {
@@ -179,31 +178,17 @@ async function stalledJobTypes(now: Date): Promise<string[]> {
     return stalled;
 }
 
-async function lastOrderTouch(): Promise<string | null> {
-    // nullsFirst: false обязателен — в Postgres при DESC пустые значения идут первыми,
-    // и запрос возвращал заказ без updated_at, то есть «никогда».
-    const { data } = await supabase
-        .from('orders')
-        .select('updated_at')
-        .not('updated_at', 'is', null)
-        .order('updated_at', { ascending: false, nullsFirst: false })
-        .limit(1)
-        .maybeSingle();
-    return data?.updated_at ?? null;
-}
-
 /**
  * Снимок живости конвейера. Ничего не чинит и не запускает — только смотрит.
  */
 export async function collectPipelinePulse(): Promise<PipelinePulse> {
     const now = new Date();
 
-    const [emailPoll, stuckEmail, jobFinished, stalledTypes, orderTouch] = await Promise.all([
+    const [emailPoll, stuckEmail, jobFinished, stalledTypes] = await Promise.all([
         lastEmailPoll(),
         oldestUnclassifiedEmail(),
         lastFinishedJob(),
         stalledJobTypes(now),
-        lastOrderTouch(),
     ]);
 
     const checks: PulseCheck[] = [
@@ -223,15 +208,19 @@ export async function collectPipelinePulse(): Promise<PipelinePulse> {
             now,
             verb: 'ничего не доделала за',
         }),
-        silenceCheck({
-            key: 'orders_sync',
-            title: 'Заказы из RetailCRM',
-            lastAt: orderTouch,
-            limitMinutes: THRESHOLDS.ordersMinutes,
-            now,
-            verb: 'не обновлялись',
-        }),
     ];
+
+    /**
+     * Проверки «Заказы из RetailCRM» здесь больше нет.
+     *
+     * Она следила за тем, что приём изменений из RetailCRM жив. Приём выключен
+     * решением владельца 05.10.2026 («никаких изменений по заказам в ритейле
+     * уже не должно быть, все правки в ОКК»), и сторож начал будить владельца
+     * каждые пятнадцать минут тем, что мы отключили сами.
+     *
+     * Заказы теперь живут у нас: за их движением следят оценки ОКК и план дня,
+     * а молчание ночью — не авария, а ночь.
+     */
 
     // Затор: письма и работы, которые лежат дольше норматива, — признак того, что
     // крон ходит, но конвейер внутри стоит (ИИ отвалился, ключ протух и т.п.).
