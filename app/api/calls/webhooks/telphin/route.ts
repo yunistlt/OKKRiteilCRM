@@ -69,16 +69,24 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Неверный ключ' }, { status: 401 });
     }
 
-    let payload: any = {};
+    /**
+     * Данные Телфин кладёт в АДРЕС, а не в тело.
+     *
+     * Проверено живым звонком 05.10.2026: тело POST пришло пустым (`{}`), а всё
+     * событие — в строке запроса. Поэтому собираем отовсюду: параметры адреса,
+     * JSON-тело, форма. Что нашли, то и читаем.
+     */
+    const payload: any = Object.fromEntries(new URL(req.url).searchParams.entries());
+
     try {
-        payload = await req.json();
+        const body = await req.json();
+        if (body && typeof body === 'object') Object.assign(payload, body);
     } catch {
-        // Телфин может прислать форму вместо JSON — разберём и её.
         try {
             const form = await req.formData();
-            payload = Object.fromEntries(form.entries());
+            Object.assign(payload, Object.fromEntries(form.entries()));
         } catch {
-            payload = {};
+            // Ни тела, ни формы — значит всё было в адресе.
         }
     }
 
