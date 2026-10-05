@@ -47,8 +47,24 @@ export async function syncCustomers(sinceIso: string, maxPages = 10): Promise<Cu
             break;
         }
 
+        /**
+         * Берём из RetailCRM только то, чего у нас ещё нет.
+         *
+         * Закон владельца 05.10.2026: «мы уже ничего не синхронизируем с
+         * ритейлом, если только надо что-то докачать». Работа идёт в ОКК, и
+         * обновления оттуда затирали бы наши данные — например, возвращали бы
+         * в карточку почту робота. Поэтому новые карточки заводим, а
+         * существующие не трогаем вовсе.
+         */
+        const { data: known } = await supabase
+            .from('customers')
+            .select('id')
+            .in('id', rows.map((customer: any) => customer.id));
+        const haveIds = new Set(((known ?? []) as any[]).map((row) => Number(row.id)));
+        const fresh = rows.filter((customer: any) => !haveIds.has(Number(customer.id)));
+
         // Кого из этой партии правили у нас — их личные поля не перезаписываем.
-        const editedHere = await personsEditedInOkk(rows.map((customer: any) => customer.id));
+        const editedHere = await personsEditedInOkk(fresh.map((customer: any) => customer.id));
 
         const common = (customer: any) => ({
             id: customer.id,
@@ -79,8 +95,8 @@ export async function syncCustomers(sinceIso: string, maxPages = 10): Promise<Cu
 
         // Два вызова, а не один: PostgREST обновляет ровно те колонки, что
         // переданы, и набор колонок в партии должен быть одинаковым.
-        const untouched = rows.filter((customer: any) => !editedHere.has(Number(customer.id)));
-        const ours = rows.filter((customer: any) => editedHere.has(Number(customer.id)));
+        const untouched = fresh.filter((customer: any) => !editedHere.has(Number(customer.id)));
+        const ours = fresh.filter((customer: any) => editedHere.has(Number(customer.id)));
 
         if (untouched.length) {
             await supabase.from('customers').upsert(
@@ -92,7 +108,7 @@ export async function syncCustomers(sinceIso: string, maxPages = 10): Promise<Cu
             await supabase.from('customers').upsert(ours.map(common), { onConflict: 'id' });
         }
 
-        fetched += rows.length;
+        fetched += fresh.length;
         if (page >= (payload.pagination?.totalPageCount || 1)) {
             break;
         }

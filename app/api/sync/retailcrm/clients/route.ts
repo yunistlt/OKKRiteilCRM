@@ -210,9 +210,23 @@ export async function GET(request: Request) {
                 });
             }
 
-            if (clientsToUpsert.length > 0) {
+            /**
+             * Из RetailCRM берём только карточки, которых у нас ещё нет.
+             *
+             * Закон владельца 05.10.2026: «мы уже ничего не синхронизируем с
+             * ритейлом, если только надо что-то докачать». Работа идёт в ОКК,
+             * и обновление оттуда затирало бы наши правки.
+             */
+            const { data: known } = await supabase
+                .from('clients')
+                .select('id')
+                .in('id', clientsToUpsert.map((row) => row.id));
+            const haveIds = new Set(((known ?? []) as any[]).map((row) => Number(row.id)));
+            const freshClients = clientsToUpsert.filter((row) => !haveIds.has(Number(row.id)));
+
+            if (freshClients.length > 0) {
                 const { error } = await supabase.rpc('upsert_clients', {
-                    clients_data: clientsToUpsert
+                    clients_data: freshClients
                 });
 
                 if (error) {

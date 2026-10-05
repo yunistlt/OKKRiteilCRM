@@ -292,3 +292,50 @@ async function orderNumberFromSpeech(text: string): Promise<string | null> {
         return null;
     }
 }
+
+/**
+ * Кто звонит: карточка клиента по номеру телефона.
+ *
+ * Нужна оповещению о входящем: даже когда заказ неизвестен, человеку надо
+ * сказать, кто на линии, а не только показать номер (решение владельца
+ * 05.10.2026). Сначала ищем компанию, потом живого человека — у компании есть
+ * название, по нему менеджер узнаёт клиента быстрее.
+ *
+ * Телефоны в карточках лежат массивом и записаны по-разному: «+79270804167»,
+ * «89270809086», «79040941225». Поэтому ищем пересечение с набором написаний
+ * одного и того же номера, а не точное совпадение строки.
+ */
+function phoneVariants(phone: string): string[] {
+    const key = phoneKey(phone);
+    if (!key) return [];
+    return Array.from(new Set([key, `7${key}`, `8${key}`, `+7${key}`]));
+}
+
+export async function clientByPhone(phone: string): Promise<{ name: string; clientId: number | null } | null> {
+    const variants = phoneVariants(phone);
+    if (!variants.length) return null;
+
+    const { data: company } = await supabase
+        .from('clients')
+        .select('id, company_name, "legalName", contact_name')
+        .overlaps('phones', variants)
+        .limit(1);
+
+    const found = ((company ?? []) as any[])[0];
+    if (found) {
+        const name = found.company_name || found.legalName || found.contact_name;
+        if (name) return { name: String(name), clientId: Number(found.id) };
+    }
+
+    const { data: person } = await supabase
+        .from('customers')
+        .select('id, "firstName", "lastName"')
+        .overlaps('phones', variants)
+        .limit(1);
+
+    const human = ((person ?? []) as any[])[0];
+    if (!human) return null;
+
+    const name = [human.lastName, human.firstName].filter(Boolean).join(' ').trim();
+    return name ? { name, clientId: null } : null;
+}

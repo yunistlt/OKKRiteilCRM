@@ -26,6 +26,8 @@ type Alert = {
     kind: 'mail' | 'task' | 'call';
     /** Идентификатор звонка — по нему менеджер указывает заказ. */
     callId?: string | null;
+    /** Номер знаком: карточка клиента нашлась, даже если заказа у звонка нет. */
+    knownClient?: boolean;
     orderNumber: string;
     /** Тема письма или текст задачи — то, ради чего человек это читает. */
     text: string;
@@ -93,6 +95,7 @@ export default function IncomingMailAlerts() {
                         id: call.id,
                         kind: 'call',
                         callId: call.callId || null,
+                        knownClient: Boolean(call.knownClient),
                         orderNumber: call.orderNumber || '',
                         // Кто звонит — главное в этом оповещении: номер сам по
                         // себе ничего не говорит (Женя 05.10.2026).
@@ -155,7 +158,15 @@ export default function IncomingMailAlerts() {
                             // угадывать по телефону мы перестали (решение
                             // владельца 05.10.2026).
                             <div>
-                                <div className="text-sm font-semibold text-gray-900">Заказ не найден</div>
+                                {/* Номер знаком — говорим, кто звонит, и честно
+                                    пишем, что заказа у звонка нет. Незнакомый
+                                    номер так и называем (решение владельца
+                                    05.10.2026). */}
+                                <div className="text-sm font-semibold text-gray-900">
+                                    {alert.kind === 'call'
+                                        ? (alert.knownClient ? 'Заказов не найдено' : 'Номер неизвестен, заказа нет')
+                                        : 'Заказ не найден'}
+                                </div>
                                 {alert.kind === 'call' && alert.callId && (
                                     <CallOrderPicker
                                         callId={alert.callId}

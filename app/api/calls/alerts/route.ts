@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { clientByPhone } from '@/lib/call-binding';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,9 +33,9 @@ export async function GET(req: Request) {
      * Телефония приезжает синхронизацией, с задержкой в несколько минут.
      * Оповещение опрашивает нас раз в минуту и отбирало звонки по времени
      * самого разговора — к моменту появления в базе оно было уже старше
-     * прошлой проверки, и звонок не показывался НИКОГДА (жалоба Евгении
-     * 05.10.2026: «сейчас звонок поступил, но не отобразился в срм, никакого
-     * оповещения нет»).
+     * прошлой проверки, и звонок не показывался НИКОГДА (жалоба Ирины
+     * Гордеевой 05.10.2026: «сейчас звонок поступил, но не отобразился в срм,
+     * никакого оповещения нет»).
      *
      * Отсечку по времени разговора оставляем, чтобы переобработка старых
      * записей не поднимала вчерашние звонки: показываем только то, что
@@ -103,16 +104,33 @@ export async function GET(req: Request) {
         }
 
         const payload = order?.raw_payload ?? {};
+        let clientName: string | null = order
+            ? (payload.customer?.nickName
+                || payload.contragent?.legalName
+                || [payload.firstName, payload.lastName].filter(Boolean).join(' ')
+                || null)
+            : null;
+
+        /**
+         * Заказа нет — всё равно говорим, КТО звонит: ищем карточку клиента по
+         * номеру (решение владельца 05.10.2026). «Звонит ООО „Ромашка“, заказов
+         * не найдено» — это работа, а «неизвестный номер» — просто звонок,
+         * который некому принять осмысленно.
+         */
+        if (!clientName) {
+            const who = await clientByPhone(call.from_number_normalized || call.from_number || '');
+            clientName = who?.name ?? null;
+        }
+
         result.push({
             id: `call-${call.telphin_call_id}`,
             // Нужен, чтобы менеджер мог указать заказ прямо из оповещения.
             callId: call.telphin_call_id,
             phone: call.from_number,
             orderNumber: order?.number ?? null,
-            clientName: payload.customer?.nickName
-                || payload.contragent?.legalName
-                || [payload.firstName, payload.lastName].filter(Boolean).join(' ')
-                || null,
+            clientName,
+            // Номер знаком, но заказа у звонка нет — так и пишем.
+            knownClient: Boolean(clientName),
             managerName,
             startedAt: call.started_at,
         });
