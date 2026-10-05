@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getSupabaseBrowser } from '@/utils/supabase-browser';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import CallOrderPicker from '@/components/orders/CallOrderPicker';
+import CallSummary from '@/components/calls/CallSummary';
 
 /**
  * Телефон звонит ПРЯМО СЕЙЧАС.
@@ -70,7 +71,7 @@ export default function RingingCallAlert() {
         void supabase
             .from('active_calls')
             .select('telphin_call_id, direction, from_number, client_name, order_number, status, started_at, extension_number, is_queue')
-            .eq('status', 'ringing')
+            .in('status', ['ringing', 'answered'])
             .gte('started_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
             .then(({ data }) => {
                 if (!cancelled && data) setCalls((data as Ringing[]).filter(forMe));
@@ -82,8 +83,10 @@ export default function RingingCallAlert() {
                 const row = (payload.new ?? payload.old) as Ringing | undefined;
                 if (!row?.telphin_call_id) return;
 
-                // Трубку подняли или звонок кончился — окно убираем.
-                if (payload.eventType === 'DELETE' || row.status !== 'ringing') {
+                // Звонок кончился — окно убираем. Трубку подняли — окно
+                // остаётся: разговор идёт, и в нём показывается сводка по сделке
+                // (просьба владельца 05.10.2026).
+                if (payload.eventType === 'DELETE' || row.status === 'ended') {
                     drop(row.telphin_call_id);
                     return;
                 }
@@ -111,7 +114,9 @@ export default function RingingCallAlert() {
                 <div key={call.telphin_call_id} className="border-2 border-green-600 bg-white shadow-xl">
                     <div className="flex items-center justify-between bg-green-700 px-3 py-2">
                         <span className="text-xs font-black uppercase tracking-widest text-white">
-                            {call.direction === 'outgoing' ? 'Идёт звонок' : 'Звонят вам'}
+                            {call.status === 'answered'
+                                ? 'Разговор идёт'
+                                : call.direction === 'outgoing' ? 'Идёт звонок' : 'Звонят вам'}
                         </span>
                         <button
                             type="button"
@@ -133,9 +138,13 @@ export default function RingingCallAlert() {
                         )}
 
                         {call.order_number ? (
-                            <div className="mt-1 text-sm font-semibold text-gray-900">
-                                Заказ <OrderNumberLink number={call.order_number} />
-                            </div>
+                            <>
+                                <div className="mt-1 text-sm font-semibold text-gray-900">
+                                    Заказ <OrderNumberLink number={call.order_number} />
+                                </div>
+                                {/* Разговор начался — коротко напоминаем, о чём сделка. */}
+                                {call.status === 'answered' && <CallSummary callId={call.telphin_call_id} />}
+                            </>
                         ) : (
                             <div className="mt-1">
                                 <div className="text-sm text-gray-700">
