@@ -5,6 +5,7 @@ import { checkCounterpartyByInn, CounterpartyScoreResult } from '@/lib/legal-cou
 import CallInitiator from './calls/CallInitiator';
 import PhoneFieldCall from './calls/PhoneFieldCall';
 import ManagerTransfer from './orders/ManagerTransfer';
+import { prependComment } from '@/lib/own-crm/comment-entries';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { priceSourceLabel } from '@/lib/format';
 import { orderTotals } from '@/lib/own-crm/discount';
@@ -36,6 +37,8 @@ interface OrderDetails {
     order: any;
     calls: any[];
     emails: any[];
+    /** Советы бота-РОПа — своим окном, а не в комментарии менеджера. */
+    ropNotes?: Array<{ date: string | null; text: string }>;
     history: any[];
     /** Названия и цвета статусов — для плашек в истории. */
     statusPalette?: Record<string, { name: string; color: string | null }>;
@@ -259,6 +262,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     // Звоним от имени того, кто сидит в карточке: Телфин набирает его добавочный.
     const { user } = useAuth();
     const callManagerId = user?.retail_crm_manager_id ? String(user.retail_crm_manager_id) : null;
+    /** Кем подписывать запись в комментарии: фамилия и имя, иначе логин. */
+    const commentAuthor = [user?.last_name, user?.first_name].filter(Boolean).join(' ')
+        || user?.username
+        || null;
     const [data, setData] = useState<OrderDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -288,6 +295,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [saveNote, setSaveNote] = useState<string | null>(null);
     /** На какое письмо отвечаем: адрес, тема и цитата для формы ответа. */
     const [replySource, setReplySource] = useState<{ to: string | null; subject: string | null; quote: string | null } | null>(null);
+    /** Новая запись в комментарий: метку ставит система при добавлении. */
+    const [newComment, setNewComment] = useState('');
     /** Поля с ошибками: ключ черновика → что не так. Подсвечиваются красным. */
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
     // Правка остальных полей карточки. Ключи: имя поля заказа (firstName, phone…),
@@ -1448,7 +1457,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             );
                         })()}
                     </div>
-                    <div className="grid lg:grid-cols-2 gap-6">
+                    <div className="grid lg:grid-cols-3 gap-6">
                         <div className="bg-white border border-gray-200 p-4">
                             <h4 className="text-sm font-semibold text-gray-900 mb-3">Комментарий клиента</h4>
                             <textarea
@@ -1461,13 +1470,65 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                         <div className="bg-white border border-gray-200 p-4">
                             <h4 className="text-sm font-semibold text-gray-900 mb-3">Комментарий менеджера</h4>
+                            {/* Новая запись отдельным полем: дату, время и автора
+                                ставит система, а запись ложится наверх ленты
+                                (решение владельца 05.10.2026). Раньше менеджер
+                                писал «05.10» руками и терялся, где свежее. */}
+                            <textarea
+                                value={newComment}
+                                onChange={(e) => setNewComment(e.target.value)}
+                                rows={3}
+                                placeholder="Новая запись: что сделали, о чём договорились"
+                                className="w-full border border-gray-300 bg-white p-3 text-sm text-gray-800"
+                            />
+                            <div className="mt-2 flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    disabled={!newComment.trim()}
+                                    onClick={() => {
+                                        setDraftManagerComment(
+                                            prependComment(draftManagerComment, newComment, commentAuthor),
+                                        );
+                                        setNewComment('');
+                                        setDirty(true);
+                                    }}
+                                    className="bg-blue-600 px-3 py-1 text-xs font-semibold text-white disabled:bg-gray-300"
+                                >
+                                    Добавить запись
+                                </button>
+                                <span className="text-[11px] text-gray-500">
+                                    Дату, время и фамилию подставит система — писать их не нужно
+                                </span>
+                            </div>
                             <textarea
                                 value={draftManagerComment}
                                 onChange={(e) => { setDraftManagerComment(e.target.value); setDirty(true); }}
                                 rows={6}
                                 placeholder="Договорённости, обещания, что делать дальше"
-                                className="w-full border border-gray-200 bg-white p-3 text-sm text-gray-800"
+                                className="mt-3 w-full border border-gray-200 bg-white p-3 text-sm text-gray-800"
                             />
+                        </div>
+                        {/* Советы бота-РОПа — своим окном рядом (решение владельца
+                            05.10.2026). Раньше они дописывались в комментарий
+                            менеджера и перемешивались с его договорённостями. */}
+                        <div className="bg-white border border-gray-200 p-4">
+                            <h4 className="mb-3 text-sm font-semibold text-gray-900">Заметки бота-РОПа</h4>
+                            {(data.ropNotes?.length ?? 0) > 0 ? (
+                                <div className="max-h-44 space-y-2 overflow-auto">
+                                    {(data.ropNotes ?? []).map((note: any, i: number) => (
+                                        <div key={i} className="border border-gray-100 bg-gray-50 p-2">
+                                            <div className="text-[11px] uppercase tracking-wide text-gray-500">
+                                                {note.date ? new Date(note.date).toLocaleDateString('ru-RU') : '—'}
+                                            </div>
+                                            <div className="text-sm text-gray-800">{note.text}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-sm text-gray-500">
+                                    Бот по этому заказу пока ничего не советовал.
+                                </p>
+                            )}
                         </div>
                     </div>
                 </section>

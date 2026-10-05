@@ -9,6 +9,7 @@ import { EMPTY_FILTER, filterToSearchParams, type OrdersFilter } from '@/lib/ord
 import { ORDER_COLUMNS, DEFAULT_COLUMNS, normalizeSelection } from '@/lib/orders-view';
 import StatusIcon from '@/components/orders/StatusIcon';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
+import CommentCell from '@/components/orders/CommentCell';
 import { useSearchParams } from 'next/navigation';
 import { formatRub } from '@/lib/format';
 
@@ -230,9 +231,9 @@ export default function OrdersClient() {
             case 'manager':
                 return order.managerName || '—';
             case 'managerComment':
-                return order.managerComment
-                    ? <span className="whitespace-pre-line text-gray-800">{order.managerComment.split('\n').slice(0, 5).join('\n')}</span>
-                    : '—';
+                // Свежая запись сверху, остальное по клику: раньше ячейка
+                // показывала первые пять строк, а новое лежало внизу.
+                return <CommentCell value={order.managerComment} />;
             case 'customerComment':
                 return order.customerComment || '—';
             case 'category':

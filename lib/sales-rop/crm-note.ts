@@ -1,17 +1,18 @@
-import { getCrmConfig, updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
 import { supabase } from '@/utils/supabase';
 
-// Рекомендации РОПа в карточке заказа.
+// Рекомендации РОПа по заказу.
 //
-// Пишем в «Комментарий менеджера» — то самое поле, куда менеджер кладёт
-// договорённости с клиентом: «Все из 0,8 мм, оплата в понедельник». Поэтому
-// главное правило здесь одно: НИКОГДА не перезаписывать. orders/edit заменяет
-// поле целиком, и одна невнимательная запись сотрёт то, о чём договаривались
-// полгода. Сначала читаем, потом дописываем.
+// Раньше они дописывались в «Комментарий менеджера» — туда же, где менеджер
+// держит договорённости с клиентом. Лента росла: по заказу 53603 к 05.10.2026
+// она доросла до 7 000 знаков, и советы робота перемешались со словами людей.
+// Решение владельца 05.10.2026: заметки бота живут отдельным окном рядом с
+// комментарием менеджера.
 //
-// Каждая строка начинается датой и подписью: через месяц в комментарии будет
-// десяток заметок, и без даты непонятно, какая из них про сегодня. Подпись
-// нужна, чтобы менеджер отличал совет робота от слов коллеги.
+// Отдельной таблицы под них не завели: текст заметки — это `reason_text`
+// задачи дня (`sales_rop_task`), он там и лежит вместе с датой плана и
+// моментом записи. Здесь остаётся только решение «нужна ли сегодня новая
+// заметка» — чтобы один и тот же совет не повторялся, пока по заказу ничего
+// не делали.
 
 export const ROP_PREFIX = 'РОП';
 
@@ -57,14 +58,6 @@ export function mergeComment(existing: string, note: string): string {
     return human ? `${ropLines.join('\n')}\n\n${human}` : ropLines.join('\n');
 }
 
-async function currentComment(orderId: number): Promise<{ comment: string; site: string } | null> {
-    const { url, key } = await getCrmConfig();
-    const res = await fetch(`${url}/api/v5/orders/${orderId}?by=id`, { headers: { 'X-API-KEY': key } });
-    const data = await res.json();
-    if (!data.success || !data.order) return null;
-    return { comment: String(data.order.managerComment ?? ''), site: data.order.site };
-}
-
 export type NoteResult = {
     ok: boolean;
     skipped?: 'already' | 'no-order' | 'not-worked';
@@ -89,26 +82,21 @@ export function noteNeeded(lastNoteAt: string | null, lastTouchAt: string | null
 }
 
 /**
- * Дописывает рекомендацию в карточку заказа.
+ * Нужна ли сегодня заметка по заказу. Текст писать никуда не надо — он уже
+ * лежит в задаче дня, карточка показывает его отдельным окном.
  *
- * Возвращает результат, а не бросает: одна недоступная карточка не должна
- * ронять утреннюю рассылку — план в Telegram полезен и без записи в CRM.
+ * Возвращает результат, а не бросает: одна проблема не должна ронять утреннюю
+ * рассылку — план в Telegram полезен сам по себе.
  */
-export async function appendRopNote(orderId: number, text: string, date = new Date()): Promise<NoteResult> {
+export async function appendRopNote(orderId: number, _text: string, _date = new Date()): Promise<NoteResult> {
     try {
         const { data } = await supabase.rpc('sales_rop_note_state', { p_order_id: orderId });
         const state = ((data ?? []) as any[])[0];
         if (state && !noteNeeded(state.last_note_at ?? null, state.last_touch_at ?? null)) {
             return { ok: false, skipped: 'not-worked' };
         }
-
-        const current = await currentComment(orderId);
-        if (!current) return { ok: false, skipped: 'no-order' };
-        if (alreadyNotedToday(current.comment, date)) return { ok: false, skipped: 'already' };
-
-        const merged = mergeComment(current.comment, formatRopNote(text, date));
-        const res = await updateExistingOrderInCrm(orderId, { noteText: merged }, current.site);
-        return res.success ? { ok: true } : { ok: false, error: res.errorMsg };
+        // Сам текст уже сохранён задачей дня — здесь только разрешаем заметку.
+        return { ok: true };
     } catch (e: any) {
         return { ok: false, error: e.message };
     }

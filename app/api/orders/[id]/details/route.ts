@@ -54,6 +54,23 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             orderId: order.order_id,
         });
 
+        /**
+         * Советы бота-РОПа по заказу: текст лежит в задаче дня, отдельной
+         * таблицы под них нет и не нужно. Карточка показывает их своим окном
+         * рядом с комментарием менеджера (решение владельца 05.10.2026).
+         */
+        const { data: ropTasks } = await supabase
+            .from('sales_rop_task')
+            .select('plan_date, reason_text, note_written_at')
+            .eq('order_id', order.order_id)
+            .not('reason_text', 'is', null)
+            .order('plan_date', { ascending: false })
+            .limit(10);
+
+        const ropNotes = ((ropTasks ?? []) as any[])
+            .filter((row) => String(row.reason_text ?? '').trim())
+            .map((row) => ({ date: row.plan_date, text: String(row.reason_text).trim() }));
+
         const emails = [
             ...mail.map((entry) => ({
                 id: entry.id,
@@ -188,6 +205,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             insights: metrics?.insights || null,
             calls,
             emails: emails,
+            ropNotes,
             history: history || [],
             raw_payload: order.raw_payload
         });
