@@ -35,7 +35,19 @@ export type CatalogLink = {
     url: string;
     /** Название в каталоге — по нему видно, тот ли это товар. */
     name: string;
+    /** Фото с карточки товара на сайте — его же показываем в КП. */
+    image: string | null;
 };
+
+/** Первое фото карточки товара: в каталоге они лежат списком. */
+function firstImage(images: unknown): string | null {
+    const list = Array.isArray(images) ? images : [];
+    for (const image of list) {
+        const url = String((image as any)?.url ?? '').trim();
+        if (url) return url;
+    }
+    return null;
+}
 
 const clean = (value: unknown): string => String(value ?? '').replace(/^"+|"+$/g, '').trim();
 
@@ -43,6 +55,13 @@ const clean = (value: unknown): string => String(value ?? '').replace(/^"+|"+$/g
 export async function catalogLinks(params: {
     siteIds?: Array<string | number | null | undefined>;
     articles?: Array<string | null | undefined>;
+    /**
+     * Идентификаторы товара в 1С (`offer.xmlId`). Самый надёжный ключ: в
+     * каталоге сайта это `raw_data->>id_1c`, и он совпадает там, где id сайта
+     * и артикул уже разошлись — номера товаров в заказах ушли за 40 000, а в
+     * каталоге сайта кончаются на 29 420.
+     */
+    xmlIds?: Array<string | null | undefined>;
 }): Promise<CatalogLink[]> {
     if (!catalogLinksConfigured()) return [];
 
@@ -53,30 +72,51 @@ export async function catalogLinks(params: {
         new Set((params.articles ?? []).map((article) => clean(article)).filter((article) => article.length > 1)),
     ).slice(0, 300);
 
+    const xmlIds = Array.from(
+        new Set((params.xmlIds ?? []).map((id) => clean(id).split('#')[0]).filter((id) => id.length > 8)),
+    ).slice(0, 300);
+
     const db = client();
     const found: CatalogLink[] = [];
 
     try {
+        if (xmlIds.length) {
+            const { data, error } = await db
+                .from('marketing_products')
+                .select('id, name, full_url, images, raw_data->>id_1c')
+                .in('raw_data->>id_1c', xmlIds);
+            if (error) throw new Error(error.message);
+            for (const row of ((data ?? []) as any[])) {
+                if (!row.id_1c) continue;
+                found.push({
+                    key: `1c:${row.id_1c}`,
+                    url: String(row.full_url ?? ''),
+                    name: decodeEntities(String(row.name ?? '')),
+                    image: firstImage(row.images),
+                });
+            }
+        }
+
         if (ids.length) {
             const { data, error } = await db
                 .from('marketing_products')
-                .select('id, name, full_url')
+                .select('id, name, full_url, images')
                 .in('id', ids);
             if (error) throw new Error(error.message);
             for (const row of ((data ?? []) as any[])) {
-                if (row.full_url) found.push({ key: `id:${row.id}`, url: String(row.full_url), name: decodeEntities(String(row.name ?? '')) });
+                if (row.full_url) found.push({ key: `id:${row.id}`, url: String(row.full_url), name: decodeEntities(String(row.name ?? '')), image: firstImage(row.images) });
             }
         }
 
         if (articles.length) {
             const { data, error } = await db
                 .from('marketing_products')
-                .select('sku, name, full_url')
+                .select('sku, name, full_url, images')
                 .in('sku', articles);
             if (error) throw new Error(error.message);
             for (const row of ((data ?? []) as any[])) {
                 if (row.sku && row.full_url) {
-                    found.push({ key: `art:${clean(row.sku)}`, url: String(row.full_url), name: decodeEntities(String(row.name ?? '')) });
+                    found.push({ key: `art:${clean(row.sku)}`, url: String(row.full_url), name: decodeEntities(String(row.name ?? '')), image: firstImage(row.images) });
                 }
             }
         }

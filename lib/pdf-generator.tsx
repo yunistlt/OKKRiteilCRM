@@ -48,6 +48,11 @@ export interface ProposalItem {
     quantity: number;
     price: number;
     unit?: string;
+    /** Цена до скидки и сумма скидки по строке — колонка «Скидка» в КП. */
+    initial_price?: number;
+    discount?: number;
+    /** Фото товара с его карточки на сайте. */
+    image?: string | null;
 }
 
 export interface ProposalData {
@@ -58,6 +63,33 @@ export interface ProposalData {
     valid_until?: string; // ISO date
     client_name?: string;
     client_company?: string;
+    /**
+     * Дальше — то же, что уже показывает счёт. КП без реквизитов продавца,
+     * НДС, сроков, доставки и подписей клиент не принимает к рассмотрению
+     * (замечания Евгении 05.10.2026).
+     */
+    vat_pct?: number;
+    seller_name?: string;
+    seller_inn?: string;
+    seller_kpp?: string;
+    seller_ogrn?: string;
+    seller_bank?: string;
+    seller_bik?: string;
+    seller_ks?: string;
+    seller_rs?: string;
+    seller_address?: string;
+    seller_full_name?: string | null;
+    seller_seal_place?: string | null;
+    seller_has_seal?: boolean;
+    seal_image?: string | null;
+    signature_image?: string | null;
+    signer_name?: string | null;
+    signer_title?: string | null;
+    manager_name?: string | null;
+    production_days?: number | null;
+    shipping_terms?: string | null;
+    /** Сколько дней действительно предложение. */
+    valid_days?: number | null;
 }
 
 // ── Стили ────────────────────────────────────────────────────────────────────
@@ -190,109 +222,188 @@ function formatMoney(n: number): string {
 
 // ── Компонент PDF ─────────────────────────────────────────────────────────────
 function ProposalPDF({ data }: { data: ProposalData }) {
-    const subtotal = data.items.reduce((s, i) => s + i.price * i.quantity, 0);
-    const discountAmt = Math.round(subtotal * (data.discount_pct / 100));
-    const total = subtotal - discountAmt;
+    const subtotal = data.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const discountAmt = data.items.reduce((sum, item) => sum + Number(item.discount || 0), 0)
+        || Math.round(subtotal * ((data.discount_pct || 0) / 100));
+    const total = data.items.reduce((sum, item) => sum + Number(item.discount || 0), 0) > 0
+        ? subtotal
+        : subtotal - discountAmt;
+    const vatPct = Number(data.vat_pct ?? 0);
+    const vatAmt = vatPct > 0 ? Math.round(total * (vatPct / 100) / (1 + vatPct / 100)) : 0;
+
     const today = new Date().toLocaleDateString('ru-RU');
+    // Срок действия: сколько дней сказал менеджер в заказе. Клиент должен
+    // видеть дату, а не считать её сам.
+    const validDays = Number(data.valid_days || 0);
     const validUntil = data.valid_until
         ? new Date(data.valid_until).toLocaleDateString('ru-RU')
-        : null;
+        : validDays > 0
+            ? new Date(Date.now() + validDays * 24 * 60 * 60 * 1000).toLocaleDateString('ru-RU')
+            : null;
+
+    const seller = {
+        name: data.seller_name || 'ООО «ЗМК»',
+        inn: data.seller_inn || '—',
+        kpp: data.seller_kpp || '—',
+        bank: data.seller_bank || '—',
+        bik: data.seller_bik || '—',
+        ks: data.seller_ks || '—',
+        rs: data.seller_rs || '—',
+        address: data.seller_address || '—',
+    };
 
     return (
         <Document>
-            <Page size="A4" style={styles.page}>
-                {/* Шапка */}
-                <View style={styles.header}>
-                    <View style={styles.headerLeft}>
-                        <Text style={styles.companyName}>ЗМК — Завод Металлоконструкций</Text>
-                        <Text style={styles.companyTagline}>zmktlt.ru • Промышленное оборудование</Text>
-                    </View>
-                    <View style={styles.headerRight}>
-                        <Text style={styles.docLabel}>Коммерческое предложение</Text>
-                        <Text style={styles.docDate}>Дата: {today}</Text>
-                        {validUntil && <Text style={styles.docDate}>Действует до: {validUntil}</Text>}
-                    </View>
-                </View>
+            <Page size="A4" style={invStyles.page}>
+                <View style={invStyles.topBorder} />
 
-                {/* Заголовок */}
-                <View style={styles.titleBlock}>
-                    <Text style={styles.title}>{data.title}</Text>
-                    {(data.client_name || data.client_company) && (
-                        <Text style={styles.clientInfo}>
-                            Для: {[data.client_company, data.client_name].filter(Boolean).join(' — ')}
+                {/* Шапка: кто предлагает. Без реквизитов продавца КП не примут. */}
+                <View style={invStyles.headerRow}>
+                    <View style={invStyles.sellerBlock}>
+                        <Text style={invStyles.lg}>{data.title}</Text>
+                        <Text style={[invStyles.sm, { marginBottom: 4 }]}>от {today}</Text>
+                        <Text style={[invStyles.sm, invStyles.bold]}>{seller.name}</Text>
+                        <Text style={invStyles.sm}>
+                            ИНН: {seller.inn}  КПП: {seller.kpp}{data.seller_ogrn ? `  ОГРН: ${data.seller_ogrn}` : ''}
                         </Text>
-                    )}
-                </View>
-
-                {/* Введение */}
-                {data.intro && <Text style={styles.intro}>{data.intro}</Text>}
-
-                {/* Таблица */}
-                <View style={styles.table}>
-                    <View style={styles.tableHeader}>
-                        <Text style={[styles.tableHeaderText, styles.colNum]}>№</Text>
-                        <Text style={[styles.tableHeaderText, styles.colName]}>Наименование</Text>
-                        <Text style={[styles.tableHeaderText, styles.colQty]}>Кол-во</Text>
-                        <Text style={[styles.tableHeaderText, styles.colUnit]}>Ед.</Text>
-                        <Text style={[styles.tableHeaderText, styles.colPrice]}>Цена, ₽</Text>
-                        <Text style={[styles.tableHeaderText, styles.colTotal]}>Сумма, ₽</Text>
+                        <Text style={invStyles.sm}>{seller.address}</Text>
+                        <Text style={invStyles.sm}>Р/с {seller.rs}  К/с {seller.ks}  БИК {seller.bik}</Text>
+                        <Text style={invStyles.sm}>Банк: {seller.bank}</Text>
                     </View>
-                    {data.items.map((item, idx) => (
-                        <View key={idx} style={[styles.tableRow, idx % 2 === 1 ? styles.tableRowAlt : {}]}>
-                            <Text style={[styles.cellText, styles.colNum]}>{idx + 1}</Text>
-                            <View style={styles.colName}>
-                                <Text style={styles.cellText}>{item.name}</Text>
-                                {item.description && <Text style={styles.cellTextGray}>{item.description}</Text>}
-                            </View>
-                            <Text style={[styles.cellText, styles.colQty]}>{item.quantity}</Text>
-                            <Text style={[styles.cellText, styles.colUnit]}>{item.unit || 'шт.'}</Text>
-                            <Text style={[styles.cellText, styles.colPrice]}>{formatMoney(item.price)}</Text>
-                            <Text style={[styles.cellText, styles.colTotal]}>{formatMoney(item.price * item.quantity)}</Text>
-                        </View>
-                    ))}
+                    <View style={invStyles.invoiceMeta}>
+                        <Text style={[invStyles.sm, { marginBottom: 2 }]}>Дата: {today}</Text>
+                        {validUntil && (
+                            <Text style={[invStyles.sm, { color: '#ef4444' }]}>Действует до: {validUntil}</Text>
+                        )}
+                        <Text style={[invStyles.sm, { marginTop: 8 }]}>zmktlt.ru</Text>
+                    </View>
                 </View>
+
+                {/* Кому */}
+                {(data.client_company || data.client_name) && (
+                    <View style={invStyles.payerBox}>
+                        <Text style={invStyles.payerTitle}>Для кого</Text>
+                        {data.client_company && (
+                            <View style={invStyles.payerRow}>
+                                <Text style={invStyles.payerLabel}>Организация</Text>
+                                <Text style={[invStyles.payerValue, invStyles.bold]}>{data.client_company}</Text>
+                            </View>
+                        )}
+                        {data.client_name && (
+                            <View style={invStyles.payerRow}>
+                                <Text style={invStyles.payerLabel}>Контакт</Text>
+                                <Text style={invStyles.payerValue}>{data.client_name}</Text>
+                            </View>
+                        )}
+                    </View>
+                )}
+
+                {data.intro ? <Text style={[invStyles.sm, { marginBottom: 6 }]}>{data.intro}</Text> : null}
+
+                {/* Позиции: с фото товара и колонкой скидки, как в прежнем КП. */}
+                <View style={invStyles.tblHeader}>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cNum]}>№</Text>
+                    <Text style={[invStyles.tblHeaderText, { width: 54 }]}>Фото</Text>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cName]}>Наименование</Text>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cQty]}>Кол-во</Text>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cPrice]}>Цена, ₽</Text>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Сумма, ₽</Text>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Скидка, ₽</Text>
+                </View>
+                {data.items.map((item, idx) => (
+                    <View key={idx} style={[invStyles.tblRow, idx % 2 === 1 ? invStyles.tblAlt : {}]} wrap={false}>
+                        <Text style={[invStyles.cell, invStyles.cNum]}>{idx + 1}</Text>
+                        <View style={{ width: 54 }}>
+                            {item.image ? (
+                                <Image src={item.image} style={{ width: 48, height: 48, objectFit: 'contain' }} />
+                            ) : null}
+                        </View>
+                        <View style={invStyles.cName}>
+                            <Text style={invStyles.cell}>{item.name}</Text>
+                            {item.description && <Text style={invStyles.cellGray}>{item.description}</Text>}
+                        </View>
+                        <Text style={[invStyles.cell, invStyles.cQty]}>{item.quantity} {item.unit || 'шт.'}</Text>
+                        <Text style={[invStyles.cell, invStyles.cPrice]}>{formatMoney(item.price)}</Text>
+                        <Text style={[invStyles.cell, invStyles.cTotal]}>{formatMoney(item.price * item.quantity)}</Text>
+                        <Text style={[invStyles.cell, invStyles.cTotal]}>
+                            {item.discount ? formatMoney(item.discount) : '—'}
+                        </Text>
+                    </View>
+                ))}
 
                 {/* Итоги */}
-                <View style={styles.totalsBlock}>
-                    <View style={styles.totalRow}>
-                        <Text style={styles.totalLabel}>Подытог</Text>
-                        <Text style={styles.totalValue}>{formatMoney(subtotal)}</Text>
-                    </View>
-                    {data.discount_pct > 0 && (
-                        <View style={styles.totalRow}>
-                            <Text style={styles.totalLabel}>Скидка {data.discount_pct}%</Text>
-                            <Text style={[styles.totalValue, { color: '#ef4444' }]}>−{formatMoney(discountAmt)}</Text>
+                <View style={invStyles.totals}>
+                    {discountAmt > 0 && (
+                        <View style={invStyles.totRow}>
+                            <Text style={invStyles.totLabel}>Сумма скидки</Text>
+                            <Text style={[invStyles.totVal, { color: '#ef4444' }]}>{formatMoney(discountAmt)}</Text>
                         </View>
                     )}
-                    <View style={styles.grandTotalRow}>
-                        <Text style={styles.grandTotalLabel}>Итого с НДС</Text>
-                        <Text style={styles.grandTotalValue}>{formatMoney(total)}</Text>
+                    {vatPct > 0 && (
+                        <View style={invStyles.totRow}>
+                            <Text style={invStyles.totLabel}>В том числе НДС {vatPct}%</Text>
+                            <Text style={invStyles.totVal}>{formatMoney(vatAmt)}</Text>
+                        </View>
+                    )}
+                    <View style={invStyles.grandRow}>
+                        <Text style={invStyles.grandLabel}>Итого</Text>
+                        <Text style={invStyles.grandVal}>{formatMoney(total)}</Text>
                     </View>
                 </View>
 
-                {/* Условия */}
-                <View style={styles.conditions}>
-                    <Text style={styles.conditionsTitle}>Условия предложения</Text>
-                    {[
-                        'Цены указаны с учётом НДС',
-                        'Срок изготовления уточняется при заказе',
-                        'Доставка по России — по тарифам перевозчика',
-                        'Бесплатная онлайн-настройка и запуск оборудования',
-                        'Гарантия 12 месяцев с момента поставки',
-                    ].map((c, i) => (
-                        <View key={i} style={styles.conditionRow}>
-                            <Text style={styles.conditionBullet}>•</Text>
-                            <Text style={styles.conditionText}>{c}</Text>
+                {/* Сроки и получение — те же, что в счёте. */}
+                {data.production_days ? (
+                    <Text style={[invStyles.sm, { marginBottom: 4 }]}>
+                        Срок изготовления: {data.production_days} дн.
+                    </Text>
+                ) : null}
+                {data.shipping_terms ? (
+                    <Text style={[invStyles.sm, { marginBottom: 4 }]}>
+                        Условия получения: {data.shipping_terms}
+                    </Text>
+                ) : null}
+                <Text style={[invStyles.sm, { marginBottom: 16 }]}>
+                    {validDays > 0
+                        ? `Указанная стоимость действительна в течение ${validDays} дн.${validUntil ? ` — до ${validUntil}` : ''}`
+                        : 'Срок действия предложения уточняйте у менеджера'}
+                </Text>
+
+                {/* Подписи и печать */}
+                <View style={invStyles.signBlock}>
+                    <View style={invStyles.signCol}>
+                        <Text style={invStyles.signLabel}>{data.signer_title || 'Руководитель'}</Text>
+                        {data.signature_image ? (
+                            <Image src={data.signature_image} style={{ width: 110, height: 28, objectFit: 'contain' }} />
+                        ) : null}
+                        <View style={invStyles.signLine} />
+                        <Text style={invStyles.signName}>{data.signer_name || '____________________'}</Text>
+                    </View>
+                    <View style={invStyles.signCol}>
+                        <Text style={invStyles.signLabel}>Менеджер</Text>
+                        <View style={invStyles.signLine} />
+                        <Text style={invStyles.signName}>{data.manager_name || '____________________'}</Text>
+                    </View>
+                    {data.seal_image ? (
+                        <View style={invStyles.sealCol}>
+                            <Image src={data.seal_image} style={{ width: 110, height: 110, objectFit: 'contain' }} />
                         </View>
-                    ))}
+                    ) : data.seller_has_seal === false ? null : (
+                        <View style={invStyles.sealCol}>
+                            <OrganizationSeal
+                                fullName={data.seller_full_name || seller.name}
+                                shortName={sealShortName(seller.name)}
+                                inn={seller.inn}
+                                kpp={seller.kpp}
+                                ogrn={data.seller_ogrn}
+                                place={data.seller_seal_place || sealPlace(seller.address)}
+                            />
+                        </View>
+                    )}
                 </View>
 
-                {/* Подпись */}
-                <View style={styles.footer} fixed>
-                    <Text style={styles.footerText}>ЗМК • zmktlt.ru • Подготовлено автоматически</Text>
-                    <Text style={styles.footerText}>
-                        {validUntil ? `Предложение действует до ${validUntil}` : today}
-                    </Text>
+                <View style={invStyles.footer} fixed>
+                    <Text style={invStyles.footerText}>{seller.name} • zmktlt.ru</Text>
+                    <Text style={invStyles.footerText}>{today}</Text>
                 </View>
             </Page>
         </Document>

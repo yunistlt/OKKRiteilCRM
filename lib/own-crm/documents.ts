@@ -9,11 +9,21 @@
 import { supabase } from '@/utils/supabase';
 import { getCrmConfig } from '@/lib/retailcrm/leads';
 import { loadClientRequisites } from './client-requisites';
+import { catalogLinks } from './catalog-links';
 
 export type DocumentItem = {
     name: string;
     quantity: number;
     price: number;
+    /**
+     * Цена до скидки и сумма скидки по строке. В КП от RetailCRM скидка
+     * показана отдельной колонкой, и без неё клиент не видит, что ему уступили
+     * (замечание Евгении 05.10.2026).
+     */
+    initialPrice: number;
+    discount: number;
+    /** Фото товара с его карточки на сайте, если товар там есть. */
+    image: string | null;
 };
 
 export type Seller = {
@@ -55,6 +65,12 @@ export type OrderDocumentData = {
      * вписывает его руками в заказе (решение владельца 02.10.2026).
      */
     shippingTerms: string | null;
+    /**
+     * Сколько дней действительно предложение. Берём поле заказа «Счёт
+     * действителен в течение (дней)*», которое менеджеры заполняют руками;
+     * пусто — пять дней (решение владельца 05.10.2026).
+     */
+    validDays: number;
     /** Кто подписывает счёт — из справочника наших юрлиц. */
     signerName: string | null;
     signerTitle: string | null;
@@ -219,6 +235,10 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
         rows = data || [];
     }
 
+    // Фото берём из карточек товаров сайта: база товаров у нас — это база сайта.
+    // Чего на сайте уже нет (архив), то останется строкой без картинки.
+    const images = await catalogImages(rows);
+
     const items: DocumentItem[] = (rows || []).map((row: any) => ({
         name: row.offer?.displayName || row.offer?.name || row.productName || 'Позиция',
         quantity: Number(row.quantity || 0),
@@ -226,6 +246,12 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
         price: Math.max(0, Number(row.initialPrice || 0) - (Number(row.quantity || 0) > 0
             ? Number(row.discountTotal || 0) / Number(row.quantity)
             : 0)),
+        initialPrice: Number(row.initialPrice || 0),
+        discount: Number(row.discountTotal || 0),
+        image: images.get(String(row.offer?.xmlId ?? '').split('#')[0])
+            || images.get(String(row.offer?.externalId ?? ''))
+            || images.get(String(row.offer?.article ?? ''))
+            || null,
     }));
 
     const contragent = (order as any).contragent || (order as any).raw_payload?.contragent || {};
@@ -270,12 +296,35 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
         sellerOptions: await sellerOptions(),
         vatPercent: await vatPercentForSite(sellerCode || (order as any).site),
         productionDays: Number(customFields.srok_izgot) > 0 ? Number(customFields.srok_izgot) : null,
+        validDays: Number(customFields.schiot_deistvitelen_v_techenie_dnei) > 0
+            ? Number(customFields.schiot_deistvitelen_v_techenie_dnei)
+            : 5,
         managerName: await managerNameOf((order as any).manager_id),
         ...(await sellerSealOf(seller)),
         shippingTerms: await shippingTermsText(delivery),
         ...(await signerOf(sellerCode || (order as any).site, seller)),
         total: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
     };
+}
+
+/** Фото позиций с карточек сайта: ключ — id товара на сайте и артикул. */
+async function catalogImages(rows: any[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    try {
+        const links = await catalogLinks({
+            xmlIds: rows.map((row) => row?.offer?.xmlId),
+            siteIds: rows.map((row) => row?.offer?.externalId),
+            articles: rows.map((row) => row?.offer?.article),
+        });
+        for (const link of links) {
+            if (!link.image) continue;
+            const key = link.key.replace(/^(1c|id|art):/, '');
+            if (!map.has(key)) map.set(key, link.image);
+        }
+    } catch {
+        // Каталог не ответил — КП соберётся без картинок, это не повод падать.
+    }
+    return map;
 }
 
 /**
