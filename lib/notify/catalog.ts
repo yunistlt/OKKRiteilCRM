@@ -83,6 +83,26 @@ export const NOTIFY_TYPES: NotifyTypeDef[] = [
     target: 'group_sales',
   },
   {
+    code: 'tseh.order_accepted',
+    name: 'Заказ заведён в ЦехУспехе',
+    description:
+      'Заказ, переданный в производство, появился в ЦехУспехе: номер там, заказчик и сумма. '
+      + 'Повод проверить оформление — состав, сроки, реквизиты заказчика.',
+    group: 'quality',
+    bot: 'igor',
+    target: 'owner_dm',
+  },
+  {
+    code: 'tseh.order_rejected',
+    name: 'Заказ не принят производством',
+    description:
+      'ЦехУспех отказался заводить заказ и назвал причину — например, у заказчика нет ИНН. '
+      + 'Заказ в производство не уехал, нужно поправить и передать заново.',
+    group: 'quality',
+    bot: 'igor',
+    target: 'owner_dm',
+  },
+  {
     code: 'system.crm_site_missing',
     name: 'Магазин заявок пропал в RetailCRM',
     description: 'RetailCRM перестала принимать настроенный магазин — заявки с почты заводятся в запасном. Нужно проверить магазин в CRM.',
