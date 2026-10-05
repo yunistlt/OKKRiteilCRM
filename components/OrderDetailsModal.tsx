@@ -11,7 +11,7 @@ import { prependComment } from '@/lib/own-crm/comment-entries';
 import { clientTime } from '@/lib/own-crm/phone-timezone';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { priceSourceLabel } from '@/lib/format';
-import { orderTotals } from '@/lib/own-crm/discount';
+import { itemTotalWithDiscount, orderTotals } from '@/lib/own-crm/discount';
 import { uniquePhones } from '@/lib/own-crm/phones';
 import { useBreadcrumbs } from '@/components/ui/BreadcrumbsContext';
 import { siteSearchUrl } from '@/lib/own-crm/site-link';
@@ -304,7 +304,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     const [draftOrderDiscount, setDraftOrderDiscount] = useState({ amount: 0, percent: 0 });
     // discount — скидка на ЕДИНИЦУ товара, как её считает RetailCRM
     // (item.discountTotal): цена со скидкой = price − discount.
-    const [draftItems, setDraftItems] = useState<Array<{ id?: number | null; name: string; quantity: number; price: number; discount: number; article?: string | null; siteId?: string | null; xmlId?: string | null }>>([]);
+    const [draftItems, setDraftItems] = useState<Array<{ id?: number | null; name: string; quantity: number; price: number; discount: number; discountPercent: number; article?: string | null; siteId?: string | null; xmlId?: string | null }>>([]);
     // Ссылки на карточки товаров сайта по артикулу: название в составе кликабельно.
     const [catalogLinks, setCatalogLinks] = useState<Record<string, { url: string; name: string; image?: string | null }>>({});
     const [draftClientComment, setDraftClientComment] = useState('');
@@ -676,6 +676,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                 quantity: Number(item.quantity || 0),
                 price: Number(item.initialPrice ?? item.price ?? 0),
                 discount: Number(item.discountManualAmount ?? item.discountTotal ?? 0),
+                // Скидка процентом по позиции — третий вид скидки RetailCRM
+                // (`discountManualPercent`). Правится в строке, рядом с рублями.
+                discountPercent: Number(item.discountManualPercent ?? 0),
                 article: item.offer?.article ?? null,
                 // id товара на сайте: по нему строится ссылка на его карточку.
                 siteId: item.offer?.externalId ? String(item.offer.externalId) : null,
@@ -714,7 +717,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     /** Значение поля: сначала из черновика, потом из заказа. */
     const fieldValue = (key: string, original: any) => (key in draftFields ? draftFields[key] : original);
 
-    const changeItem = (index: number, patch: Partial<{ name: string; quantity: number; price: number; discount: number }>) => {
+    const changeItem = (index: number, patch: Partial<{ name: string; quantity: number; price: number; discount: number; discountPercent: number }>) => {
         setDraftItems((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
         setDirty(true);
     };
@@ -727,7 +730,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     const addItem = (item?: { id: string; name: string; price: number; article?: string | null }) => {
         if (!item) return; // товары только из каталога: руками названия не вводим
         // id из каталога — это id товара на сайте: он же ключ к его карточке.
-        setDraftItems((prev) => [...prev, { id: null, name: item.name, quantity: 1, price: item.price, discount: 0, article: item.article ?? null, siteId: item.id, xmlId: item.id }]);
+        setDraftItems((prev) => [...prev, { id: null, name: item.name, quantity: 1, price: item.price, discount: 0, discountPercent: 0, article: item.article ?? null, siteId: item.id, xmlId: item.id }]);
         setDirty(true);
         setCatalogQuery('');
         setCatalogFound([]);
@@ -749,6 +752,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         quantity: row.quantity,
                         price: row.price,
                         discountAmount: row.discount || 0,
+                        discountPercent: row.discountPercent || 0,
                         article: row.article ?? null,
                         siteId: row.siteId ?? null,
                         xmlId: row.xmlId ?? null,
@@ -1534,18 +1538,34 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                     className="w-full border border-gray-300 px-2 py-1 text-right"
                                                 />
                                             </td>
-                                            {/* Скидка на единицу товара — рублями, как в RetailCRM
-                                                (их `discountManualAmount`). Правится здесь же. */}
+                                            {/* Скидка на единицу товара — рублями и процентом, как в
+                                                RetailCRM (`discountManualAmount` и
+                                                `discountManualPercent`). Они складываются: так же
+                                                считает и сама CRM. */}
                                             <td className="px-3 py-2">
-                                                <NumberInput
-                                                    value={row.discount}
-                                                    onChange={(v: number | null) => changeItem(index, { discount: Math.max(0, Number(v) || 0) })}
-                                                    className="w-full border border-gray-300 px-2 py-1 text-right"
-                                                />
+                                                <div className="flex items-center gap-1">
+                                                    <NumberInput
+                                                        value={row.discount}
+                                                        onChange={(v: number | null) => changeItem(index, { discount: Math.max(0, Number(v) || 0) })}
+                                                        className="w-full border border-gray-300 px-2 py-1 text-right"
+                                                    />
+                                                    <span className="text-xs text-gray-400">₽</span>
+                                                    <NumberInput
+                                                        value={row.discountPercent}
+                                                        onChange={(v: number | null) => changeItem(index, { discountPercent: Math.min(100, Math.max(0, Number(v) || 0)) })}
+                                                        className="w-14 border border-gray-300 px-2 py-1 text-right"
+                                                    />
+                                                    <span className="text-xs text-gray-400">%</span>
+                                                </div>
                                             </td>
                                             <td className="px-3 py-2 text-right font-semibold text-gray-900">
-                                                {formatCurrency(Math.max(0, (row.price - row.discount) * row.quantity))}
-                                                {row.discount > 0 && (
+                                                {formatCurrency(itemTotalWithDiscount({
+                                                    price: row.price,
+                                                    quantity: row.quantity,
+                                                    discountAmount: row.discount,
+                                                    discountPercent: row.discountPercent,
+                                                }))}
+                                                {(row.discount > 0 || row.discountPercent > 0) && (
                                                     <div className="text-xs font-normal text-gray-400 line-through">
                                                         {formatCurrency(Math.max(0, row.price * row.quantity))}
                                                     </div>
@@ -1573,7 +1593,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             // Скидки считает общий модуль (lib/own-crm/discount.ts) —
                             // тем же счётом, что уходит в базу, КП и счёт.
                             const totals = orderTotals(
-                                draftItems.map((row) => ({ price: row.price, quantity: row.quantity, discountAmount: row.discount })),
+                                draftItems.map((row) => ({ price: row.price, quantity: row.quantity, discountAmount: row.discount, discountPercent: row.discountPercent })),
                                 {
                                     discountAmount: draftOrderDiscount.amount,
                                     discountPercent: draftOrderDiscount.percent,
