@@ -60,6 +60,11 @@ export type OrderDocumentData = {
      */
     productionDays: number | null;
     /**
+     * Срок изготовления словами: «30 рабочих дней» или «30 календарных дней».
+     * Одно «80» в документе читается двояко (замечание Евгении 05.10.2026).
+     */
+    productionTerm: string | null;
+    /**
      * Как клиент получает: название способа доставки из справочника RetailCRM
      * плюс адрес. При самовывозе адрес — это откуда забирать, и менеджер
      * вписывает его руками в заказе (решение владельца 02.10.2026).
@@ -173,7 +178,7 @@ async function loadOrderForDocument(orderKey: number) {
     for (const column of ['order_id', 'id'] as const) {
         const { data } = await supabase
             .from('orders')
-            .select('id, order_id, number, site, "contragent", "customer", "firstName", "lastName", "delivery", manager_id, raw_payload')
+            .select('id, order_id, number, site, "contragent", "customer", "firstName", "lastName", "delivery", manager_id, srok_izgot_edinica, raw_payload')
             .eq(column, orderKey)
             .maybeSingle();
 
@@ -296,6 +301,10 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
         sellerOptions: await sellerOptions(),
         vatPercent: await vatPercentForSite(sellerCode || (order as any).site),
         productionDays: Number(customFields.srok_izgot) > 0 ? Number(customFields.srok_izgot) : null,
+        productionTerm: productionTermText(
+            Number(customFields.srok_izgot) > 0 ? Number(customFields.srok_izgot) : null,
+            (order as any).srok_izgot_edinica,
+        ),
         validDays: Number(customFields.schiot_deistvitelen_v_techenie_dnei) > 0
             ? Number(customFields.schiot_deistvitelen_v_techenie_dnei)
             : 5,
@@ -305,6 +314,25 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
         ...(await signerOf(sellerCode || (order as any).site, seller)),
         total: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
     };
+}
+
+/**
+ * Срок изготовления человеческим языком. Единица не указана — календарные:
+ * так написано в прежних КП и договорах, и задним числом это менять нельзя.
+ */
+export function productionTermText(days: number | null, unit: unknown): string | null {
+    if (!days || days <= 0) return null;
+
+    const working = String(unit ?? '').trim() === 'rabochie';
+    const last = days % 10;
+    const teen = days % 100 >= 11 && days % 100 <= 14;
+    const form = teen || last === 0 || last >= 5
+        ? (working ? 'рабочих дней' : 'календарных дней')
+        : last === 1
+            ? (working ? 'рабочий день' : 'календарный день')
+            : (working ? 'рабочих дня' : 'календарных дня');
+
+    return `${days} ${form}`;
 }
 
 /** Фото позиций с карточек сайта: ключ — id товара на сайте и артикул. */

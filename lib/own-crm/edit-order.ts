@@ -63,6 +63,12 @@ export type OrderEdit = {
      * переделывать (Лена Парфёнова 05.10.2026).
      */
     site?: string | null;
+    /**
+     * Какими днями считаем срок изготовления: `rabochie` или `kalendarnye`.
+     * Поле наше — в RetailCRM его нет, поэтому пишем прямо в нашу таблицу и
+     * для заказов RetailCRM тоже (просьба Евгении 05.10.2026).
+     */
+    productionDaysUnit?: string | null;
 };
 
 export type EditResult =
@@ -84,6 +90,7 @@ export function describeEdit(edit: OrderEdit): string[] {
     if (edit.contact && Object.keys(edit.contact).length) changed.push('контактные данные');
     if (edit.delivery && Object.keys(edit.delivery).length) changed.push('доставку');
     if (edit.site) changed.push('юрлицо заказа');
+    if (edit.productionDaysUnit !== undefined) changed.push('единицу срока изготовления');
     return changed;
 }
 
@@ -152,6 +159,14 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
     const order = await findOrder(orderKey);
     if (!order) {
         return { ok: false, reason: 'Заказ не найден' };
+    }
+
+    // Единица срока — наша колонка, её храним у себя при любом источнике заказа.
+    if (edit.productionDaysUnit !== undefined) {
+        await supabase
+            .from('orders')
+            .update({ srok_izgot_edinica: edit.productionDaysUnit || null })
+            .eq('order_id', (order as any).order_id ?? orderKey);
     }
 
     // Свой заказ правим у себя: в RetailCRM его нет, и рубильник исходящих

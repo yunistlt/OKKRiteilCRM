@@ -644,6 +644,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     // Юрлицо заказа едет своим полем: в `contact` его класть нельзя —
                     // RetailCRM такого поля у заказа не знает.
                     ...('order.site' in draftFields ? { site: draftFields['order.site'] || null } : {}),
+                    // Единица срока изготовления — наша колонка, в RetailCRM её нет.
+                    ...('order.srok_izgot_edinica' in draftFields
+                        ? { productionDaysUnit: draftFields['order.srok_izgot_edinica'] || null }
+                        : {}),
                     customFields: Object.fromEntries(
                         Object.entries(draftFields)
                             .filter(([key]) => key.startsWith('cf.'))
@@ -1426,6 +1430,18 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         <div className="grid md:grid-cols-2 gap-2">
                             <InfoField label="Дата отгрузки" value={formatDate(shipping.date || logisticDate)} />
                             <EditField label="Срок изготовления, дней" type="number" value={fieldValue('cf.srok_izgot', customFields.srok_izgot ?? '')} onChange={(v) => setField('cf.srok_izgot', v)} />
+                            {/* Какие это дни — «80» само по себе читается двояко
+                                (замечание Евгении 05.10.2026). Единица идёт в КП,
+                                счёт и договор. */}
+                            <EditField
+                                label="Дни считаем"
+                                value={fieldValue('order.srok_izgot_edinica', order?.srok_izgot_edinica || 'kalendarnye')}
+                                onChange={(v) => setField('order.srok_izgot_edinica', v)}
+                                options={[
+                                    { value: 'kalendarnye', label: 'Календарные' },
+                                    { value: 'rabochie', label: 'Рабочие' },
+                                ]}
+                            />
                             <EditField label="Комментарий логисту" value={fieldValue('cf.komment_diveleri', customFields.komment_diveleri || '')} onChange={(v) => setField('cf.komment_diveleri', v)} />
                         </div>
                     </div>

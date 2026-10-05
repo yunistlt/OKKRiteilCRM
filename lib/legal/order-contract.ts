@@ -108,6 +108,7 @@ export async function buildOrderContract(params: {
         paymentTerms: payment.text,
         // Срок берём из заказа; если менеджер его не заполнил — наш обычный срок.
         productionDays: data.productionDays ?? 45,
+        productionTerm: data.productionTerm,
     };
 
     return { text: buildContractText(fill), byAi: payment.byAi, sellerName: data.seller.name };

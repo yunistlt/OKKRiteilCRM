@@ -40,6 +40,7 @@ const bodySchema = z.object({
     customerId: z.coerce.number().int().positive().optional().nullable(),
     /** Юрлицо (магазин) заказа: реквизиты продавца, счёт и НДС. */
     site: z.string().trim().max(100).optional().nullable(),
+    productionDaysUnit: z.enum(['rabochie', 'kalendarnye']).optional().nullable(),
     delivery: z.record(z.string(), z.any()).optional(),
 });
 

@@ -24,6 +24,8 @@ export type OrderView = {
     customerAddress: string | null;
     managerName: string | null;
     productionDays: number | null;
+    /** Срок словами: «30 календарных дней» — какие это дни, решает заказ. */
+    productionTerm: string | null;
     shippingTerms: string | null;
     managerComment: string | null;
     items: ViewItem[];
@@ -70,6 +72,7 @@ export async function loadOrderView(number: string): Promise<OrderView | null> {
         customerAddress: doc?.payerAddress || null,
         managerName: doc?.managerName ?? null,
         productionDays: doc?.productionDays ?? null,
+        productionTerm: doc?.productionTerm ?? null,
         shippingTerms: doc?.shippingTerms ?? null,
         managerComment: payload.managerComment || null,
         items,

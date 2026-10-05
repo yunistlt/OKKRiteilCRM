@@ -81,7 +81,7 @@ function render(o: OrderView) {
     ${field('Адрес', dash(o.customerAddress))}
     ${field('Менеджер', dash(o.managerName))}
     ${field('Статус', dash(o.status))}
-    ${field('Срок изготовления', o.productionDays ? `${o.productionDays} раб. дн.` : '—')}
+    ${field('Срок изготовления', o.productionTerm || (o.productionDays ? `${o.productionDays} дн.` : '—'))}
     ${field('Условия отгрузки', dash(o.shippingTerms))}
     ${field('Передан в производство', date(o.sentToProductionAt))}
   </div>

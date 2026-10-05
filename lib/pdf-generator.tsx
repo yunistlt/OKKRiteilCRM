@@ -87,6 +87,8 @@ export interface ProposalData {
     signer_title?: string | null;
     manager_name?: string | null;
     production_days?: number | null;
+    /** Срок словами: «30 календарных дней». */
+    production_term?: string | null;
     shipping_terms?: string | null;
     /** Сколько дней действительно предложение. */
     valid_days?: number | null;
@@ -352,9 +354,9 @@ function ProposalPDF({ data }: { data: ProposalData }) {
                 </View>
 
                 {/* Сроки и получение — те же, что в счёте. */}
-                {data.production_days ? (
+                {data.production_term || data.production_days ? (
                     <Text style={[invStyles.sm, { marginBottom: 4 }]}>
-                        Срок изготовления: {data.production_days} дн.
+                        Срок изготовления: {data.production_term || `${data.production_days} дн.`}
                     </Text>
                 ) : null}
                 {data.shipping_terms ? (
@@ -460,6 +462,7 @@ export interface InvoiceData {
     /** Менеджер заказа — вторая подпись в счёте. */
     manager_name?: string | null;
     /** Срок изготовления в днях — из заказа. */
+    production_term?: string | null;
     production_days?: number | null;
     /** Как получает клиент: способ доставки и адрес (при самовывозе — откуда). */
     shipping_terms?: string | null;
@@ -672,9 +675,9 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
 
                 {/* Сроки и получение: без них счёт не отвечает на вопросы клиента
                     «когда» и «откуда забирать» (замечание Евгении 02.10.2026). */}
-                {data.production_days ? (
+                {data.production_term || data.production_days ? (
                     <Text style={[invStyles.sm, { marginBottom: 4 }]}>
-                        Срок изготовления: {data.production_days} дн.
+                        Срок изготовления: {data.production_term || `${data.production_days} дн.`}
                     </Text>
                 ) : null}
                 {data.shipping_terms ? (
