@@ -78,15 +78,22 @@ export async function POST(req: NextRequest) {
      */
     const payload: any = Object.fromEntries(new URL(req.url).searchParams.entries());
 
-    try {
-        const body = await req.json();
-        if (body && typeof body === 'object') Object.assign(payload, body);
-    } catch {
+    /**
+     * Тело читаем ОДИН раз текстом и разбираем сами.
+     *
+     * Грабли, на которых потерялось первое живое событие: после неудачного
+     * `req.json()` поток уже прочитан, и следующий `req.formData()` возвращает
+     * пустоту. В журнале это выглядело как «Телфин прислал пустое событие»,
+     * хотя тело было.
+     */
+    const raw = await req.text().catch(() => '');
+    if (raw) {
         try {
-            const form = await req.formData();
-            Object.assign(payload, Object.fromEntries(form.entries()));
+            const body = JSON.parse(raw);
+            if (body && typeof body === 'object') Object.assign(payload, body);
         } catch {
-            // Ни тела, ни формы — значит всё было в адресе.
+            // Не JSON — значит форма: «event=dial-in&call_uuid=…».
+            Object.assign(payload, Object.fromEntries(new URLSearchParams(raw).entries()));
         }
     }
 
@@ -100,7 +107,7 @@ export async function POST(req: NextRequest) {
     await supabase.from('telphin_webhook_log').insert([{
         call_id: callId,
         phase,
-        payload,
+        payload: { ...payload, _raw: raw ? raw.slice(0, 2000) : null },
     }]).then(() => undefined, () => undefined);
 
     if (!callId) {
