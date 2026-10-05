@@ -7,6 +7,7 @@ import PhoneFieldCall from './calls/PhoneFieldCall';
 import ManagerTransfer from './orders/ManagerTransfer';
 import TextWithOrderLinks from './ui/TextWithOrderLinks';
 import { CardSection, CardSectionsProvider } from './orders/CardSections';
+import ItemPhoto from './orders/ItemPhoto';
 import { prependComment } from '@/lib/own-crm/comment-entries';
 import { clientTime } from '@/lib/own-crm/phone-timezone';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -1476,12 +1477,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                         || (row.siteId && catalogLinks[`id:${row.siteId}`])
                                                         || (row.article && catalogLinks[`art:${row.article}`])
                                                         || null;
+                                                    // При наведении фото увеличивается — как было в
+                                                    // RetailCRM (просьба Ирины Гордеевой 05.10.2026):
+                                                    // по клетке 48×48 шкаф от стеллажа не отличить.
                                                     return found?.image ? (
-                                                        <img
-                                                            src={found.image}
-                                                            alt=""
-                                                            className="h-12 w-12 border border-gray-200 object-contain"
-                                                        />
+                                                        <ItemPhoto src={found.image} alt={row.name} />
                                                     ) : null;
                                                 })()}
                                             </td>
