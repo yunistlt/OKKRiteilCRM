@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { supabase } from '@/utils/supabase';
+import HelpArticle from '@/components/help/HelpArticle';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,11 +29,9 @@ export default async function HelpArticlePage({ params }: { params: { slug: stri
                 Обновлено {new Date(article.updated_at).toLocaleDateString('ru-RU')}
             </p>
 
-            {/* Текст инструкции хранится как обычный текст: его пишут люди, а не
-                разметка. Переносы строк сохраняем, чтобы шаги читались шагами. */}
-            <div className="max-w-3xl whitespace-pre-line border border-gray-200 bg-white p-5 text-sm leading-relaxed text-gray-800">
-                {article.content}
-            </div>
+            {/* Шаги, выделенное важное и подсказки — как в Центре управления
+                (решение владельца 05.10.2026). */}
+            <HelpArticle content={article.content} />
         </div>
     );
 }
