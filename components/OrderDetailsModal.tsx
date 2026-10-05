@@ -304,7 +304,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     // (item.discountTotal): цена со скидкой = price − discount.
     const [draftItems, setDraftItems] = useState<Array<{ id?: number | null; name: string; quantity: number; price: number; discount: number; article?: string | null; siteId?: string | null; xmlId?: string | null }>>([]);
     // Ссылки на карточки товаров сайта по артикулу: название в составе кликабельно.
-    const [catalogLinks, setCatalogLinks] = useState<Record<string, { url: string; name: string }>>({});
+    const [catalogLinks, setCatalogLinks] = useState<Record<string, { url: string; name: string; image?: string | null }>>({});
     const [draftClientComment, setDraftClientComment] = useState('');
     const [draftManagerComment, setDraftManagerComment] = useState('');
     const [dirty, setDirty] = useState(false);
@@ -576,13 +576,17 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     useEffect(() => {
         const siteIds = Array.from(new Set(draftItems.map((row) => row.siteId).filter(Boolean))) as string[];
         const articles = Array.from(new Set(draftItems.map((row) => row.article).filter(Boolean))) as string[];
-        if (!siteIds.length && !articles.length) { setCatalogLinks({}); return; }
+        // Идентификатор 1С — самый надёжный ключ: по id сайта и артикулу товары
+        // уже не сходятся (номера в заказах ушли за 40 000, в каталоге сайта
+        // кончаются на 29 420).
+        const xmlIds = Array.from(new Set(draftItems.map((row) => row.xmlId).filter(Boolean))) as string[];
+        if (!siteIds.length && !articles.length && !xmlIds.length) { setCatalogLinks({}); return; }
 
         let cancelled = false;
         fetch('/api/catalog/links', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ siteIds, articles }),
+            body: JSON.stringify({ siteIds, articles, xmlIds }),
         })
             .then((r) => r.json())
             .then((payload) => { if (!cancelled) setCatalogLinks(payload.links || {}); })
@@ -592,7 +596,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         // Зависим от набора артикулов, а не от самих позиций: иначе запрос
         // уходил бы на каждое нажатие в поле количества.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [draftItems.map((row) => `${row.siteId ?? ''}/${row.article ?? ''}`).join('|')]);
+    }, [draftItems.map((row) => `${row.siteId ?? ''}/${row.article ?? ''}/${row.xmlId ?? ''}`).join('|')]);
 
     const takeCalculation = async (item: { type: string; id: string; title: string }) => {
         if (!confirm(`Взять «${item.title}» из калькулятора в состав заказа?`)) return;
@@ -1360,6 +1364,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                     <tr>
                                         {/* Номер позиции — узкой колонкой: места он не стоит. */}
                                         <th className="w-8 px-2 py-3 text-left">№</th>
+                                        <th className="w-14 px-1 py-3 text-left">Фото</th>
                                         <th className="px-3 py-3 text-left">Товар / услуга</th>
                                         <th className="w-24 px-3 py-3 text-right">Кол-во</th>
                                         <th className="w-32 px-3 py-3 text-right">Цена</th>
@@ -1371,20 +1376,40 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 <tbody className="divide-y">
                                     {draftItems.length === 0 ? (
                                         <tr>
-                                            <td colSpan={7} className="py-10 text-center text-gray-500">
+                                            <td colSpan={8} className="py-10 text-center text-gray-500">
                                                 Позиций нет — найдите товар на сайте или добавьте руками.
                                             </td>
                                         </tr>
                                     ) : draftItems.map((row, index) => (
                                         <tr key={row.id ?? `new-${index}`} className="hover:bg-gray-50">
                                             <td className="w-8 px-2 py-2 align-top text-gray-500">{index + 1}</td>
+                                            {/* Фото товара с карточки сайта: состав видно
+                                                глазами, а не только по названию (просьба
+                                                Лены Парфёновой 05.10.2026). Нет товара на
+                                                сайте — пустая клетка, рамку не рисуем. */}
+                                            <td className="w-14 px-1 py-2 align-top">
+                                                {(() => {
+                                                    const found = (row.xmlId && catalogLinks[`1c:${String(row.xmlId).split('#')[0]}`])
+                                                        || (row.siteId && catalogLinks[`id:${row.siteId}`])
+                                                        || (row.article && catalogLinks[`art:${row.article}`])
+                                                        || null;
+                                                    return found?.image ? (
+                                                        <img
+                                                            src={found.image}
+                                                            alt=""
+                                                            className="h-12 w-12 border border-gray-200 object-contain"
+                                                        />
+                                                    ) : null;
+                                                })()}
+                                            </td>
                                             {/* Название не правится: товар берётся из базы сайта.
                                                 Есть его карточка на сайте — название ведёт туда;
                                                 архивного товара на сайте уже нет, тогда даём
                                                 поиск (решение владельца 02.10.2026). */}
                                             <td className="px-3 py-2 align-top">
                                                 {(() => {
-                                                    const link = (row.siteId && catalogLinks[`id:${row.siteId}`])
+                                                    const link = (row.xmlId && catalogLinks[`1c:${String(row.xmlId).split('#')[0]}`])
+                                                        || (row.siteId && catalogLinks[`id:${row.siteId}`])
                                                         || (row.article && catalogLinks[`art:${row.article}`])
                                                         || null;
                                                     return link?.url ? (

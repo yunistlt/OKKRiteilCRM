@@ -14,6 +14,8 @@ const bodySchema = z.object({
     siteIds: z.array(z.union([z.string().trim().max(40), z.number()])).max(300).optional(),
     /** Артикулы — запасной ключ. */
     articles: z.array(z.string().trim().max(200)).max(300).optional(),
+    /** Идентификаторы 1С (`offer.xmlId`) — самый надёжный ключ к каталогу сайта. */
+    xmlIds: z.array(z.string().trim().max(100)).max(300).optional(),
 });
 
 export async function POST(request: Request) {
@@ -25,10 +27,16 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Не понял, по каким товарам искать ссылки' }, { status: 400 });
     }
 
-    const links = await catalogLinks({ siteIds: parsed.data.siteIds, articles: parsed.data.articles });
+    const links = await catalogLinks({
+        siteIds: parsed.data.siteIds,
+        articles: parsed.data.articles,
+        xmlIds: parsed.data.xmlIds,
+    });
 
     return NextResponse.json({
         available: catalogLinksConfigured(),
-        links: Object.fromEntries(links.map((link) => [link.key, { url: link.url, name: link.name }])),
+        // Картинка товара — чтобы состав заказа было видно глазами, а не
+        // только читать названия (просьба Лены Парфёновой 05.10.2026).
+        links: Object.fromEntries(links.map((link) => [link.key, { url: link.url, name: link.name, image: link.image }])),
     });
 }
