@@ -399,9 +399,19 @@ export async function GET(req: Request) {
                 const leadContact = extractLeadContact(
                     (e.body_text && e.body_text.trim()) ? e.body_text : stripHtml(e.body_html),
                 );
-                const custEmail = (isRobotLead || isForwarded)
-                    ? (leadContact.email || e.from_email || '')
-                    : (e.from_email || leadContact.email || '');
+                /**
+                 * Почта клиента. У письма-робота (заявка с сайта) адрес
+                 * отправителя — это адрес сайта, а не клиента: подставлять его
+                 * в заказ нельзя, иначе менеджер ответит роботу (жалоба
+                 * Евгении 05.10.2026). Если в теле почты нет — у клиента её
+                 * просто нет, оставляем пусто: в заявке «Заказать звонок»
+                 * бывает только телефон.
+                 */
+                const custEmail = isRobotLead
+                    ? (leadContact.email || '')
+                    : isForwarded
+                        ? (leadContact.email || e.from_email || '')
+                        : (e.from_email || leadContact.email || '');
                 const custName = (isRobotLead || isForwarded)
                     ? (leadContact.name || e.from_name || undefined)
                     : (e.from_name || leadContact.name || undefined);
