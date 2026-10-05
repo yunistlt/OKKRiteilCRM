@@ -13,6 +13,8 @@ interface Option {
     groupIcon: string | null;
     /** Разрешён ли переход в этот статус по матрице переходов. */
     allowed: boolean;
+    /** В этот статус не пускают без причины словами (галочка в карточке статуса). */
+    requiresReason: boolean;
     current: boolean;
 }
 
@@ -115,21 +117,30 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, color, onCh
         };
     }, [open]);
 
-    const change = async (code: string) => {
+    /**
+     * Статус, который спрашивает причину. Пока он выбран — вместо списка
+     * показываем поле: как всплывающее окно RetailCRM при смене статуса
+     * (решение владельца 05.10.2026).
+     */
+    const [asking, setAsking] = useState<Option | null>(null);
+    const [reason, setReason] = useState('');
+
+    const change = async (code: string, reasonText?: string) => {
         setSaving(true);
         setError(null);
         try {
             const res = await fetch(`/api/orders/${orderId}/status`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: code }),
+                body: JSON.stringify({ status: code, reason: reasonText ?? null }),
             });
             const json = await res.json();
             if (!res.ok) {
                 throw new Error(
                     // Про ИНН сервер объясняет сам: текст один и тот же везде,
                     // чтобы менеджер не гадал, что от него хотят.
-                    json.error === 'inn_required' ? (json.message || 'У клиента не заполнен ИНН')
+                    json.error === 'reason_required' ? (json.message || 'Нужна причина словами')
+                    : json.error === 'inn_required' ? (json.message || 'У клиента не заполнен ИНН')
                     : json.error === 'transition_not_allowed' ? 'Такой переход запрещён настройками статусов'
                     : json.error === 'status_not_mapped' ? 'Статус не сопоставлен с нашим справочником'
                     : json.error === 'crm_rejected' ? `RetailCRM отклонил смену статуса: ${json.details || 'без пояснения'}`
@@ -137,6 +148,8 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, color, onCh
                 );
             }
             setOpen(false);
+            setAsking(null);
+            setReason('');
             setData(null);
             // Заказ в производство не уедет — говорим сразу, менеджер поправит
             // карточку клиента и передаст заново.
@@ -178,11 +191,47 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, color, onCh
             {open && menuBox && createPortal(
                 <>
                 {/* Клик мимо списка закрывает его — как в любом меню. */}
-                <div className="fixed inset-0 z-[998]" onClick={() => setOpen(false)} />
+                <div className="fixed inset-0 z-[998]" onClick={() => { setOpen(false); setAsking(null); }} />
                 <div
                     className="fixed z-[999] w-80 max-h-[70vh] overflow-y-auto border border-gray-200 bg-white shadow-lg"
                     style={{ top: menuBox.top, left: menuBox.left }}
                 >
+                    {asking ? (
+                        <div className="p-3">
+                            <p className="text-sm font-semibold text-gray-900">Перевести в «{asking.name}»</p>
+                            <p className="mt-1 text-xs leading-snug text-gray-600">
+                                Напишите причину словами и подробно — по ней потом разбирают, что пошло не так.
+                            </p>
+                            <textarea
+                                autoFocus
+                                rows={4}
+                                value={reason}
+                                onChange={(e) => setReason(e.target.value)}
+                                placeholder="Например: клиент сравнил с «Первым Металлом», там на 12% дешевле за счёт тонкого листа; бюджет не тянет"
+                                className="mt-2 w-full border border-gray-300 px-2 py-1.5 text-[13px]"
+                            />
+                            {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
+                            <div className="mt-2 flex items-center gap-2">
+                                <button
+                                    onClick={() => change(asking.code, reason.trim())}
+                                    disabled={saving || reason.trim().length < 10}
+                                    className="border border-gray-900 bg-gray-900 px-3 py-1.5 text-[13px] font-semibold text-white disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-500"
+                                >
+                                    {saving ? 'Меняем…' : 'Перевести'}
+                                </button>
+                                <button
+                                    onClick={() => { setAsking(null); setReason(''); setError(null); }}
+                                    className="border border-gray-300 px-3 py-1.5 text-[13px] text-gray-700 hover:bg-gray-50"
+                                >
+                                    Назад
+                                </button>
+                                {reason.trim().length > 0 && reason.trim().length < 10 && (
+                                    <span className="text-[11px] text-gray-500">слишком коротко</span>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                    <>
                     {loading && <p className="px-3 py-3 text-sm text-gray-500">Загружаем переходы…</p>}
 
                     {!loading && data && !data.writeEnabled && (
@@ -224,7 +273,11 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, color, onCh
                             {options.map((o) => (
                                 <button
                                     key={o.code}
-                                    onClick={() => o.allowed && change(o.code)}
+                                    onClick={() => {
+                                        if (!o.allowed) return;
+                                        if (o.requiresReason) { setAsking(o); setReason(''); setError(null); return; }
+                                        change(o.code);
+                                    }}
                                     disabled={saving || !o.allowed || o.current}
                                     title={
                                         o.current
@@ -251,6 +304,8 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, color, onCh
 
                     {error && <p className="border-t border-gray-200 px-3 py-2 text-xs text-red-700">{error}</p>}
                     {saving && <p className="border-t border-gray-200 px-3 py-2 text-xs text-gray-500">Меняем статус…</p>}
+                    </>
+                    )}
                 </div>
                 </>,
                 document.body,

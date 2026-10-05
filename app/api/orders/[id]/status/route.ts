@@ -6,12 +6,24 @@ import { PRODUCTION_STATUS } from '@/lib/payments/production';
 import { queueOrderForProduction } from '@/lib/own-crm/tseh-outbox';
 import { INN_GATE_MESSAGE, INN_REQUIRED_STATUSES, ensureInnTask, orderInn } from '@/lib/own-crm/inn-gate';
 import { editOrder } from '@/lib/own-crm/edit-order';
+import { writeOwnHistory } from '@/lib/own-crm/history-write';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
 import { isRetailcrmOutboundWriteEnabled, RETAILCRM_WRITE_BLOCKED_MESSAGE } from '@/lib/retailcrm/outbound-guard';
 
 export const dynamic = 'force-dynamic';
 
-const BodySchema = z.object({ status: z.string().min(1).max(120) });
+const BodySchema = z.object({
+    status: z.string().min(1).max(120),
+    /**
+     * Причина перевода словами. Спрашиваем у статусов с галочкой
+     * «Спрашивать причину словами» в их карточке (решение владельца
+     * 05.10.2026) — как всплывающее окно в RetailCRM.
+     */
+    reason: z.string().trim().max(5000).optional().nullable(),
+});
+
+/** Сколько знаков считаем причиной. Одно слово разбору не помогает. */
+const MIN_REASON = 10;
 
 /**
  * Смена статуса заказа из карточки.
@@ -40,6 +52,29 @@ async function findOrder(id: string, columns: string) {
     return (byNumber.data as any) ?? null;
 }
 
+/**
+ * Сохранить причину перевода.
+ *
+ * Причина нужна разбору, а не галочке: пишем её в историю заказа (там её видно
+ * рядом со сменой статуса) и, когда статус нерабочий — то есть заказ выбывает,
+ * — в поле «Причина отмены (словами, подробно)», откуда её берёт анализ отмен.
+ */
+async function saveStatusReason(
+    orderRowId: number,
+    crmOrderId: number,
+    actorId: number | null,
+    status: { name?: string | null; is_working?: boolean | null },
+    reason: string,
+): Promise<void> {
+    if (!reason) return;
+
+    await writeOwnHistory(crmOrderId, [{ field: 'status_reason', newValue: reason }], actorId);
+
+    if (status.is_working === false) {
+        await supabase.from('orders').update({ prichina_otmeny_text: reason }).eq('id', orderRowId);
+    }
+}
+
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -50,7 +85,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (!order) return NextResponse.json({ error: 'order_not_found' }, { status: 404 });
 
     const [{ data: statuses }, { data: groups }, { data: transitions }] = await Promise.all([
-        supabase.from('crm_statuses').select('id, name, color, group_id, external_code, ordering').eq('active', true),
+        supabase.from('crm_statuses').select('id, name, color, group_id, external_code, ordering, requires_reason, is_working').eq('active', true),
         supabase.from('crm_status_groups').select('id, name, color, ordering, icon'),
         supabase.from('crm_status_transitions').select('from_status_id, to_status_id'),
     ]);
@@ -83,6 +118,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             groupOrdering: (groupById.get(s.group_id)?.ordering ?? 999) as number,
             ordering: s.ordering as number,
             allowed: allowedIds.has(s.id),
+            // Карточка спросит причину окном, прежде чем звать POST.
+            requiresReason: Boolean(s.requires_reason),
             current: s.external_code === order.status,
         }))
         .sort((a, b) => a.groupOrdering - b.groupOrdering || a.ordering - b.ordering || a.name.localeCompare(b.name));
@@ -122,7 +159,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     // Проверяем переход на сервере: интерфейс мог отстать от настроек.
     const [{ data: statuses }, { data: transitions }] = await Promise.all([
-        supabase.from('crm_statuses').select('id, external_code').eq('active', true),
+        supabase.from('crm_statuses').select('id, name, external_code, requires_reason, is_working').eq('active', true),
         supabase.from('crm_status_transitions').select('from_status_id, to_status_id'),
     ]);
 
@@ -137,6 +174,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const allowed = ((transitions || []) as any[]).some((t) => t.from_status_id === from.id && t.to_status_id === to.id);
     if (!allowed) {
         return NextResponse.json({ error: 'transition_not_allowed' }, { status: 409 });
+    }
+
+    /**
+     * Причина перевода словами.
+     *
+     * Запрет настраивается галочкой в карточке статуса, а не списком в коде:
+     * сегодня это «Согласование отмены», завтра другой статус. Проверяем на
+     * сервере — интерфейс мог отстать от настроек.
+     */
+    const reason = String(body.reason ?? '').trim();
+    if ((to as any).requires_reason && reason.length < MIN_REASON) {
+        return NextResponse.json(
+            {
+                error: 'reason_required',
+                message: `Чтобы перевести заказ в «${(to as any).name}», напишите причину словами — коротко не считается.`,
+            },
+            { status: 409 },
+        );
     }
 
     /**
@@ -171,6 +226,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         const result = await editOrder(Number((order as any).id), { statusCode: body.status });
         if (!result.ok) return NextResponse.json({ error: 'own_update_failed', details: result.reason }, { status: 409 });
 
+        await saveStatusReason(Number((order as any).id), Number((order as any).order_id ?? (order as any).id), Number(session.user.retail_crm_manager_id) || null, to as any, reason);
+
         // Руками поставили «Передано в производство» — заказ так же встаёт в
         // очередь на отправку в ЦехУспех.
         let productionNote: string | null = null;
@@ -196,6 +253,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     // Локальную копию поправим сразу, чтобы список не показывал старое до ближайшего синка.
     await supabase.from('orders').update({ status: body.status }).eq('id', (order as any).id);
+    await saveStatusReason(Number((order as any).id), Number((order as any).order_id ?? id), Number(session.user.retail_crm_manager_id) || null, to as any, reason);
 
     return NextResponse.json({ ok: true, status: body.status });
 }

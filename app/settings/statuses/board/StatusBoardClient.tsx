@@ -13,6 +13,8 @@ interface CrmStatus {
     ordering: number;
     norm_days: number | null;
     is_working: boolean;
+    /** Нельзя перевести заказ сюда, не написав причину словами. */
+    requires_reason: boolean;
     active: boolean;
     external_code: string | null;
 }
@@ -377,6 +379,7 @@ function StatusModal({ status, groups, onClose, onSaved }: {
                     ordering: draft.ordering ?? 100,
                     normDays: draft.norm_days ?? null,
                     isWorking: draft.is_working ?? true,
+                    requiresReason: draft.requires_reason ?? false,
                     active: draft.active ?? true,
                 }),
             });
@@ -454,6 +457,10 @@ function StatusModal({ status, groups, onClose, onSaved }: {
 
             <div className="mt-4 space-y-2">
                 <Check label="Рабочий статус — заказ считается в работе" checked={draft.is_working ?? true} onChange={(v) => setDraft({ ...draft, is_working: v })} />
+                {/* Решение владельца 05.10.2026: как в RetailCRM — при смене
+                    статуса спрашиваем причину окном. Где спрашивать, решает
+                    галочка, а не зашитый в код список статусов. */}
+                <Check label="Спрашивать причину словами — без неё в статус не пустим" checked={draft.requires_reason ?? false} onChange={(v) => setDraft({ ...draft, requires_reason: v })} />
                 <Check label="Используется" checked={draft.active ?? true} onChange={(v) => setDraft({ ...draft, active: v })} />
             </div>
 

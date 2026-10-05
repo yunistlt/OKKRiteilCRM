@@ -13,6 +13,7 @@ import { entityName, fieldName, fieldValue } from './field-names';
 /** Подписи стандартных полей заказа: в справочнике RetailCRM их нет, они зашиты в её интерфейсе. */
 const STANDARD_LABELS: Record<string, string> = {
     status: 'Статус',
+    status_reason: 'Причина смены статуса',
     manager: 'Менеджер',
     manager_comment: 'Комментарий менеджера',
     customer_comment: 'Комментарий клиента',

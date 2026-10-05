@@ -52,6 +52,8 @@ const StatusSchema = z.object({
     ordering: z.number().int().optional(),
     normDays: z.number().int().nonnegative().nullable().optional(),
     isWorking: z.boolean().optional(),
+    /** Перевод в этот статус требует причины словами. */
+    requiresReason: z.boolean().optional(),
     active: z.boolean().optional(),
 });
 
@@ -121,6 +123,7 @@ export async function PUT(req: Request) {
         if (body.ordering !== undefined) row.ordering = body.ordering;
         if (body.normDays !== undefined) row.norm_days = body.normDays;
         if (body.isWorking !== undefined) row.is_working = body.isWorking;
+        if (body.requiresReason !== undefined) row.requires_reason = body.requiresReason;
         if (body.active !== undefined) row.active = body.active;
 
         if (body.id) {
