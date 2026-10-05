@@ -480,6 +480,12 @@ function GroupModal({ group, statuses, onClose, onSaved }: {
 }) {
     const [draft, setDraft] = useState<Partial<CrmGroup>>(group);
     const [members, setMembers] = useState<string[]>(statuses.filter((s) => s.group_id === group.id).map((s) => s.id));
+    // Поиск по составу: статусов под шестьдесят, нужный глазами не находится
+    // (просьба владельца 05.10.2026 — искал «Дубль заявки» и не нашёл).
+    const [query, setQuery] = useState('');
+    const needle = query.trim().toLowerCase();
+    // Отметки хранятся в members, поэтому скрытые поиском статусы не теряются.
+    const shown = needle ? statuses.filter((s) => s.name.toLowerCase().includes(needle)) : statuses;
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const isNew = !group.id;
@@ -572,10 +578,21 @@ function GroupModal({ group, statuses, onClose, onSaved }: {
                 </Labeled>
             </div>
 
-            <p className="mb-2 mt-4 text-sm text-gray-500">Состав группы — снятые останутся без группы</p>
+            <div className="mb-2 mt-4 flex items-center gap-3">
+                <p className="text-sm text-gray-500">Состав группы — снятые останутся без группы</p>
+                <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Поиск статуса"
+                    className="ml-auto w-56 rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                />
+            </div>
             <div className="max-h-[40vh] overflow-y-auto rounded-md border border-gray-200">
                 {statuses.length === 0 && <p className="px-3 py-3 text-sm text-gray-500">Статусов пока нет.</p>}
-                {statuses.map((s) => (
+                {statuses.length > 0 && shown.length === 0 && (
+                    <p className="px-3 py-3 text-sm text-gray-500">Такого статуса нет — проверьте написание.</p>
+                )}
+                {shown.map((s) => (
                     <label key={s.id} className="flex cursor-pointer items-center gap-2 border-b border-gray-100 px-3 py-2 text-sm last:border-b-0 hover:bg-gray-50">
                         <input
                             type="checkbox"

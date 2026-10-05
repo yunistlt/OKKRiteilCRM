@@ -36,6 +36,7 @@ export const metadata: Metadata = {
 
 import Sidebar from "../components/ui/Sidebar";
 import { PhonePanel } from "@/components/softphone/PhonePanel";
+import IncomingMailAlerts from "@/components/orders/IncomingMailAlerts";
 import QaOverlay from "@/components/qa/QaOverlay";
 
 export default async function RootLayout({
@@ -89,6 +90,9 @@ export default async function RootLayout({
                       </BreadcrumbsProvider>
                     </DayPlanProvider>
                     {session ? <PhonePanel /> : null}
+                    {/* Письмо по заказу — повод ответить сегодня: показываем его
+                        сразу, а не когда менеджер зайдёт в карточку. */}
+                    {session ? <IncomingMailAlerts /> : null}
                     {session ? <Suspense fallback={null}><QaOverlay /></Suspense> : null}
                 </AuthProvider>
             </body>

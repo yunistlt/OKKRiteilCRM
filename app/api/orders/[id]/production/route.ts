@@ -84,19 +84,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     try {
         /**
-         * Файл должен принадлежать этому заказу.
-         *
-         * Хранение и так не отметит чужой файл — номер заказа стоит в условии
-         * запроса. Но «ничего не обновилось» там неотличимо от успеха, и
-         * интерфейс оставил бы галочку стоять впустую. Поэтому проверяем здесь
-         * и говорим человеку прямо.
+         * Отметка применяется только к файлу этого заказа — номер стоит в условии
+         * запроса. Хранение отвечает, попала ли отметка; если файл чужой, говорим
+         * человеку прямо, иначе галочка осталась бы стоять впустую.
          */
-        const note = await loadProductionNote(orderNumber);
-        if (!note.files.some((file) => file.id === parsed.data.fileId)) {
+        const applied = await setFileForProduction(parsed.data.fileId, orderNumber, parsed.data.forProduction);
+        if (!applied) {
             return NextResponse.json({ error: 'Этот файл относится к другому заказу' }, { status: 409 });
         }
-
-        await setFileForProduction(parsed.data.fileId, orderNumber, parsed.data.forProduction);
         return NextResponse.json({ ok: true });
     } catch (e: any) {
         console.error('[production] отметка файла не сохранилась:', e?.message || e);
