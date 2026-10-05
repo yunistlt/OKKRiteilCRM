@@ -20,6 +20,23 @@ export async function GET(req: Request) {
     const pageSize = Math.min(200, Math.max(10, parseInt(searchParams.get('pageSize') || '50', 10)));
     const filter = parseOrdersFilter(searchParams);
 
+    /**
+     * Порядок строк: по любой колонке, вверх или вниз (решение владельца
+     * 05.10.2026). Сортируем только по настоящим колонкам таблицы — внутрь
+     * `raw_payload` порядок не наводим: на 30 000 заказов это перебор всей
+     * таблицы, запрос не укладывается в таймаут и список возвращается пустым.
+     */
+    const SORTABLE: Record<string, string> = {
+        number: 'number',
+        status: 'status',
+        createdAt: 'created_at',
+        totalSumm: 'totalsumm',
+        daysInStatus: 'status_since',
+        manager: 'manager_id',
+    };
+    const sortKey = SORTABLE[String(searchParams.get('sort') ?? '')] ?? 'created_at';
+    const sortAsc = searchParams.get('dir') === 'asc';
+
     // Менеджер видит заказы всех менеджеров (решение владельца 02.10.2026): без общего
     // списка не распознать ни дубли, ни постоянных клиентов — это двойная работа.
     // Фильтр «Менеджеры» остаётся за пользователем и больше не перезаписывается.
@@ -49,7 +66,7 @@ export async function GET(req: Request) {
     const [listResult, statusResult, totalsResult] = await Promise.all([
         base()
             .select('order_id, number, status, created_at, status_since, manager_id, totalsumm, raw_payload', { count: 'exact' })
-            .order('created_at', { ascending: false })
+            .order(sortKey, { ascending: sortAsc, nullsFirst: false })
             .range(from, from + pageSize - 1),
         // Количества по статусам считает база: выборкой их посчитать нельзя —
         // Supabase отдаёт максимум 1000 строк, и на 30 тысячах заказов целые
@@ -63,7 +80,8 @@ export async function GET(req: Request) {
 
     if (listResult.error) {
         console.error('[orders/list] Не удалось прочитать заказы:', listResult.error);
-        return NextResponse.json({ error: 'read_failed', details: listResult.error.message }, { status: 500 });
+        return NextResponse.json({
+        error: 'read_failed', details: listResult.error.message }, { status: 500 });
     }
 
     const rows = listResult.data || [];
@@ -285,6 +303,9 @@ export async function GET(req: Request) {
     return NextResponse.json({
         ok: true,
         orders,
+        // По каким колонкам список умеет сортировать — шапка таблицы рисует
+        // стрелку только у них, чтобы не обещать того, чего нет.
+        sortable: Object.keys(SORTABLE),
         statusTree,
         pagination: {
             page,

@@ -135,6 +135,58 @@ export default function OrdersClient() {
      */
     const [registry, setRegistry] = useState<typeof ORDER_COLUMNS>(ORDER_COLUMNS);
     const registryRef = useRef<typeof ORDER_COLUMNS>(ORDER_COLUMNS);
+
+    /**
+     * Порядок строк и ширина колонок — настройки человека, а не экрана: лежат
+     * на сервере рядом с набором колонок и переезжают за ним на другой
+     * компьютер (закон §7 эталона таблиц, решение владельца 05.10.2026).
+     */
+    const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'createdAt', dir: 'desc' });
+    const [sortable, setSortable] = useState<string[]>([]);
+    const [widths, setWidths] = useState<Record<string, number>>({});
+
+    /** Сохраняем раскладку сразу: отдельной кнопки «Сохранить» тут быть не должно. */
+    const saveLayout = useCallback((next: { sort?: typeof sort; widths?: Record<string, number> }) => {
+        void fetch('/api/settings/view', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                viewKey: 'orders.layout',
+                settings: { sort: next.sort ?? sort, widths: next.widths ?? widths },
+            }),
+        }).catch(() => undefined);
+    }, [sort, widths]);
+
+    /** Щелчок по заголовку: вверх → вниз → снова вверх. */
+    const toggleSort = (key: string) => {
+        const next: { key: string; dir: 'asc' | 'desc' } = sort.key === key
+            ? { key, dir: sort.dir === 'asc' ? 'desc' : 'asc' }
+            : { key, dir: 'asc' };
+        setSort(next);
+        setPage(1);
+        saveLayout({ sort: next });
+    };
+
+    /** Тяга за правый край заголовка. Меньше 80 px колонку не делаем — текст пропадёт. */
+    const startResize = (event: React.MouseEvent, key: string) => {
+        event.preventDefault();
+        const th = (event.currentTarget as HTMLElement).parentElement as HTMLElement;
+        const startX = event.clientX;
+        const startWidth = th.getBoundingClientRect().width;
+
+        const move = (e: MouseEvent) => {
+            const width = Math.max(80, Math.round(startWidth + e.clientX - startX));
+            setWidths((current) => ({ ...current, [key]: width }));
+        };
+        const up = () => {
+            document.removeEventListener('mousemove', move);
+            document.removeEventListener('mouseup', up);
+            setWidths((current) => { saveLayout({ widths: current }); return current; });
+        };
+
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', up);
+    };
     const [columnsOpen, setColumnsOpen] = useState(false);
 
     useEffect(() => {
@@ -170,6 +222,16 @@ export default function OrdersClient() {
             } catch {
                 // Выбор не пришёл — остаются колонки по умолчанию.
             }
+
+            try {
+                const res = await fetch('/api/settings/view?viewKey=orders.layout');
+                const data = await res.json();
+                const saved = data.settings ?? {};
+                if (saved.sort?.key) setSort({ key: String(saved.sort.key), dir: saved.sort.dir === 'asc' ? 'asc' : 'desc' });
+                if (saved.widths && typeof saved.widths === 'object') setWidths(saved.widths);
+            } catch {
+                // Раскладка не пришла — порядок и ширины по умолчанию.
+            }
         })();
     }, []);
 
@@ -188,10 +250,13 @@ export default function OrdersClient() {
         try {
             const params = filterToSearchParams(filter);
             params.set('page', String(page));
+            params.set('sort', sort.key);
+            params.set('dir', sort.dir);
             const res = await fetch(`/api/orders/list?${params.toString()}`);
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Не удалось загрузить заказы');
             setOrders(data.orders || []);
+            if (Array.isArray(data.sortable)) setSortable(data.sortable);
             setStatusTree(data.statusTree || []);
             setPagination({
                 totalCount: data.pagination?.totalCount ?? 0,
@@ -207,7 +272,7 @@ export default function OrdersClient() {
         } finally {
             setLoading(false);
         }
-    }, [filter, page]);
+    }, [filter, page, sort]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -371,9 +436,31 @@ export default function OrdersClient() {
                         <thead>
                             <tr className="border-b-2 border-gray-300 bg-gray-100 text-left align-bottom font-bold text-gray-700">
                                 {columns.map((key, index) => (
-                                    <th key={key} className="px-4 py-3 text-[13px] font-normal">
+                                    <th
+                                        key={key}
+                                        className="relative px-4 py-3 text-[13px] font-normal"
+                                        style={widths[key] ? { width: widths[key], minWidth: widths[key] } : undefined}
+                                    >
                                         <span className="flex items-center justify-between gap-2">
-                                            <span className="min-w-0 truncate">{headerFor(key)}</span>
+                                            {/* Порядок строк — щелчком по заголовку: вверх,
+                                                вниз, и снова как было (решение владельца
+                                                05.10.2026). Стрелку рисуем только у колонок,
+                                                по которым список правда умеет сортировать. */}
+                                            {sortable.includes(key) ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleSort(key)}
+                                                    className="flex min-w-0 items-center gap-1 text-left hover:text-gray-900"
+                                                    title="Упорядочить по этой колонке"
+                                                >
+                                                    <span className="min-w-0 truncate">{headerFor(key)}</span>
+                                                    <span className="shrink-0 text-gray-400">
+                                                        {sort.key === key ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}
+                                                    </span>
+                                                </button>
+                                            ) : (
+                                                <span className="min-w-0 truncate">{headerFor(key)}</span>
+                                            )}
                                             {/* Настройка колонок живёт в шапке таблицы: своей
                                                 строкой она съедала высоту списка
                                                 (замечание владельца 02.10.2026). */}
@@ -388,6 +475,13 @@ export default function OrdersClient() {
                                                 </button>
                                             )}
                                         </span>
+                                        {/* Ширину колонки тянут за правый край, как в
+                                            RetailCRM. Запоминается за человеком. */}
+                                        <span
+                                            onMouseDown={(e) => startResize(e, key)}
+                                            className="absolute right-0 top-0 h-full w-1 cursor-col-resize select-none hover:bg-blue-400"
+                                            title="Потяните, чтобы изменить ширину"
+                                        />
                                     </th>
                                 ))}
                             </tr>
@@ -475,6 +569,14 @@ export default function OrdersClient() {
                     selected={columns}
                     defaults={DEFAULT_COLUMNS}
                     onSave={saveColumns}
+                    // Сброс раскладки — требование эталона таблиц §7: человек
+                    // должен уметь вернуть всё к виду по умолчанию.
+                    onResetLayout={() => {
+                        const base = { key: 'createdAt', dir: 'desc' as const };
+                        setSort(base);
+                        setWidths({});
+                        saveLayout({ sort: base, widths: {} });
+                    }}
                     onClose={() => setColumnsOpen(false)}
                 />
             )}
