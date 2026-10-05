@@ -39,10 +39,14 @@ type OutboxRow = {
     manager_comment: string | null;
 };
 
-/** Сколько заказов отдаём за один проход: крон минутный, очередь обычно пустая. */
+/**
+ * Сколько заказов отдаём за один проход: крон частый, очередь обычно пустая.
+ * Меньшую партию можно задать вручную (`?limit=1`) — так пускают первый заказ,
+ * когда связь только включили и хотят посмотреть результат, прежде чем открывать поток.
+ */
 const BATCH = 20;
 
-export async function pushProductionQueue(sql: Sql): Promise<PushResult> {
+export async function pushProductionQueue(sql: Sql, limit = BATCH): Promise<PushResult> {
     const url = process.env.TSEH_API_URL;
     const key = process.env.TSEH_API_KEY;
     // Ключей нет — значит связь в этом окружении не настроена. Это не сбой: на превью-стендах
@@ -55,7 +59,7 @@ export async function pushProductionQueue(sql: Sql): Promise<PushResult> {
         FROM tseh_production_outbox
         WHERE processed_at IS NULL
         ORDER BY created_at
-        LIMIT ${BATCH}
+        LIMIT ${Math.max(1, Math.min(limit, BATCH))}
     `) as unknown as OutboxRow[];
 
     const out: PushResult = { taken: rows.length, accepted: 0, rejected: 0, failed: 0 };

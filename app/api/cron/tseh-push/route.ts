@@ -27,7 +27,9 @@ export async function GET(req: NextRequest) {
 
     const sql = postgres(connectionString);
     try {
-        const report = await pushProductionQueue(sql);
+        // ?limit=N — прогнать ограниченную партию вручную (первый заказ при включении связи).
+        const limit = Number(req.nextUrl.searchParams.get('limit')) || undefined;
+        const report = await pushProductionQueue(sql, limit);
         return NextResponse.json({ ok: true, ...report });
     } catch (e) {
         const error = e instanceof Error ? e.message : String(e);
