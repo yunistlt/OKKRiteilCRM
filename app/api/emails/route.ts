@@ -65,13 +65,13 @@ export async function GET(req: Request) {
 
     let incomingQuery = supabase
         .from('incoming_emails')
-        .select('id, subject, from_email, from_name, to_email, body_text, body_html, email_type, status, received_at, has_attachments, created_crm_order_number, assigned_manager_id')
+        .select('id, subject, from_email, from_name, to_email, body_text, body_html, email_type, status, received_at, has_attachments, attachments_meta, created_crm_order_number, assigned_manager_id')
         .order('received_at', { ascending: false })
         .limit(limit);
 
     let outgoingQuery = supabase
         .from('outgoing_emails')
-        .select('id, subject, from_email, to_email, body_text, body_html, sent_at, has_attachments, order_number')
+        .select('id, subject, from_email, to_email, body_text, body_html, sent_at, has_attachments, attachments_meta, order_number')
         .order('sent_at', { ascending: false })
         .limit(limit);
 
@@ -98,6 +98,19 @@ export async function GET(req: Request) {
     if (incoming.error) console.warn('[emails] входящие не прочитались:', incoming.error.message);
     if (outgoing.error) console.warn('[emails] исходящие не прочитались:', outgoing.error.message);
 
+    /**
+     * Имена вложений. Ирина Гордеева 05.10.2026: «можно в письмах, чтобы было
+     * ТЗ» — раньше отдавали только признак «есть вложения», и файл приходилось
+     * искать в заказе.
+     */
+    const files = (meta: unknown): Array<{ name: string; size: number | null }> =>
+        (Array.isArray(meta) ? meta : [])
+            .map((item: any) => ({
+                name: String(item?.filename ?? '').trim(),
+                size: Number.isFinite(Number(item?.size)) ? Number(item.size) : null,
+            }))
+            .filter((item) => item.name);
+
     const rows = [
         ...((incoming.data ?? []) as any[]).map((row) => ({
             id: `in-${row.id}`,
@@ -110,6 +123,8 @@ export async function GET(req: Request) {
             typeLabel: TYPE_LABELS[row.email_type] || row.email_type || null,
             orderNumber: row.created_crm_order_number,
             attachments: !!row.has_attachments,
+            attachmentList: files(row.attachments_meta),
+            emailId: String(row.id),
             assignedManagerId: row.assigned_manager_id ?? null,
         })),
         ...((outgoing.data ?? []) as any[]).map((row) => ({
@@ -123,6 +138,8 @@ export async function GET(req: Request) {
             typeLabel: null,
             orderNumber: row.order_number,
             attachments: !!row.has_attachments,
+            attachmentList: files(row.attachments_meta),
+            emailId: String(row.id),
             assignedManagerId: null,
         })),
     ].sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));

@@ -2040,11 +2040,46 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                     <p className="whitespace-pre-line text-sm text-gray-800">
                                                         <TextWithOrderLinks text={email.body || 'Текст этого письма у нас не сохранён — в ленте есть только факт отправки.'} />
                                                     </p>
-                                                    {email.attachments > 0 && (
+                                                    {/* Вложения письма — списком и сразу
+                                                        открываются. Раньше было написано только
+                                                        «Вложений: 2 — они в разделе Файлы», и ТЗ
+                                                        приходилось искать (просьба Ирины Гордеевой
+                                                        05.10.2026: «в заказе в файле ТЗ есть, а в
+                                                        письме нет — в СРМ было в письмах»). */}
+                                                    {email.attachmentList?.length ? (
+                                                        <div className="mt-2">
+                                                            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                                                                Прикреплённые файлы
+                                                            </p>
+                                                            <ul className="mt-1 space-y-0.5">
+                                                                {email.attachmentList.map((file: any) => (
+                                                                    <li key={file.name}>
+                                                                        {email.emailId ? (
+                                                                            <a
+                                                                                href={`/api/orders/${encodeURIComponent(String(data.order?.number ?? orderId))}/files/download?emailId=${encodeURIComponent(email.emailId)}&filename=${encodeURIComponent(file.name)}`}
+                                                                                target="_blank"
+                                                                                rel="noreferrer"
+                                                                                className="text-xs text-blue-700 hover:underline"
+                                                                            >
+                                                                                📎 {file.name}
+                                                                            </a>
+                                                                        ) : (
+                                                                            <span className="text-xs text-gray-600">📎 {file.name}</span>
+                                                                        )}
+                                                                        {file.size ? (
+                                                                            <span className="ml-2 text-[11px] text-gray-400">
+                                                                                {Math.max(1, Math.round(file.size / 1024))} КБ
+                                                                            </span>
+                                                                        ) : null}
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    ) : email.attachments > 0 ? (
                                                         <p className="mt-2 text-xs text-gray-500">
                                                             Вложений: {email.attachments} — они в разделе «Файлы» заказа.
                                                         </p>
-                                                    )}
+                                                    ) : null}
                                                     <div className="mt-2 flex items-center gap-3">
                                                         <button
                                                             type="button"

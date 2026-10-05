@@ -114,6 +114,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 party: entry.party,
                 partyEmail: entry.partyEmail,
                 attachments: entry.attachments,
+                // Сами файлы: имя, размер и письмо, из которого качать.
+                attachmentList: entry.attachmentList,
+                emailId: entry.emailId,
                 source: entry.source,
             })),
             ...((events ?? []).map((e) => ({
@@ -125,6 +128,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 subject: null,
                 body: null,
                 attachments: 0,
+                attachmentList: [],
+                emailId: null,
                 source: 'retailcrm',
             }))),
         ].sort((left, right) => String(right.date ?? '').localeCompare(String(left.date ?? '')));

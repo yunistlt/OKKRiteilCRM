@@ -34,6 +34,9 @@ type Email = {
     typeLabel: string | null;
     orderNumber: string | null;
     attachments: boolean;
+    /** Имена вложений: в ленте их видно и, если письмо по заказу, можно открыть. */
+    attachmentList?: Array<{ name: string; size: number | null }>;
+    emailId?: string | null;
     clientId: number | null;
     clientName: string | null;
     managerName: string | null;
@@ -252,6 +255,43 @@ export default function EmailsClient() {
                             <p className="whitespace-pre-line px-4 py-3 text-sm text-gray-800">
                                 <TextWithOrderLinks text={mail.body || 'Текст этого письма у нас не сохранён.'} />
                             </p>
+
+                            {/* Вложения письма. Ирина Гордеева 05.10.2026: «можно в
+                                письмах, чтобы было ТЗ» — раньше файл приходилось искать
+                                в заказе. Открываются, когда письмо привязано к заказу:
+                                файл отдаётся его маршрутом с проверкой доступа. */}
+                            {mail.attachmentList?.length ? (
+                                <div className="border-t border-gray-100 px-4 py-2">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                                        Прикреплённые файлы
+                                    </p>
+                                    <ul className="mt-1 space-y-0.5">
+                                        {mail.attachmentList.map((file) => (
+                                            <li key={file.name}>
+                                                {mail.orderNumber && mail.emailId ? (
+                                                    <a
+                                                        href={`/api/orders/${encodeURIComponent(String(mail.orderNumber))}/files/download?emailId=${encodeURIComponent(mail.emailId)}&filename=${encodeURIComponent(file.name)}`}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="text-xs text-blue-700 hover:underline"
+                                                    >
+                                                        📎 {file.name}
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-xs text-gray-600" title="Письмо не привязано к заказу — файл открывается из карточки заказа">
+                                                        📎 {file.name}
+                                                    </span>
+                                                )}
+                                                {file.size ? (
+                                                    <span className="ml-2 text-[11px] text-gray-400">
+                                                        {Math.max(1, Math.round(file.size / 1024))} КБ
+                                                    </span>
+                                                ) : null}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            ) : null}
                         </div>
                     </div>
                 );
