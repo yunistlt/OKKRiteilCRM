@@ -74,7 +74,9 @@ export async function pushProductionQueue(sql: Sql, limit = BATCH): Promise<Push
                 headers: { 'Content-Type': 'application/json', 'X-Api-Key': key },
                 body: JSON.stringify({
                     orderNumber: row.order_number,
-                    orderId: row.order_id,
+                    // Драйвер отдаёт bigint СТРОКОЙ — отправляем числом, иначе приёмная
+                    // сторона не разбирает заказ («The JSON value could not be converted»).
+                    orderId: row.order_id === null ? null : Number(row.order_id),
                     customerName: row.customer_name,
                     customerInn: row.customer_inn,
                     managerName: row.manager_name,
