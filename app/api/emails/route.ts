@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { orderFromSubject } from '@/lib/email/order-tag';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -41,11 +42,20 @@ const textFromHtml = (html: unknown): string =>
         .replace(/\n{3,}/g, '\n\n')
         .trim();
 
+/**
+ * Текст письма для СПИСКА — коротким куском.
+ *
+ * Полное тело здесь не нужно: в ленте показывается первая строка. А весит оно
+ * много: двести писем с вёрсткой — 6,2 МБ, без неё — 666 КБ, а с обрезкой —
+ * около шестидесяти (замер 05.10.2026, жалоба владельца «долго письма
+ * загружаются»). Полный текст догружается при раскрытии письма.
+ */
+const PREVIEW_LIMIT = 400;
+
 const body = (row: any): string | null => {
     const plain = String(row.body_text ?? '').trim();
-    if (plain) return plain;
-    const html = textFromHtml(row.body_html);
-    return html || null;
+    if (!plain) return null;
+    return plain.length > PREVIEW_LIMIT ? `${plain.slice(0, PREVIEW_LIMIT)}…` : plain;
 };
 
 export async function GET(req: Request) {
@@ -65,13 +75,13 @@ export async function GET(req: Request) {
 
     let incomingQuery = supabase
         .from('incoming_emails')
-        .select('id, subject, from_email, from_name, to_email, body_text, body_html, email_type, status, received_at, has_attachments, attachments_meta, created_crm_order_number, assigned_manager_id')
+        .select('id, subject, from_email, from_name, to_email, body_text, email_type, status, received_at, has_attachments, attachments_meta, created_crm_order_number, assigned_manager_id')
         .order('received_at', { ascending: false })
         .limit(limit);
 
     let outgoingQuery = supabase
         .from('outgoing_emails')
-        .select('id, subject, from_email, to_email, body_text, body_html, sent_at, has_attachments, attachments_meta, order_number')
+        .select('id, subject, from_email, to_email, body_text, sent_at, has_attachments, attachments_meta, order_number')
         .order('sent_at', { ascending: false })
         .limit(limit);
 
@@ -121,7 +131,13 @@ export async function GET(req: Request) {
             subject: row.subject,
             body: body(row),
             typeLabel: TYPE_LABELS[row.email_type] || row.email_type || null,
-            orderNumber: row.created_crm_order_number,
+            /**
+             * Номер заказа: из автоприёма, а если его нет — из тега в теме.
+             * Ответы клиентов приходят с нашим тегом «[#3/54929]» и заказа не
+             * создают, поэтому письмо выглядело непривязанным и вложение из
+             * него не открывалось (жалоба владельца 05.10.2026).
+             */
+            orderNumber: row.created_crm_order_number || orderFromSubject(row.subject).tagged,
             attachments: !!row.has_attachments,
             attachmentList: files(row.attachments_meta),
             emailId: String(row.id),
@@ -136,10 +152,15 @@ export async function GET(req: Request) {
             subject: row.subject,
             body: body(row),
             typeLabel: null,
-            orderNumber: row.order_number,
+            orderNumber: row.order_number || orderFromSubject(row.subject).tagged,
             attachments: !!row.has_attachments,
             attachmentList: files(row.attachments_meta),
-            emailId: String(row.id),
+            /**
+             * У исходящих ссылки на файл нет: вложение достаётся из почтового
+             * ящика по идентификатору ВХОДЯЩЕГО письма, а журнал отправок его не
+             * хранит. Имена показываем, открыть можно из карточки заказа.
+             */
+            emailId: null,
             assignedManagerId: null,
         })),
     ].sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));

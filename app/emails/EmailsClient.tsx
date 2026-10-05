@@ -56,6 +56,23 @@ export default function EmailsClient() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [openId, setOpenId] = useState<string | null>(null);
+    /**
+     * Полный текст открытого письма. Список возит только первую строку: с
+     * вёрсткой двести писем весили 6,2 МБ и раздел открывался секундами
+     * (жалоба владельца 05.10.2026). Целиком письмо читают по одному — его и
+     * догружаем по щелчку.
+     */
+    const [fullBody, setFullBody] = useState<{ id: string; body: string | null } | null>(null);
+
+    useEffect(() => {
+        if (!openId) { setFullBody(null); return; }
+        let cancelled = false;
+        void fetch(`/api/emails/body?id=${encodeURIComponent(openId)}`)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => { if (!cancelled) setFullBody({ id: openId, body: data?.body ?? null }); })
+            .catch(() => undefined);
+        return () => { cancelled = true; };
+    }, [openId]);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -254,7 +271,13 @@ export default function EmailsClient() {
                                 </div>
                             </div>
                             <p className="whitespace-pre-line px-4 py-3 text-sm text-gray-800">
-                                <TextWithOrderLinks text={mail.body || 'Текст этого письма у нас не сохранён.'} />
+                                <TextWithOrderLinks
+                                    text={
+                                        (fullBody?.id === mail.id ? fullBody.body : null)
+                                        || mail.body
+                                        || 'Текст этого письма у нас не сохранён.'
+                                    }
+                                />
                             </p>
 
                             {/* Вложения письма: PDF и картинки открываются всплывающим
