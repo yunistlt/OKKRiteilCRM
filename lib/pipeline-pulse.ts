@@ -24,8 +24,16 @@ const THRESHOLDS = {
     emailPollMinutes: 45,
     /** письмо со status='new' ждёт разбора в том же заходе крона */
     emailStuckMinutes: 120,
-    /** воркеры очереди работают круглосуточно, раз в 1–2 минуты */
+    /** воркеры очереди работают раз в 1–2 минуты, пока есть что делать */
     jobsFinishedMinutes: 45,
+    /**
+     * Ночью тишина в очереди — это ночь, а не авария: работы ставят люди, а
+     * вечером их нет. Решение владельца 05.10.2026: окно с 19:00 до 8:00 по
+     * Москве. В эти часы молчание очереди не поднимает тревогу — иначе сторож
+     * будит владельца всю ночь тем, что никто не работает.
+     */
+    quietFromHourMsk: 19,
+    quietToHourMsk: 8,
     /** работа в очереди не должна ждать исполнителя часами */
     jobsQueuedMinutes: 120,
     /**
@@ -34,8 +42,20 @@ const THRESHOLDS = {
      * норматив объявлял бы их вставшими каждый день после обеда.
      */
     jobTypeDeadHours: 26,
-    /** синхронизация заказов из RetailCRM идёт круглосуточно */
 } as const;
+
+/**
+ * Ночь по-московски: с 19:00 до 8:00 очередь может молчать — работы ставят люди.
+ * Считаем по Москве, а не по часам сервера: он живёт в Гринвиче.
+ */
+function isQuietHours(now: Date): boolean {
+    const mskHour = Number(
+        new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', hour12: false }).format(now),
+    );
+    const { quietFromHourMsk: from, quietToHourMsk: to } = THRESHOLDS;
+    // Окно переходит через полночь, поэтому считаем по кругу.
+    return from <= to ? mskHour >= from && mskHour < to : mskHour >= from || mskHour < to;
+}
 
 export type PulseCheck = {
     /** Технический код — для сравнения снаружи */
@@ -184,6 +204,8 @@ async function stalledJobTypes(now: Date): Promise<string[]> {
 export async function collectPipelinePulse(): Promise<PipelinePulse> {
     const now = new Date();
 
+    const quiet = isQuietHours(now);
+
     const [emailPoll, stuckEmail, jobFinished, stalledTypes] = await Promise.all([
         lastEmailPoll(),
         oldestUnclassifiedEmail(),
@@ -204,7 +226,9 @@ export async function collectPipelinePulse(): Promise<PipelinePulse> {
             key: 'jobs_finished',
             title: 'Очередь работ',
             lastAt: jobFinished,
-            limitMinutes: THRESHOLDS.jobsFinishedMinutes,
+            // Ночью порог снимаем: пустая очередь в семь вечера — это конец
+            // рабочего дня, а не поломка.
+            limitMinutes: quiet ? Number.MAX_SAFE_INTEGER : THRESHOLDS.jobsFinishedMinutes,
             now,
             verb: 'ничего не доделала за',
         }),
