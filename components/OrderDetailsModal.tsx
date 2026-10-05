@@ -641,6 +641,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             .filter(([key]) => !key.includes('.'))
                             .map(([key, value]) => [key, value]),
                     ),
+                    // Юрлицо заказа едет своим полем: в `contact` его класть нельзя —
+                    // RetailCRM такого поля у заказа не знает.
+                    ...('order.site' in draftFields ? { site: draftFields['order.site'] || null } : {}),
                     customFields: Object.fromEntries(
                         Object.entries(draftFields)
                             .filter(([key]) => key.startsWith('cf.'))
@@ -887,7 +890,23 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <InfoField label="Страна" required value={countryValue} />
                             <InfoField label="Тип заказа" value={names.resolve('orderType', payload.orderType) || 'Не указан'} />
                             <InfoField label="Менеджер" value={order.manager_name || changeManager || 'Не назначен'} />
-                            <InfoField label="Магазин" required value={names.resolve('site', payload.site || order.site || payload.slug) || '—'} />
+                            {/* Юрлицо заказа: от него идут реквизиты продавца, расчётный
+                                счёт и НДС (у АО «ЗВТО» его нет). Менеджер меняет его сам —
+                                раньше поле было только для чтения, и заказ, заведённый не
+                                на то юрлицо, приходилось переделывать (Лена Парфёнова
+                                05.10.2026). У заказов RetailCRM магазин живёт там и её API
+                                его не меняет, поэтому выбор только у своих заказов. */}
+                            {isOwn ? (
+                                <EditField
+                                    label="Магазин"
+                                    required
+                                    value={fieldValue('order.site', payload.site || order.site || '')}
+                                    onChange={(v) => setField('order.site', v)}
+                                    options={sellerOptions.map((option) => ({ value: option.code, label: option.name }))}
+                                />
+                            ) : (
+                                <InfoField label="Магазин" required value={names.resolve('site', payload.site || order.site || payload.slug) || '—'} />
+                            )}
                         </div>
                     </div>
 

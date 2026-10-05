@@ -38,6 +38,8 @@ const bodySchema = z.object({
     contragent: z.record(z.string(), z.any()).optional(),
     /** Другой заказчик: карточка клиента, которой принадлежит заказ. */
     customerId: z.coerce.number().int().positive().optional().nullable(),
+    /** Юрлицо (магазин) заказа: реквизиты продавца, счёт и НДС. */
+    site: z.string().trim().max(100).optional().nullable(),
     delivery: z.record(z.string(), z.any()).optional(),
 });
 

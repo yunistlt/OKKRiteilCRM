@@ -56,6 +56,13 @@ export type OrderEdit = {
      * прямо в блоке «Клиент»).
      */
     customerId?: number | string | null;
+    /**
+     * Юрлицо (магазин) заказа. От него идут реквизиты продавца, расчётный счёт
+     * и НДС — у АО «ЗВТО» его нет. Менеджер меняет его в карточке: раньше поле
+     * было только для чтения, и заказ, заведённый не на то юрлицо, приходилось
+     * переделывать (Лена Парфёнова 05.10.2026).
+     */
+    site?: string | null;
 };
 
 export type EditResult =
@@ -76,6 +83,7 @@ export function describeEdit(edit: OrderEdit): string[] {
     if (edit.customerId) changed.push('заказчика');
     if (edit.contact && Object.keys(edit.contact).length) changed.push('контактные данные');
     if (edit.delivery && Object.keys(edit.delivery).length) changed.push('доставку');
+    if (edit.site) changed.push('юрлицо заказа');
     return changed;
 }
 
@@ -151,6 +159,12 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
     if ((order as any).is_own) {
         await editOwnOrder(Number((order as any).id), edit);
         return { ok: true, changed: describeEdit(edit) };
+    }
+
+    // Магазин заказа RetailCRM живёт в RetailCRM: её API его не меняет, и молча
+    // проглотить правку нельзя — менеджер решит, что юрлицо сменилось.
+    if (edit.site) {
+        return { ok: false, reason: 'Юрлицо можно сменить только у заказов нашей базы — у заказов RetailCRM магазин меняется в ней' };
     }
 
     if (!(await isRetailcrmOutboundWriteEnabled())) {

@@ -182,6 +182,8 @@ export async function editOwnOrder(
         contragent?: Record<string, unknown>;
         /** Другой заказчик: карточка клиента, которой принадлежит заказ. */
         customerId?: number | string | null;
+        /** Юрлицо (магазин) заказа: от него идут реквизиты, счёт и НДС. */
+        site?: string | null;
     },
 ): Promise<void> {
     const { data, error } = await supabase
@@ -270,9 +272,12 @@ export async function editOwnOrder(
         if (edit.delivery.date !== undefined) payload.delivery.date = String(edit.delivery.date ?? '') || undefined;
     }
 
+    if (edit.site) payload.site = edit.site;
+
     const update: Record<string, unknown> = { raw_payload: payload };
     if (edit.statusCode) update.status = edit.statusCode;
     if (edit.managerId) update.manager_id = edit.managerId;
+    if (edit.site) update.site = edit.site;
 
     const { error: e } = await supabase.from('orders').update(update).eq('id', rowId);
     if (e) throw new Error(e.message);
@@ -301,6 +306,9 @@ export async function editOwnOrder(
             oldValue: before.managerId ? await managerName(before.managerId) : null,
             newValue: await managerName(edit.managerId),
         });
+    }
+    if (edit.site && String(edit.site) !== String(before.site ?? '')) {
+        history.push({ field: 'site', oldValue: before.site ?? null, newValue: edit.site });
     }
     if (edit.items?.length) {
         const was = (before.items || []).map((item: any) => itemLabel({
