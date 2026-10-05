@@ -110,6 +110,7 @@ export async function GET(req: Request) {
             typeLabel: TYPE_LABELS[row.email_type] || row.email_type || null,
             orderNumber: row.created_crm_order_number,
             attachments: !!row.has_attachments,
+            assignedManagerId: row.assigned_manager_id ?? null,
         })),
         ...((outgoing.data ?? []) as any[]).map((row) => ({
             id: `out-${row.id}`,
@@ -122,11 +123,72 @@ export async function GET(req: Request) {
             typeLabel: null,
             orderNumber: row.order_number,
             attachments: !!row.has_attachments,
+            assignedManagerId: null,
         })),
     ].sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
 
+    const page = rows.slice(0, limit);
+
+    /**
+     * Клиент и его менеджер — по адресу собеседника. Без них список писем не
+     * отвечает на главный вопрос «чьё это и кто ведёт» (просьба Лены Парфёновой
+     * 05.10.2026: «можно в почте добавить менеджера, название компании и
+     * электронную почту клиента»).
+     */
+    const addresses = Array.from(new Set(page.map((r) => String(r.partyEmail || '').trim().toLowerCase()).filter(Boolean)));
+    const clientByEmail = new Map<string, { id: number; name: string; managerId: number | null }>();
+
+    if (addresses.length) {
+        const { data: clients } = await supabase
+            .from('clients')
+            .select('id, company_name, "legalName", email, contact_email, manager_id')
+            .or(`email.in.(${addresses.join(',')}),contact_email.in.(${addresses.join(',')})`);
+
+        for (const client of ((clients ?? []) as any[])) {
+            const name = client.company_name || client.legalName || null;
+            for (const address of [client.email, client.contact_email]) {
+                const key = String(address || '').trim().toLowerCase();
+                if (key && !clientByEmail.has(key)) {
+                    clientByEmail.set(key, { id: Number(client.id), name: name as any, managerId: client.manager_id ?? null });
+                }
+            }
+        }
+    }
+
+    // Менеджер клиента, а если у карточки его нет — тот, на кого легло письмо.
+    const managerIds = Array.from(new Set([
+        ...Array.from(clientByEmail.values()).map((c) => c.managerId),
+        ...page.map((row: any) => row.assignedManagerId),
+    ].filter(Boolean))) as number[];
+    const managerNames = new Map<number, string>();
+    if (managerIds.length) {
+        const { data: managers } = await supabase
+            .from('managers')
+            .select('id, first_name, last_name')
+            .in('id', managerIds);
+        for (const manager of ((managers ?? []) as any[])) {
+            managerNames.set(
+                Number(manager.id),
+                [manager.last_name, manager.first_name].filter(Boolean).join(' ') || `#${manager.id}`,
+            );
+        }
+    }
+
+    const withClients = page.map((row) => {
+        const client = clientByEmail.get(String(row.partyEmail || '').trim().toLowerCase()) || null;
+        const managerId = client?.managerId || (row as any).assignedManagerId || null;
+        return {
+            ...row,
+            clientId: client?.id ?? null,
+            // Названия компании может не быть — тогда показываем, как человек
+            // подписался в письме: «Клиент #900000016» не говорит ничего.
+            clientName: client?.name || row.party || null,
+            managerName: managerId ? managerNames.get(Number(managerId)) ?? null : null,
+        };
+    });
+
     return NextResponse.json({
-        emails: rows.slice(0, limit),
+        emails: withClients,
         types: Object.entries(TYPE_LABELS).map(([code, label]) => ({ code, label })),
     });
 }

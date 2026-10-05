@@ -11,11 +11,15 @@ type Email = {
     direction: string;
     date: string | null;
     party: string | null;
+    partyEmail: string | null;
     subject: string | null;
     body: string | null;
     typeLabel: string | null;
     orderNumber: string | null;
     attachments: boolean;
+    clientId: number | null;
+    clientName: string | null;
+    managerName: string | null;
 };
 
 const formatDate = (value: string | null) =>
@@ -114,44 +118,96 @@ export default function EmailsClient() {
             {loading && <p className="text-sm text-gray-500">Загружаю…</p>}
             {!loading && emails.length === 0 && <p className="bg-white px-4 py-6 text-sm text-gray-500">Писем не найдено.</p>}
 
-            <div className="divide-y divide-gray-100 border border-gray-200 bg-white">
-                {emails.map((mail) => {
-                    const open = openId === mail.id;
-                    return (
-                        <div key={mail.id} className="px-4 py-3">
-                            <button type="button" onClick={() => setOpenId(open ? null : mail.id)} className="block w-full text-left">
-                                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                    <span className="text-sm font-semibold text-gray-900">{mail.subject || 'Без темы'}</span>
-                                    <span className="text-xs text-gray-500">{formatDate(mail.date)}</span>
-                                </div>
-                                <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-gray-600">
-                                    <span className={mail.direction === 'Входящее' ? 'text-green-700' : 'text-blue-700'}>
-                                        {mail.direction === 'Входящее' ? '↓' : '↑'} {mail.direction}
-                                    </span>
-                                    <span>{mail.party || '—'}</span>
-                                    {mail.typeLabel && <span>{mail.typeLabel}</span>}
-                                    {mail.orderNumber && (
-                                        <span>
-                                            Заказ <OrderNumberLink number={mail.orderNumber} />
-                                        </span>
+            {/* Таблица, как в RetailCRM: тема, заказ, дата, клиент, тип,
+                менеджер клиента и адрес. Тап по строке открывает письмо
+                (просьба владельца 05.10.2026). */}
+            <div className="overflow-x-auto border border-gray-200 bg-white">
+                <table className="w-full text-sm">
+                    <thead>
+                        <tr className="border-b border-gray-200 bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
+                            <th className="px-3 py-2 font-semibold">Тема</th>
+                            <th className="px-3 py-2 font-semibold">Заказ</th>
+                            <th className="px-3 py-2 font-semibold whitespace-nowrap">Дата</th>
+                            <th className="px-3 py-2 font-semibold">Клиент</th>
+                            <th className="px-3 py-2 font-semibold">Тип</th>
+                            <th className="px-3 py-2 font-semibold">Менеджер клиента</th>
+                            <th className="px-3 py-2 font-semibold">Отправитель</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {emails.map((mail) => (
+                            <tr
+                                key={mail.id}
+                                onClick={() => setOpenId(mail.id)}
+                                className="cursor-pointer border-b border-gray-100 align-top hover:bg-blue-50"
+                            >
+                                <td className="px-3 py-2">
+                                    <div className="font-semibold text-blue-700">{mail.subject || 'Без темы'}</div>
+                                    <div className="text-xs text-gray-500">
+                                        {mail.body ? `${mail.body.slice(0, 120)}${mail.body.length > 120 ? '…' : ''}` : 'Текст письма не сохранён'}
+                                    </div>
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                    {mail.orderNumber ? <OrderNumberLink number={mail.orderNumber} /> : <span className="text-gray-400">—</span>}
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap text-gray-600">{formatDate(mail.date)}</td>
+                                <td className="px-3 py-2">
+                                    {mail.clientId ? (
+                                        <a
+                                            href={`/clients/${mail.clientId}`}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="text-blue-700 hover:underline"
+                                        >
+                                            {mail.clientName}
+                                        </a>
+                                    ) : (
+                                        <span className="text-gray-400">{mail.party || '—'}</span>
                                     )}
-                                    {mail.attachments && <span>с вложениями</span>}
-                                </div>
-                                {!open && (
-                                    <p className="mt-1 text-xs text-gray-500">
-                                        {mail.body ? `${mail.body.slice(0, 160)}${mail.body.length > 160 ? '…' : ''}` : 'Текст письма не сохранён'}
-                                    </p>
-                                )}
-                            </button>
-                            {open && (
-                                <p className="mt-2 whitespace-pre-line border-t border-gray-100 pt-2 text-sm text-gray-800">
-                                    {mail.body || 'Текст этого письма у нас не сохранён.'}
-                                </p>
-                            )}
-                        </div>
-                    );
-                })}
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                    <span className={mail.direction === 'Входящее' ? 'text-green-700' : 'text-blue-700'}>
+                                        {mail.direction}
+                                    </span>
+                                    {mail.typeLabel && <div className="text-xs text-gray-500">{mail.typeLabel}</div>}
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap text-gray-700">{mail.managerName || '—'}</td>
+                                <td className="px-3 py-2 text-gray-600">{mail.partyEmail || '—'}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
             </div>
+
+            {/* Само письмо — окном поверх списка: читать его в строке таблицы
+                невозможно. */}
+            {openId && (() => {
+                const mail = emails.find((m) => m.id === openId);
+                if (!mail) return null;
+                return (
+                    <div className="fixed inset-0 z-[120] flex items-start justify-center bg-black/30 p-6" onClick={() => setOpenId(null)}>
+                        <div className="max-h-full w-full max-w-3xl overflow-auto border border-gray-300 bg-white" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-4 py-3">
+                                <div>
+                                    <div className="font-semibold text-gray-900">{mail.subject || 'Без темы'}</div>
+                                    <div className="mt-1 text-xs text-gray-600">
+                                        {mail.direction} · {formatDate(mail.date)} · {mail.partyEmail || '—'}
+                                        {mail.managerName ? ` · менеджер: ${mail.managerName}` : ''}
+                                    </div>
+                                    {mail.orderNumber && (
+                                        <div className="mt-1 text-xs">Заказ <OrderNumberLink number={mail.orderNumber} /></div>
+                                    )}
+                                </div>
+                                <button type="button" onClick={() => setOpenId(null)} className="border border-gray-300 px-3 py-1 text-xs text-gray-600">
+                                    Закрыть
+                                </button>
+                            </div>
+                            <p className="whitespace-pre-line px-4 py-3 text-sm text-gray-800">
+                                {mail.body || 'Текст этого письма у нас не сохранён.'}
+                            </p>
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 }
