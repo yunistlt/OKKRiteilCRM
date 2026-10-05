@@ -60,6 +60,11 @@ export interface ProposalData {
     intro?: string;
     items: ProposalItem[];
     discount_pct: number;
+    discount_amount?: number;
+    shipping_note?: string | null;
+    seller_phone?: string | null;
+    seller_email?: string | null;
+    seller_site?: string | null;
     valid_until?: string; // ISO date
     client_name?: string;
     client_company?: string;
@@ -269,6 +274,13 @@ function ProposalPDF({ data }: { data: ProposalData }) {
                             ИНН: {seller.inn}  КПП: {seller.kpp}{data.seller_ogrn ? `  ОГРН: ${data.seller_ogrn}` : ''}
                         </Text>
                         <Text style={invStyles.sm}>{seller.address}</Text>
+                        {/* Контакты компании: счёт должен выглядеть документом,
+                            а не запиской (Лена Парфёнова 05.10.2026). */}
+                        {(data.seller_phone || data.seller_email || data.seller_site) && (
+                            <Text style={invStyles.sm}>
+                                {[data.seller_phone, data.seller_email, data.seller_site].filter(Boolean).join(' · ')}
+                            </Text>
+                        )}
                         <Text style={invStyles.sm}>Р/с {seller.rs}  К/с {seller.ks}  БИК {seller.bik}</Text>
                         <Text style={invStyles.sm}>Банк: {seller.bank}</Text>
                     </View>
@@ -431,6 +443,14 @@ export interface InvoiceData {
     title: string;
     items: ProposalItem[];
     discount_pct: number;
+    /** Разовая скидка суммой, если её задали рублями, а не процентом. */
+    discount_amount?: number;
+    /** Контакты продавца в шапке документа. */
+    seller_phone?: string | null;
+    seller_email?: string | null;
+    seller_site?: string | null;
+    /** Что сказать про отгрузку: габариты, состав, особенности. */
+    shipping_note?: string | null;
     vat_pct: number;           // 20 по умолчанию
     due_date?: string;         // ISO date
     payer_name?: string;
@@ -527,7 +547,10 @@ const invStyles = StyleSheet.create({
 
 function InvoicePDF({ data }: { data: InvoiceData }) {
     const subtotal = data.items.reduce((s, i) => s + i.price * i.quantity, 0);
-    const discountAmt = Math.round(subtotal * ((data.discount_pct || 0) / 100));
+    // Скидку задают и рублями, и процентом — считаем то, что задали.
+    const discountAmt = Number(data.discount_amount) > 0
+        ? Number(data.discount_amount)
+        : Math.round(subtotal * ((data.discount_pct || 0) / 100));
     const afterDiscount = subtotal - discountAmt;
     const vatAmt = Math.round(afterDiscount * (data.vat_pct / 100) / (1 + data.vat_pct / 100));
     const total = afterDiscount;
@@ -561,6 +584,13 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                         <Text style={[invStyles.sm, invStyles.bold]}>{seller.name}</Text>
                         <Text style={invStyles.sm}>ИНН: {seller.inn}  КПП: {seller.kpp}</Text>
                         <Text style={invStyles.sm}>{seller.address}</Text>
+                        {/* Контакты компании: без них счёт выглядит запиской, а
+                            не документом (Лена Парфёнова 05.10.2026). */}
+                        {(data.seller_phone || data.seller_email || data.seller_site) && (
+                            <Text style={invStyles.sm}>
+                                {[data.seller_phone, data.seller_email, data.seller_site].filter(Boolean).join(' · ')}
+                            </Text>
+                        )}
                     </View>
                     <View style={invStyles.invoiceMeta}>
                         <Text style={[invStyles.sm, { marginBottom: 2 }]}>Дата выставления: {today}</Text>
@@ -652,9 +682,11 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                         <Text style={invStyles.totLabel}>Подытог</Text>
                         <Text style={invStyles.totVal}>{formatMoney(subtotal)}</Text>
                     </View>
-                    {data.discount_pct > 0 && (
+                    {discountAmt > 0 && (
                         <View style={invStyles.totRow}>
-                            <Text style={invStyles.totLabel}>Скидка {data.discount_pct}%</Text>
+                            <Text style={invStyles.totLabel}>
+                                Скидка{data.discount_pct > 0 ? ` ${data.discount_pct}%` : ''}
+                            </Text>
                             <Text style={[invStyles.totVal, { color: '#ef4444' }]}>−{formatMoney(discountAmt)}</Text>
                         </View>
                     )}
@@ -681,8 +713,15 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                     </Text>
                 ) : null}
                 {data.shipping_terms ? (
-                    <Text style={[invStyles.sm, { marginBottom: 16 }]}>
+                    <Text style={[invStyles.sm, { marginBottom: data.shipping_note ? 4 : 16 }]}>
                         Условия получения: {data.shipping_terms}
+                    </Text>
+                ) : null}
+                {/* Габариты и состав — менеджер пишет их в заказе; раньше их
+                    приходилось вписывать в адрес получения (Лена 05.10.2026). */}
+                {data.shipping_note ? (
+                    <Text style={[invStyles.sm, { marginBottom: 16 }]}>
+                        По отгрузке: {data.shipping_note}
                     </Text>
                 ) : null}
 

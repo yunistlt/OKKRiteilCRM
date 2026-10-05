@@ -68,7 +68,10 @@ export async function buildOrderDocumentPdf(
             invoice_number: data.orderNumber,
             title: `Счёт по заказу №${data.orderNumber}`,
             items,
-            discount_pct: 0,
+            // Скидка, о которой договорились: в счёте её не было, и клиент
+            // видел полную сумму (Лена Парфёнова 05.10.2026).
+            discount_pct: data.discountPercent,
+            discount_amount: data.discountAmount,
             vat_pct: data.vatPercent,
             payer_company: data.payerCompany || undefined,
             payer_name: data.payerName || undefined,
@@ -93,15 +96,20 @@ export async function buildOrderDocumentPdf(
             production_days: data.productionDays,
             production_term: data.productionTerm,
             shipping_terms: data.shippingTerms,
+            shipping_note: data.shippingNote,
             signer_name: data.signerName,
             signer_title: data.signerTitle,
+            seller_phone: data.sellerPhone,
+            seller_email: data.sellerEmail,
+            seller_site: data.sellerSite,
         })
         : await generateProposalPDF({
             // КП показывает то же, что счёт: кто продаёт, НДС, скидку, сроки,
             // доставку, подписи и печать (замечания Евгении 05.10.2026).
             title: `Коммерческое предложение № ${data.orderNumber}`,
             items,
-            discount_pct: 0,
+            discount_pct: data.discountPercent,
+            discount_amount: data.discountAmount,
             client_company: data.payerCompany || undefined,
             client_name: data.payerName || undefined,
             vat_pct: data.vatPercent,
@@ -123,8 +131,12 @@ export async function buildOrderDocumentPdf(
             production_days: data.productionDays,
             production_term: data.productionTerm,
             shipping_terms: data.shippingTerms,
+            shipping_note: data.shippingNote,
             signer_name: data.signerName,
             signer_title: data.signerTitle,
+            seller_phone: data.sellerPhone,
+            seller_email: data.sellerEmail,
+            seller_site: data.sellerSite,
             valid_days: data.validDays,
         });
 

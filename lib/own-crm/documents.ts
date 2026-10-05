@@ -76,9 +76,22 @@ export type OrderDocumentData = {
      * пусто — пять дней (решение владельца 05.10.2026).
      */
     validDays: number;
+    /**
+     * Разовая скидка на заказ — её ставит менеджер в карточке. В счёте её не
+     * было вовсе: клиент видел полную сумму и не понимал, куда делась
+     * договорённость (Лена Парфёнова 05.10.2026).
+     */
+    discountAmount: number;
+    discountPercent: number;
+    /** Что сказать про отгрузку: габариты, состав, особенности. */
+    shippingNote: string | null;
     /** Кто подписывает счёт — из справочника наших юрлиц. */
     signerName: string | null;
     signerTitle: string | null;
+    /** Контакты продавца для шапки документа. */
+    sellerPhone: string | null;
+    sellerEmail: string | null;
+    sellerSite: string | null;
     /** Менеджер заказа: вторая подпись в счёте (решение владельца 02.10.2026). */
     managerName: string | null;
     /** Полное наименование продавца — по кольцу печати. */
@@ -305,6 +318,9 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
             Number(customFields.srok_izgot) > 0 ? Number(customFields.srok_izgot) : null,
             (order as any).srok_izgot_edinica,
         ),
+        discountAmount: Number((order as any).raw_payload?.discountManualAmount ?? (order as any).discountManualAmount ?? 0) || 0,
+        discountPercent: Number((order as any).raw_payload?.discountManualPercent ?? (order as any).discountManualPercent ?? 0) || 0,
+        shippingNote: String(customFields.primecanie_po_otgruzke ?? '').trim() || null,
         validDays: Number(customFields.schiot_deistvitelen_v_techenie_dnei) > 0
             ? Number(customFields.schiot_deistvitelen_v_techenie_dnei)
             : 5,
@@ -388,20 +404,35 @@ async function shippingTermsText(delivery: any): Promise<string | null> {
 }
 
 /** Подписант счёта — из справочника наших юрлиц, по ИНН или коду магазина. */
-async function signerOf(siteCode: string | null | undefined, seller: Seller | null): Promise<{ signerName: string | null; signerTitle: string | null }> {
+async function signerOf(siteCode: string | null | undefined, seller: Seller | null): Promise<{
+    signerName: string | null;
+    signerTitle: string | null;
+    sellerPhone: string | null;
+    sellerEmail: string | null;
+    sellerSite: string | null;
+}> {
+    const empty = { signerName: null, signerTitle: null, sellerPhone: null, sellerEmail: null, sellerSite: null };
     const inn = seller?.inn?.trim();
     const code = String(siteCode ?? '').trim();
-    if (!inn && !code) return { signerName: null, signerTitle: null };
+    if (!inn && !code) return empty;
 
     const { data } = await supabase
         .from('legal_entities')
-        .select('inn, site_code, signer_name, signer_title')
+        .select('inn, site_code, signer_name, signer_title, phone, email, site_url')
         .or([inn ? `inn.eq.${inn}` : null, code ? `site_code.eq.${code}` : null].filter(Boolean).join(','))
         .limit(1)
         .maybeSingle();
 
     const row = data as any;
-    return { signerName: row?.signer_name || null, signerTitle: row?.signer_title || null };
+    return {
+        signerName: row?.signer_name || null,
+        signerTitle: row?.signer_title || null,
+        // Контакты в шапку документа: без них счёт выглядит запиской, а не
+        // документом компании (Лена Парфёнова 05.10.2026).
+        sellerPhone: row?.phone || null,
+        sellerEmail: row?.email || null,
+        sellerSite: row?.site_url || null,
+    };
 }
 
 /** Менеджер заказа фамилией — он вторым подписывает счёт. */
