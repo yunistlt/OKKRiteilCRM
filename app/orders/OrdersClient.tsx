@@ -10,6 +10,7 @@ import { ORDER_COLUMNS, DEFAULT_COLUMNS, normalizeSelection } from '@/lib/orders
 import StatusIcon from '@/components/orders/StatusIcon';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import CommentCell from '@/components/orders/CommentCell';
+import BulkEmailModal from '@/components/orders/BulkEmailModal';
 import { useSearchParams } from 'next/navigation';
 import { formatRub } from '@/lib/format';
 
@@ -133,6 +134,13 @@ export default function OrdersClient() {
      * Реестр колонок приходит с сервера: к постоянным добавлены поля карточки
      * заказа из справочника RetailCRM (решение владельца 05.10.2026).
      */
+    /**
+     * Выбранные заказы для массовых действий: письмо сразу по нескольким и
+     * перенос даты контакта (решение владельца 05.10.2026).
+     */
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [bulkOpen, setBulkOpen] = useState(false);
+
     const [registry, setRegistry] = useState<typeof ORDER_COLUMNS>(ORDER_COLUMNS);
     const registryRef = useRef<typeof ORDER_COLUMNS>(ORDER_COLUMNS);
 
@@ -432,9 +440,43 @@ export default function OrdersClient() {
                 </div>
 
                 <div className="min-w-0 flex-1 overflow-x-auto">
+                    {/* Панель массовых действий: появляется, когда что-то
+                        отмечено (решение владельца 05.10.2026). */}
+                    {selected.size > 0 && (
+                        <div className="mb-2 flex flex-wrap items-center gap-3 border border-blue-200 bg-blue-50 px-3 py-2 text-sm">
+                            <span className="font-semibold text-gray-900">Выбрано заказов: {selected.size}</span>
+                            <button
+                                type="button"
+                                onClick={() => setBulkOpen(true)}
+                                className="bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700"
+                            >
+                                Написать письмо
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSelected(new Set())}
+                                className="text-xs font-semibold text-blue-700 hover:underline"
+                            >
+                                снять выделение
+                            </button>
+                        </div>
+                    )}
+
                     <table className="w-full border-collapse text-sm">
                         <thead>
                             <tr className="border-b-2 border-gray-300 bg-gray-100 text-left align-bottom font-bold text-gray-700">
+                                {/* Отметка заказа: с неё начинаются массовые действия. */}
+                                <th className="w-8 px-2 py-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={orders.length > 0 && orders.every((o) => selected.has(o.number))}
+                                        onChange={(e) => setSelected(e.target.checked
+                                            ? new Set(orders.map((o) => o.number))
+                                            : new Set())}
+                                        className="h-4 w-4"
+                                        title="Отметить все на странице"
+                                    />
+                                </th>
                                 {columns.map((key, index) => (
                                     <th
                                         key={key}
@@ -488,9 +530,9 @@ export default function OrdersClient() {
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan={columns.length} className="px-4 py-8 text-gray-500">Загружаем заказы…</td></tr>
+                                <tr><td colSpan={columns.length + 1} className="px-4 py-8 text-gray-500">Загружаем заказы…</td></tr>
                             ) : orders.length === 0 ? (
-                                <tr><td colSpan={columns.length} className="px-4 py-8 text-gray-500">Под этот фильтр заказов нет.</td></tr>
+                                <tr><td colSpan={columns.length + 1} className="px-4 py-8 text-gray-500">Под этот фильтр заказов нет.</td></tr>
                             ) : (
                                 orders.map((order) => (
                                     <tr
@@ -499,6 +541,18 @@ export default function OrdersClient() {
                                         onClick={() => setOpenOrderNumber(order.number)}
                                         className={`cursor-pointer border-b border-gray-200 align-top hover:bg-blue-50 ${order.overdue ? 'bg-red-50' : ''}`}
                                     >
+                                        <td className="w-8 px-2 py-4" onClick={(e) => e.stopPropagation()}>
+                                            <input
+                                                type="checkbox"
+                                                checked={selected.has(order.number)}
+                                                onChange={(e) => setSelected((current) => {
+                                                    const next = new Set(current);
+                                                    if (e.target.checked) next.add(order.number); else next.delete(order.number);
+                                                    return next;
+                                                })}
+                                                className="h-4 w-4"
+                                            />
+                                        </td>
                                         {columns.map((key) => (
                                             <td
                                                 key={key}
@@ -585,6 +639,14 @@ export default function OrdersClient() {
                 который был до правки. Ирина 05.10.2026: вписала комментарий в заказ
                 900043, сохранила, вышла — а в колонке по-прежнему висела
                 автоподсказка «возможно дубль …». */}
+            {bulkOpen && (
+                <BulkEmailModal
+                    numbers={Array.from(selected)}
+                    onClose={() => setBulkOpen(false)}
+                    onDone={() => { setSelected(new Set()); void load(); }}
+                />
+            )}
+
             {openOrderId !== null && (
                 <OrderDetailsModal
                     orderId={openOrderId}
