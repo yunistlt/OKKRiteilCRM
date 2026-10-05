@@ -11,6 +11,7 @@ import OrderNumberLink from '@/components/ui/OrderNumberLink';
 
 type Requisites = {
     contragentType?: string | null;
+    fullName?: string | null;
     inn: string | null;
     kpp: string | null;
     ogrn?: string | null;
@@ -194,6 +195,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     legalName: draft.legalName ?? '',
+                    fullName: draft.fullName ?? '',
                     inn: draft.inn ?? '',
                     kpp: draft.kpp ?? '',
                     ogrn: draft.ogrn ?? '',
@@ -370,7 +372,10 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                     {editing && draft ? (
                         <div className="divide-y divide-gray-100">
                             {([
-                                ['legalName', 'Юридическое название'],
+                                // Два названия: сокращённое для списков и полное
+                                // для договоров (просьба Лены 05.10.2026).
+                                ['legalName', 'Сокращённое название'],
+                                ['fullName', 'Полное наименование'],
                                 ['inn', 'ИНН'],
                                 ['kpp', 'КПП'],
                                 ['ogrn', 'ОГРН'],
@@ -390,7 +395,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                                    просмотра. */
                                 <label key={String(key)} className="block px-4 py-1.5">
                                     <span className="mb-0.5 block text-[11px] uppercase tracking-wide text-gray-500">{label}</span>
-                                    {key === 'legalAddress' || key === 'bankAddress' || key === 'legalName' || key === 'bank' ? (
+                                    {key === 'legalAddress' || key === 'bankAddress' || key === 'legalName' || key === 'fullName' || key === 'bank' ? (
                                         /* Адреса, название и банк в одну строку не влезают
                                            никогда — показываем их целиком в несколько строк. */
                                         <AutoTextarea
@@ -410,7 +415,8 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                         </div>
                     ) : (
                         <>
-                            <Field label="Юридическое название" value={requisites?.legalName} />
+                            <Field label="Сокращённое название" value={requisites?.legalName} />
+                            <Field label="Полное наименование" value={requisites?.fullName} />
                             <Field label="ИНН" value={requisites?.inn} />
                             <Field label="КПП" value={requisites?.kpp} />
                             <Field label="ОГРН / ОГРНИП" value={requisites?.ogrn || requisites?.ogrnip} />

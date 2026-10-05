@@ -19,7 +19,14 @@ import { supabase } from '@/utils/supabase';
 
 export type Requisites = {
     contragentType: string | null;
+    /** Сокращённое название: ООО «БРМЗ». */
     legalName: string | null;
+    /**
+     * Полное наименование: «Общество с ограниченной ответственностью
+     * „Благовещенский Ремонтно-Механический Завод"». Нужно в договорах и
+     * счетах, где сокращённого мало (просьба Лены Парфёновой 05.10.2026).
+     */
+    fullName: string | null;
     inn: string | null;
     kpp: string | null;
     ogrn: string | null;
@@ -42,7 +49,7 @@ export type ClientRequisitesCard = Requisites & {
 };
 
 const EMPTY: Requisites = {
-    contragentType: null, legalName: null, inn: null, kpp: null, ogrn: null, ogrnip: null,
+    contragentType: null, legalName: null, fullName: null, inn: null, kpp: null, ogrn: null, ogrnip: null,
     legalAddress: null, bank: null, bankAccount: null, bik: null, corrAccount: null, bankAddress: null,
 };
 
@@ -57,6 +64,8 @@ export function fromOrderContragent(contragent: any): Requisites {
     return {
         contragentType: text(c.contragentType),
         legalName: text(c.legalName),
+        // В заказе RetailCRM полного наименования нет — оно только у клиента.
+        fullName: null,
         inn: text(c.INN),
         kpp: text(c.KPP),
         ogrn: text(c.OGRN),
@@ -99,6 +108,7 @@ function rowToRequisites(row: any): Requisites {
     return {
         contragentType: text(row.contragent_type),
         legalName: text(row.legalName) || text(row.company_name),
+        fullName: text(row.full_name),
         inn: text(row.inn),
         kpp: text(row.kpp),
         ogrn: text(row.OGRN),
@@ -113,7 +123,7 @@ function rowToRequisites(row: any): Requisites {
 }
 
 const CLIENT_COLUMNS =
-    'contragent_type, company_name, inn, kpp, "legalName", "legalAddress", "bank", "bankAccount", "BIK", "corrAccount", "bankAddress", "OGRN", "OGRNIP", requisites_updated_at, requisites_updated_by';
+    'contragent_type, company_name, full_name, inn, kpp, "legalName", "legalAddress", "bank", "bankAccount", "BIK", "corrAccount", "bankAddress", "OGRN", "OGRNIP", requisites_updated_at, requisites_updated_by';
 
 /** Есть ли в карточке хоть что-то, кроме пустоты. */
 function filled(requisites: Requisites): boolean {
@@ -166,6 +176,7 @@ export async function loadClientRequisites(clientId: number | string): Promise<C
         return {
             contragentType: fromCard.contragentType || fromOrder.contragentType,
             legalName: fromCard.legalName || fromOrder.legalName,
+            fullName: fromCard.fullName,
             inn: fromCard.inn || fromOrder.inn,
             kpp: fromCard.kpp || fromOrder.kpp,
             ogrn: fromCard.ogrn || fromOrder.ogrn,
@@ -204,6 +215,7 @@ export async function saveClientRequisites(
     const row: Record<string, unknown> = {
         contragent_type: text(requisites.contragentType),
         legalName: text(requisites.legalName),
+        full_name: text(requisites.fullName),
         // `company_name` приезжает из RetailCRM и показывается в списке клиентов:
         // держим его в согласии с юридическим названием, если его внесли.
         ...(text(requisites.legalName) ? { company_name: text(requisites.legalName) } : {}),

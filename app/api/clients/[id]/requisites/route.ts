@@ -12,6 +12,7 @@ export const dynamic = 'force-dynamic';
 const bodySchema = z.object({
     contragentType: z.string().trim().max(60).optional().nullable(),
     legalName: z.string().trim().max(500).optional().nullable(),
+    fullName: z.string().trim().max(1000).optional().nullable(),
     inn: z.string().trim().max(20).optional().nullable(),
     kpp: z.string().trim().max(20).optional().nullable(),
     ogrn: z.string().trim().max(20).optional().nullable(),
