@@ -5,6 +5,11 @@
  * Можно, чтобы была указана сама задача?» Оповещения были только о письмах, и
  * задачу по тому же заказу человек принимал за письмо. Теперь у задачи своё
  * оповещение — с её текстом и сроком.
+ *
+ * Она же в тот же день: «это оповещение нужно завтра. я поставила, а оно сразу
+ * пришло». Оповещение шло по дате создания задачи, поэтому выскакивало в момент
+ * постановки. Теперь оно приходит в срок, записанный в самой задаче
+ * (`due_date` + `due_time`), а по дате создания — только у задач без срока.
  */
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
@@ -23,20 +28,43 @@ export async function GET(req: Request) {
         ? new Date(since)
         : new Date(Date.now() - 60 * 60 * 1000);
 
+    const now = new Date();
+    // Срок задаётся по-московски, как его видит человек в карточке.
+    const today = new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    /**
+     * Берём задачи, срок которых мог наступить, плюс бессрочные, поставленные
+     * только что. Точный момент считаем ниже: сложить дату со временем
+     * запросом нельзя — это разные колонки.
+     */
     const { data: tasks, error } = await supabase
         .from('order_tasks')
         .select('id, order_number, title, due_date, due_time, created_by, created_at')
         .eq('done', false)
-        .gt('created_at', from.toISOString())
+        .or(`due_date.lte.${today},due_date.is.null`)
         .order('created_at', { ascending: false })
-        .limit(20);
+        .limit(200);
 
     if (error) {
         console.error('[task-alerts] задачи не прочитались:', error);
         return NextResponse.json({ error: 'Не удалось прочитать задачи' }, { status: 500 });
     }
 
-    const rows = (tasks || []) as any[];
+    /**
+     * Момент, когда задача должна о себе напомнить: её срок, а у задачи без
+     * срока — время постановки. Время московское: именно его человек вводит.
+     */
+    const remindAt = (row: any): number => {
+        if (!row.due_date) return Date.parse(row.created_at);
+        const time = row.due_time ? String(row.due_time).slice(0, 8) : '00:00:00';
+        return Date.parse(`${String(row.due_date).slice(0, 10)}T${time}+03:00`);
+    };
+
+    // Оповещаем один раз — в тот заход, когда срок перешагнул текущее время.
+    const rows = ((tasks || []) as any[]).filter((row) => {
+        const at = remindAt(row);
+        return Number.isFinite(at) && at > from.getTime() && at <= now.getTime();
+    });
     if (!rows.length) return NextResponse.json({ tasks: [], checkedAt: new Date().toISOString() });
 
     // Менеджеру — задачи по его заказам, руководителю и ОКК — по всем.

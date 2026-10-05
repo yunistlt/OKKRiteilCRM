@@ -129,7 +129,7 @@ export default function CallsClient() {
                     <input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Телефон, заказ или менеджер"
+                        placeholder="Клиент, телефон, заказ или менеджер"
                         className="w-60 border border-gray-200 px-3 py-1.5 text-sm"
                     />
                     <button type="submit" className="border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700">

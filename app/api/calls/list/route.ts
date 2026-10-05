@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { clientCallKeys } from '@/lib/calls-client-search';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,7 +44,23 @@ export async function GET(req: Request) {
     if (to) query = query.lte('call_date', `${to}T23:59:59+03:00`);
     if (Number.isFinite(minSec)) query = query.gte('duration_sec', minSec);
     if (Number.isFinite(maxSec)) query = query.lte('duration_sec', maxSec);
-    if (search) query = query.or(`phone.ilike.%${search}%,order_number.ilike.%${search}%,manager_name.ilike.%${search}%`);
+    if (search) {
+        /**
+         * Ищем ещё и по наименованию клиента — как в RetailCRM (просьба Евгении
+         * 05.10.2026). Названия у звонка нет, поэтому по нему сначала находим
+         * клиентов, а затем их заказы, контактных лиц и телефоны.
+         */
+        const keys = await clientCallKeys(search);
+        const parts = [
+            `phone.ilike.%${search}%`,
+            `order_number.ilike.%${search}%`,
+            `manager_name.ilike.%${search}%`,
+        ];
+        if (keys.orderNumbers.length) parts.push(`order_number.in.(${keys.orderNumbers.join(',')})`);
+        if (keys.customerIds.length) parts.push(`customer_rc_id.in.(${keys.customerIds.join(',')})`);
+        if (keys.phones.length) parts.push(`phone_normalized.in.(${keys.phones.join(',')})`);
+        query = query.or(parts.join(','));
+    }
 
     const { data, error } = await query;
     if (error) {
