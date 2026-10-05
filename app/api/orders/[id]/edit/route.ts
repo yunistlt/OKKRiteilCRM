@@ -29,8 +29,14 @@ const bodySchema = z.object({
     /** Разовая скидка на заказ. */
     discountAmount: z.coerce.number().min(0).optional().nullable(),
     discountPercent: z.coerce.number().min(0).max(100).optional().nullable(),
-    customerComment: z.string().max(5000).optional().nullable(),
-    managerComment: z.string().max(5000).optional().nullable(),
+    /**
+     * Комментарии копятся годами: лента по заказу 53603 к 05.10.2026 доросла до
+     * 6 947 знаков, и прежний предел в 5 000 ронял ЛЮБОЕ сохранение карточки —
+     * карточка шлёт комментарий целиком (Ирина Гордеева: «нажимаю сохранить и
+     * выйти, коммент не сохраняет»). Предел оставлен только от явного мусора.
+     */
+    customerComment: z.string().max(100000).optional().nullable(),
+    managerComment: z.string().max(100000).optional().nullable(),
     statusCode: z.string().trim().max(100).optional().nullable(),
     managerId: z.coerce.number().int().positive().optional().nullable(),
     customFields: z.record(z.string(), z.any()).optional(),

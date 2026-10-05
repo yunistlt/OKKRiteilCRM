@@ -105,6 +105,13 @@ type ScoreBreakdownEntry = {
  */
 const FieldErrorsContext = createContext<Record<string, string>>({});
 
+/**
+ * Поля, изменённые и ещё не сохранённые. Внизу карточки давно висело «Есть
+ * несохранённые изменения», но какие именно — было не видно (Ирина Гордеева
+ * 05.10.2026: «а как увидеть где?»).
+ */
+const FieldDirtyContext = createContext<Set<string>>(new Set());
+
 const EditField = ({ label, value, onChange, required, type = 'text', options, action, fieldKey }: {
     label: string;
     value: any;
@@ -118,7 +125,12 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
     fieldKey?: string;
 }) => {
     const problem = useContext(FieldErrorsContext)[fieldKey ?? ''];
-    const frame = problem ? 'border-red-500 bg-red-50' : 'border-gray-300 bg-white';
+    const changed = useContext(FieldDirtyContext).has(fieldKey ?? '');
+    const frame = problem
+        ? 'border-red-500 bg-red-50'
+        : changed
+            ? 'border-amber-500 bg-amber-50'
+            : 'border-gray-300 bg-white';
 
     return (
     <div className="space-y-0.5">
@@ -152,7 +164,9 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
                 {value ?? <span className="text-gray-400">Не указано</span>}
             </div>
         )}
-        {problem && <div className="text-xs text-red-600">{problem}</div>}
+        {problem
+            ? <div className="text-xs text-red-600">{problem}</div>
+            : changed ? <div className="text-xs text-amber-700">Не сохранено</div> : null}
     </div>
     );
 };
@@ -279,6 +293,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     // Правка остальных полей карточки. Ключи: имя поля заказа (firstName, phone…),
     // «cf.<код>» для своих полей RetailCRM и «delivery.<поле>» для доставки.
     const [draftFields, setDraftFields] = useState<Record<string, any>>({});
+    /** Ключи изменённых полей — ими карточка подсвечивает, что не сохранено. */
+    const dirtyKeys = new Set(Object.keys(draftFields));
     // От какого нашего юрлица выставляем счёт. Пусто — от юрлица магазина заказа.
     const [sellerCode, setSellerCode] = useState('');
     const [sellerOptions, setSellerOptions] = useState<Array<{ code: string; name: string }>>([]);
@@ -2297,6 +2313,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
     return (
         <FieldErrorsContext.Provider value={fieldErrors}>
+        <FieldDirtyContext.Provider value={dirtyKeys}>
         <div
             className="fixed z-[130] flex"
             role="dialog"
@@ -2602,6 +2619,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 </footer>
             </div>
         </div>
+        </FieldDirtyContext.Provider>
         </FieldErrorsContext.Provider>
     );
 }
