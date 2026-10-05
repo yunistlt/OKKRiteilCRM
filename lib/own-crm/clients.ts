@@ -125,3 +125,43 @@ export async function relatedClients(customerId: number | string): Promise<Relat
     }));
 }
 
+
+/**
+ * Компания контактного лица.
+ *
+ * Заказ бывает заведён не на компанию, а на живого человека: в `customer`
+ * стоит контактное лицо, и ссылка «карточка заказчика» вела на экран юрлиц,
+ * где его нет, — менеджер видел «Клиент не найден» (жалоба Евгении 05.10.2026,
+ * заказ 900024). Связь человек → компания уже посчитана в `client_contacts`
+ * по заказам, поэтому карточку находим через неё, а не правим заказы: их
+ * `raw_payload` переписывает ближайшая синхронизация с RetailCRM.
+ *
+ * Человек бывает контактом нескольких компаний (760 таких из 13 880) —
+ * берём ту, где у него больше заказов, при равенстве более свежую.
+ */
+export async function companyOfContact(personId: number | string): Promise<number | null> {
+    const { data } = await supabase
+        .from('client_contacts')
+        .select('client_id, orders_count, last_order_at')
+        .eq('contact_id', String(personId))
+        .order('orders_count', { ascending: false, nullsFirst: false })
+        .order('last_order_at', { ascending: false, nullsFirst: false })
+        .limit(1);
+
+    const row = (data || [])[0] as any;
+    return row?.client_id ? Number(row.client_id) : null;
+}
+
+/**
+ * Карточка клиента, которую надо открыть по заказу: сам заказчик, если он
+ * юрлицо, иначе компания его контактного лица. Вернёт null, когда компании
+ * нет вовсе — тогда интерфейс объясняет человеку, что заводить.
+ */
+export async function clientCardIdForOrder(customerId: number | string | null): Promise<number | null> {
+    if (!customerId) return null;
+
+    const { data: card } = await supabase.from('clients').select('id').eq('id', String(customerId)).maybeSingle();
+    if (card) return Number((card as any).id);
+
+    return companyOfContact(customerId);
+}

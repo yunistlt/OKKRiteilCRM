@@ -47,6 +47,8 @@ interface OrderDetails {
     ropNotes?: Array<{ date: string | null; text: string }>;
     /** Название компании заказчика из его карточки — в заказе его может не быть. */
     clientCompanyName?: string | null;
+    /** Карточка клиента для ссылок: заказчик-юрлицо либо компания его контактного лица. */
+    clientCardId?: number | null;
     history: any[];
     /** Названия и цвета статусов — для плашек в истории. */
     statusPalette?: Record<string, { name: string; color: string | null }>;
@@ -936,6 +938,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const address = delivery.address ?? {};
         const contact = payload.contact ?? {};
         const customer = payload.customer ?? {};
+        // Карточку клиента для ссылок ищет сервер: у заказа на живого
+        // человека это компания, где он контактное лицо.
+        const clientCardId = data.clientCardId ?? null;
         const customFields = (payload.customFields ?? {}) as Record<string, any>;
         const paymentSource = payload.payments ?? order.payments ?? {};
         const paymentEntries = toArray(paymentSource);
@@ -1086,8 +1091,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         title="Клиент"
                         action={
                             <div className="flex items-center gap-3 text-xs">
-                                {customer.id && (
-                                    <a href={`/clients/${customer.id}`} className="text-blue-700 hover:underline">
+                                {clientCardId && (
+                                    <a href={`/clients/${clientCardId}`} className="text-blue-700 hover:underline">
                                         карточка заказчика
                                     </a>
                                 )}
@@ -1175,8 +1180,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         <div className="mt-4 border-t border-gray-200 pt-3">
                             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
                                 <h4 className="text-sm font-semibold text-gray-900">Реквизиты заказчика</h4>
-                                {customer.id && (
-                                    <a href={`/clients/${customer.id}`} className="text-xs text-blue-700 hover:underline">
+                                {clientCardId && (
+                                    <a href={`/clients/${clientCardId}`} className="text-xs text-blue-700 hover:underline">
                                         править в карточке клиента
                                     </a>
                                 )}
