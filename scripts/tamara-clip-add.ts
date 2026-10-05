@@ -35,7 +35,7 @@ const FPS = 24;
 const OUT_HEIGHT = 1280;
 
 /** Состояния, под которые бывают ролики. Коды — как у фигуры в app/shtab/Tamara.tsx. */
-const STATES = ['idle', 'greet', 'explain', 'pleased'] as const;
+const STATES = ['idle', 'greet', 'explain', 'pleased', 'twirl'] as const;
 
 function arg(name: string): string | undefined {
     const i = process.argv.indexOf(`--${name}`);
