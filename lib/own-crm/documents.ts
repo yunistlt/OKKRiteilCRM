@@ -24,6 +24,15 @@ export type DocumentItem = {
     discount: number;
     /** Фото товара с его карточки на сайте, если товар там есть. */
     image: string | null;
+    /**
+     * Ссылка на карточку товара на сайте.
+     *
+     * Ирина Гордеева 05.10.2026: «ранее отправляли КП или счёт, там была ссылка
+     * кликабельная (описание товара), можно было нажать и попадаешь на сайт на
+     * страничку товара, сейчас просто описание». Ссылку мы уже знали — она
+     * приходит из каталога вместе с фото, но до документа не доходила.
+     */
+    url: string | null;
 };
 
 export type Seller = {
@@ -258,9 +267,10 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
         rows = data || [];
     }
 
-    // Фото берём из карточек товаров сайта: база товаров у нас — это база сайта.
-    // Чего на сайте уже нет (архив), то останется строкой без картинки.
-    const images = await catalogImages(rows);
+    // Фото и ссылку берём из карточек товаров сайта: база товаров у нас — это
+    // база сайта. Чего на сайте уже нет (архив), то останется строкой без
+    // картинки и без ссылки — врать ссылкой в никуда нельзя.
+    const catalog = await catalogByItem(rows);
 
     const items: DocumentItem[] = (rows || []).map((row: any) => ({
         name: row.offer?.displayName || row.offer?.name || row.productName || 'Позиция',
@@ -271,10 +281,8 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
             : 0)),
         initialPrice: Number(row.initialPrice || 0),
         discount: Number(row.discountTotal || 0),
-        image: images.get(String(row.offer?.xmlId ?? '').split('#')[0])
-            || images.get(String(row.offer?.externalId ?? ''))
-            || images.get(String(row.offer?.article ?? ''))
-            || null,
+        image: catalogOf(catalog, row)?.image ?? null,
+        url: catalogOf(catalog, row)?.url ?? null,
     }));
 
     const contragent = (order as any).contragent || (order as any).raw_payload?.contragent || {};
@@ -364,9 +372,11 @@ export function productionTermText(days: number | null, unit: unknown): string |
     return `${days} ${form}`;
 }
 
-/** Фото позиций с карточек сайта: ключ — id товара на сайте и артикул. */
-async function catalogImages(rows: any[]): Promise<Map<string, string>> {
-    const map = new Map<string, string>();
+type CatalogEntry = { image: string | null; url: string | null };
+
+/** Карточки товаров сайта по позициям заказа: ключ — id в 1С, id сайта, артикул. */
+async function catalogByItem(rows: any[]): Promise<Map<string, CatalogEntry>> {
+    const map = new Map<string, CatalogEntry>();
     try {
         const links = await catalogLinks({
             xmlIds: rows.map((row) => row?.offer?.xmlId),
@@ -374,14 +384,25 @@ async function catalogImages(rows: any[]): Promise<Map<string, string>> {
             articles: rows.map((row) => row?.offer?.article),
         });
         for (const link of links) {
-            if (!link.image) continue;
             const key = link.key.replace(/^(1c|id|art):/, '');
-            if (!map.has(key)) map.set(key, link.image);
+            const current = map.get(key);
+            map.set(key, {
+                image: current?.image ?? link.image ?? null,
+                url: current?.url ?? link.url ?? null,
+            });
         }
     } catch {
-        // Каталог не ответил — КП соберётся без картинок, это не повод падать.
+        // Каталог не ответил — документ соберётся без фото и ссылок, это не повод падать.
     }
     return map;
+}
+
+/** Карточка сайта для конкретной позиции заказа. */
+function catalogOf(map: Map<string, CatalogEntry>, row: any): CatalogEntry | null {
+    return map.get(String(row?.offer?.xmlId ?? '').split('#')[0])
+        || map.get(String(row?.offer?.externalId ?? ''))
+        || map.get(String(row?.offer?.article ?? ''))
+        || null;
 }
 
 /**

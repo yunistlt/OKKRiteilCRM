@@ -11,6 +11,7 @@ import {
     Circle,
     G,
     Image,
+    Link,
 } from '@react-pdf/renderer';
 import path from 'path';
 import { BRAND, LOGO_DATA_URL } from '@/lib/brand';
@@ -54,6 +55,11 @@ export interface ProposalItem {
     discount?: number;
     /** Фото товара с его карточки на сайте. */
     image?: string | null;
+    /**
+     * Ссылка на карточку товара на сайте: название в документе кликабельно.
+     * Просьба Ирины Гордеевой 05.10.2026 — так было в прежних КП из RetailCRM.
+     */
+    url?: string | null;
 }
 
 export interface ProposalData {
@@ -335,7 +341,11 @@ function ProposalPDF({ data }: { data: ProposalData }) {
                             ) : null}
                         </View>
                         <View style={invStyles.cName}>
-                            <Text style={invStyles.cell}>{item.name}</Text>
+                            {item.url ? (
+                                <Link src={item.url} style={invStyles.cellLink}>{item.name}</Link>
+                            ) : (
+                                <Text style={invStyles.cell}>{item.name}</Text>
+                            )}
                             {item.description && <Text style={invStyles.cellGray}>{item.description}</Text>}
                         </View>
                         <Text style={[invStyles.cell, invStyles.cQty]}>{item.quantity} {item.unit || 'шт.'}</Text>
@@ -531,6 +541,9 @@ const invStyles = StyleSheet.create({
     cUnit: { width: '9%', textAlign: 'center' }, cPrice: { width: '19%', textAlign: 'right' }, cTotal: { width: '20%', textAlign: 'right' },
     cell: { fontSize: 8.5, color: '#1e293b' },
     cellGray: { fontSize: 7.5, color: '#94a3b8', marginTop: 1 },
+    // Название-ссылка на карточку товара: цветом и подчёркиванием, чтобы по нему
+    // было видно, что нажимается (просьба Ирины Гордеевой 05.10.2026).
+    cellLink: { fontSize: 8.5, color: BRAND.blue, textDecoration: 'underline' },
     // Итоги
     totals: { alignSelf: 'flex-end', width: '44%', marginTop: 8, marginBottom: 14 },
     totRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
@@ -673,7 +686,11 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                     <View key={idx} style={[invStyles.tblRow, idx % 2 === 1 ? invStyles.tblAlt : {}]}>
                         <Text style={[invStyles.cell, invStyles.cNum]}>{idx + 1}</Text>
                         <View style={invStyles.cName}>
-                            <Text style={invStyles.cell}>{item.name}</Text>
+                            {item.url ? (
+                                <Link src={item.url} style={invStyles.cellLink}>{item.name}</Link>
+                            ) : (
+                                <Text style={invStyles.cell}>{item.name}</Text>
+                            )}
                             {item.description && <Text style={invStyles.cellGray}>{item.description}</Text>}
                         </View>
                         <Text style={[invStyles.cell, invStyles.cQty]}>{item.quantity}</Text>
