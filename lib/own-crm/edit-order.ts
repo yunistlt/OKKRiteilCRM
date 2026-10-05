@@ -242,8 +242,26 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
 
     if (edit.delivery && Object.keys(edit.delivery).length) {
         orderData.delivery = {};
-        if (edit.delivery.address !== undefined) {
-            orderData.delivery.address = { text: String(edit.delivery.address ?? '') };
+        /**
+         * Адрес и его части. RetailCRM держит их одним объектом `address`,
+         * поэтому части кладём рядом со строкой: иначе город и индекс, которые
+         * менеджер разобрал кнопкой, никуда не сохранятся (просьба Лены
+         * Парфёновой 05.10.2026).
+         */
+        const addressParts = ['address', 'region', 'city', 'index'] as const;
+        if (addressParts.some((key) => edit.delivery?.[key] !== undefined)) {
+            orderData.delivery.address = {
+                ...(edit.delivery.address !== undefined ? { text: String(edit.delivery.address ?? '') } : {}),
+                ...(edit.delivery.region !== undefined ? { region: String(edit.delivery.region ?? '') } : {}),
+                ...(edit.delivery.city !== undefined ? { city: String(edit.delivery.city ?? '') } : {}),
+                ...(edit.delivery.index !== undefined ? { index: String(edit.delivery.index ?? '') } : {}),
+            };
+        }
+        if (edit.delivery.date !== undefined) {
+            orderData.delivery.date = String(edit.delivery.date ?? '') || undefined;
+        }
+        if (edit.delivery.time !== undefined) {
+            orderData.delivery.time = String(edit.delivery.time ?? '') || undefined;
         }
         if (edit.delivery.code !== undefined && String(edit.delivery.code ?? '')) {
             orderData.delivery.code = String(edit.delivery.code);

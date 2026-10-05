@@ -26,6 +26,7 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/settings/legal-entities', label: 'API наших юрлиц', description: 'Чтение и правка карточек юрлиц.', category: 'Система', allowed: ['admin', 'rop'] },
     { prefix: '/orders/new', label: 'Новый заказ', description: 'Создание заказа менеджером: клиент, состав из каталога сайта, комментарий.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics'] },
     { prefix: '/api/orders/create', label: 'API создания заказа', description: 'Заводит заказ в RetailCRM из нашего интерфейса.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics'] },
+    { prefix: '/api/address/parse', label: 'API разбора адреса', description: 'Разбор скопированного адреса доставки на область, город и индекс (Dadata).', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics'] },
     { prefix: '/api/catalog', label: 'API каталога сайта', description: 'Поиск товара на сайте для состава заказа.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics'] },
     { prefix: '/clients', label: 'Клиенты', description: 'Реестр клиентов и карточка клиента: реквизиты, связанные карточки одного юрлица, заказы.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics'] },
     { prefix: '/api/clients', label: 'API клиентов', description: 'Данные реестра и карточки клиента.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics'] },
