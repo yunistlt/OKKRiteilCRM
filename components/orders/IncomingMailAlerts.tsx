@@ -1,11 +1,15 @@
 'use client';
 
 /**
- * Всплывающее оповещение о письме по заказу.
+ * Всплывающее оповещение по заказу: пришло письмо или поставили задачу.
  *
  * Лена Парфёнова 05.10.2026: «можно настроить оповещения по входящим письмам в
  * конкретный заказ? Всплывающее окно было в RetailCRM». Письмо по заказу — повод
  * ответить сегодня, а раньше его замечали, только зайдя в карточку.
+ *
+ * Ирина Гордеева 05.10.2026: «задача поставленная выскакивает как письмо.
+ * Можно, чтобы была указана сама задача?» — у задачи свой заголовок, свой цвет
+ * и её текст целиком.
  *
  * Показываем правым нижним углом, не перекрывая панель телефона (она занимает
  * верх справа) и не мешая работе: оповещение не модальное, закрывается крестиком
@@ -15,12 +19,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
 
-type MailAlert = {
+type Alert = {
     id: string;
+    /** Письмо или задача: заголовок и содержимое у них разные. */
+    kind: 'mail' | 'task';
     orderNumber: string;
-    subject: string;
-    from: string;
-    receivedAt: string;
+    /** Тема письма или текст задачи — то, ради чего человек это читает. */
+    text: string;
+    /** От кого письмо или кто поставил задачу и на когда. */
+    note: string;
 };
 
 /** Как часто спрашиваем о новых письмах. Почта приезжает кроном раз в 5 минут. */
@@ -30,23 +37,54 @@ const HIDE_MS = 60_000;
 
 export default function IncomingMailAlerts() {
     const pathname = usePathname();
-    const [alerts, setAlerts] = useState<MailAlert[]>([]);
+    const [alerts, setAlerts] = useState<Alert[]>([]);
     const since = useRef<string | null>(null);
     const seen = useRef<Set<string>>(new Set());
 
     const check = useCallback(async () => {
-        try {
-            const url = since.current
-                ? `/api/emails/incoming-alerts?since=${encodeURIComponent(since.current)}`
-                : '/api/emails/incoming-alerts';
-            const res = await fetch(url);
-            if (!res.ok) return;
-            const payload = await res.json();
-            since.current = payload.checkedAt || since.current;
+        const query = since.current ? `?since=${encodeURIComponent(since.current)}` : '';
 
-            const fresh = (payload.letters || []).filter((letter: MailAlert) => !seen.current.has(letter.id));
-            for (const letter of fresh) seen.current.add(letter.id);
-            if (fresh.length) setAlerts((current) => [...fresh, ...current].slice(0, 4));
+        try {
+            const [mailRes, taskRes] = await Promise.all([
+                fetch(`/api/emails/incoming-alerts${query}`),
+                fetch(`/api/orders/task-alerts${query}`),
+            ]);
+
+            const fresh: Alert[] = [];
+
+            if (mailRes.ok) {
+                const payload = await mailRes.json();
+                since.current = payload.checkedAt || since.current;
+                for (const letter of (payload.letters || [])) {
+                    fresh.push({
+                        id: letter.id,
+                        kind: 'mail',
+                        orderNumber: letter.orderNumber,
+                        text: letter.subject,
+                        note: letter.from,
+                    });
+                }
+            }
+
+            if (taskRes.ok) {
+                const payload = await taskRes.json();
+                for (const task of (payload.tasks || [])) {
+                    fresh.push({
+                        id: task.id,
+                        kind: 'task',
+                        orderNumber: task.orderNumber,
+                        // Текст задачи — то, о чём просила Ирина: иначе
+                        // оповещение ничего не говорит.
+                        text: task.title,
+                        note: [task.due ? `срок ${task.due}` : null, task.author ? `поставил ${task.author}` : null]
+                            .filter(Boolean).join(' · '),
+                    });
+                }
+            }
+
+            const unseen = fresh.filter((item) => !seen.current.has(item.id));
+            for (const item of unseen) seen.current.add(item.id);
+            if (unseen.length) setAlerts((current) => [...unseen, ...current].slice(0, 4));
         } catch {
             // Молча: оповещение — не та вещь, ради которой стоит пугать человека ошибкой.
         }
@@ -71,9 +109,11 @@ export default function IncomingMailAlerts() {
     return (
         <div className="fixed bottom-4 right-4 z-[200] flex w-80 flex-col gap-2">
             {alerts.map((alert) => (
-                <div key={alert.id} className="border border-blue-200 bg-white shadow-lg">
-                    <div className="flex items-center justify-between bg-blue-600 px-3 py-1.5">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-white">Письмо по заказу</span>
+                <div key={alert.id} className={`border bg-white shadow-lg ${alert.kind === 'task' ? 'border-amber-200' : 'border-blue-200'}`}>
+                    <div className={`flex items-center justify-between px-3 py-1.5 ${alert.kind === 'task' ? 'bg-amber-600' : 'bg-blue-600'}`}>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-white">
+                            {alert.kind === 'task' ? 'Задача по заказу' : 'Письмо по заказу'}
+                        </span>
                         <button
                             type="button"
                             onClick={() => setAlerts((current) => current.filter((item) => item.id !== alert.id))}
@@ -87,8 +127,8 @@ export default function IncomingMailAlerts() {
                         <div className="text-sm font-semibold text-gray-900">
                             Заказ <OrderNumberLink number={alert.orderNumber} />
                         </div>
-                        <div className="mt-1 truncate text-sm text-gray-800" title={alert.subject}>{alert.subject}</div>
-                        <div className="mt-0.5 truncate text-xs text-gray-500">{alert.from}</div>
+                        <div className="mt-1 text-sm text-gray-800" title={alert.text}>{alert.text}</div>
+                        <div className="mt-0.5 truncate text-xs text-gray-500">{alert.note}</div>
                     </div>
                 </div>
             ))}
