@@ -2,7 +2,6 @@ import { isCronAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import postgres from 'postgres';
 import { pushProductionQueue } from '@/lib/own-crm/tseh-push';
-import { sendNotification } from '@/lib/notify/send';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -22,14 +21,6 @@ export async function GET(req: NextRequest) {
     // посмотреть результат, прежде чем открывать поток расписанием.
     if (!(await isCronAuthorized(req))) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // ?test=1 — проверить, доходят ли оповещения, не трогая очередь. Нужен потому, что
-    // отправка молчит по-разному: нет токена бота, не настроен чат, тип выключен человеком.
-    if (req.nextUrl.searchParams.get('test')) {
-        const r = await sendNotification('tseh.order_accepted',
-            'Проверка связи с ЦехУспехом: это тестовое сообщение, заказы не затронуты.');
-        return NextResponse.json({ ok: r.sent, test: true, ...r });
     }
 
     const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
