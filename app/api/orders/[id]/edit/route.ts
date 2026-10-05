@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
+import { fieldProblems, problemsText } from '@/lib/own-crm/edit-problems';
 import { editOrder } from '@/lib/own-crm/edit-order';
 
 export const dynamic = 'force-dynamic';
@@ -64,7 +65,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
     const parsed = bodySchema.safeParse(payload);
     if (!parsed.success) {
-        return NextResponse.json({ error: 'Правка заполнена неверно', details: parsed.error.issues }, { status: 400 });
+        // Говорим, какое поле и чем не угодило: «Правка заполнена неверно»
+        // без подробностей менеджер разгадать не может (Женя 05.10.2026).
+        const problems = fieldProblems(parsed.error.issues);
+        return NextResponse.json(
+            { error: problemsText(problems), problems, details: parsed.error.issues },
+            { status: 400 },
+        );
     }
 
     const result = await editOrder(orderRowId, parsed.data as any);

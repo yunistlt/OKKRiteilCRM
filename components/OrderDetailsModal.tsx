@@ -1,9 +1,10 @@
 'use client';
 
-import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { checkCounterpartyByInn, CounterpartyScoreResult } from '@/lib/legal-counterparty-check';
 import CallInitiator from './calls/CallInitiator';
 import PhoneFieldCall from './calls/PhoneFieldCall';
+import ManagerTransfer from './orders/ManagerTransfer';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { priceSourceLabel } from '@/lib/format';
 import { orderTotals } from '@/lib/own-crm/discount';
@@ -97,7 +98,14 @@ type ScoreBreakdownEntry = {
  * открыл карточку — можешь менять. Поля без обработчика остаются показом
  * (например, вычисленные значения вроде «обновлён»).
  */
-const EditField = ({ label, value, onChange, required, type = 'text', options, action }: {
+/**
+ * Ошибки правки по полям: какое поле подсветить и что в нём не так.
+ * Через контекст, чтобы не тащить их пропом через всю карточку
+ * (просьба Жени 05.10.2026 — «не подсвечивается вообще»).
+ */
+const FieldErrorsContext = createContext<Record<string, string>>({});
+
+const EditField = ({ label, value, onChange, required, type = 'text', options, action, fieldKey }: {
     label: string;
     value: any;
     onChange?: (value: any) => void;
@@ -106,7 +114,13 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
     options?: Array<{ value: string; label: string }>;
     /** Кнопка рядом с полем — например «Звонок» у телефона. */
     action?: ReactNode;
-}) => (
+    /** Ключ черновика — по нему поле узнаёт свою ошибку. */
+    fieldKey?: string;
+}) => {
+    const problem = useContext(FieldErrorsContext)[fieldKey ?? ''];
+    const frame = problem ? 'border-red-500 bg-red-50' : 'border-gray-300 bg-white';
+
+    return (
     <div className="space-y-0.5">
         <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
             {label}
@@ -116,7 +130,7 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
             <select
                 value={value ?? ''}
                 onChange={(e) => onChange(e.target.value)}
-                className="w-full px-2 py-1 border border-gray-300 bg-white text-sm text-gray-900"
+                className={`w-full px-2 py-1 border text-sm text-gray-900 ${frame}`}
             >
                 <option value="">Не выбрано</option>
                 {options.map((option) => (
@@ -129,7 +143,7 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
                     type={type}
                     value={value ?? ''}
                     onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
-                    className="w-full px-2 py-1 border border-gray-300 bg-white text-sm text-gray-900"
+                    className={`w-full px-2 py-1 border text-sm text-gray-900 ${frame}`}
                 />
                 {action}
             </div>
@@ -138,8 +152,10 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
                 {value ?? <span className="text-gray-400">Не указано</span>}
             </div>
         )}
+        {problem && <div className="text-xs text-red-600">{problem}</div>}
     </div>
-);
+    );
+};
 
 const InfoField = ({ label, value, required }: InfoFieldProps) => (
     <div className="space-y-0.5">
@@ -256,6 +272,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [dirty, setDirty] = useState(false);
     const [savingOrder, setSavingOrder] = useState(false);
     const [saveNote, setSaveNote] = useState<string | null>(null);
+    /** Поля с ошибками: ключ черновика → что не так. Подсвечиваются красным. */
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
     // Правка остальных полей карточки. Ключи: имя поля заказа (firstName, phone…),
     // «cf.<код>» для своих полей RetailCRM и «delivery.<поле>» для доставки.
     const [draftFields, setDraftFields] = useState<Record<string, any>>({});
@@ -616,6 +634,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const saveOrder = async () => {
         setSavingOrder(true);
         setSaveNote(null);
+        setFieldErrors({});
         try {
             const res = await fetch(`/api/orders/${orderId}/edit`, {
                 method: 'POST',
@@ -661,7 +680,14 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 }),
             });
             const payload = await res.json();
-            if (!res.ok) throw new Error(payload.error || 'Не удалось сохранить');
+            if (!res.ok) {
+                // Сервер называет поля и беды поимённо — раскладываем их по рамкам.
+                const problems: Array<{ field: string; label: string; message: string }> = payload.problems || [];
+                if (problems.length) {
+                    setFieldErrors(Object.fromEntries(problems.map((p) => [p.field, p.message])));
+                }
+                throw new Error(payload.error || 'Не удалось сохранить');
+            }
             setSaveNote(payload.changed?.length ? `Сохранено: ${payload.changed.join(', ')}` : 'Изменений не было');
             setDirty(false);
             void fetchDetails();
@@ -893,7 +919,15 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         <div className="grid gap-2 md:grid-cols-2">
                             <InfoField label="Страна" required value={countryValue} />
                             <InfoField label="Тип заказа" value={names.resolve('orderType', payload.orderType) || 'Не указан'} />
-                            <InfoField label="Менеджер" value={order.manager_name || changeManager || 'Не назначен'} />
+                            {/* Менеджер меняется прямо здесь, с причиной: раньше
+                                менеджер писал владельцу в Telegram, а тот переводил
+                                руками (решение владельца 05.10.2026). */}
+                            <ManagerTransfer
+                                orderKey={orderId}
+                                currentManagerId={order.manager_id}
+                                currentManagerName={order.manager_name || changeManager || null}
+                                onDone={() => void fetchDetails()}
+                            />
                             {/* Юрлицо заказа: от него идут реквизиты продавца, расчётный
                                 счёт и НДС (у АО «ЗВТО» его нет). Менеджер меняет его сам —
                                 раньше поле было только для чтения, и заказ, заведённый не
@@ -901,7 +935,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 05.10.2026). У заказов RetailCRM магазин живёт там и её API
                                 его не меняет, поэтому выбор только у своих заказов. */}
                             {isOwn ? (
-                                <EditField
+                                <EditField fieldKey="order.site"
                                     label="Магазин"
                                     required
                                     value={fieldValue('order.site', payload.site || order.site || '')}
@@ -917,16 +951,16 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     <div className="bg-white border border-gray-200 p-4">
                         <h3 className="text-base font-semibold text-gray-900 mb-2">Контроль</h3>
                         <div className="grid md:grid-cols-3 gap-2">
-                            <EditField
+                            <EditField fieldKey="cf.typ_castomer"
                                 label="Категория товара"
                                 required
                                 value={fieldValue('cf.typ_castomer', customFields.typ_castomer || '')}
                                 options={names.fieldOptions('typ_castomer')}
                                 onChange={(v) => setField('cf.typ_castomer', v)}
                             />
-                            <EditField label="Дата следующего контакта" type="date" value={fieldValue('cf.data_kontakta', String(customFields.data_kontakta || '').slice(0, 10))} onChange={(v) => setField('cf.data_kontakta', v)} />
+                            <EditField fieldKey="cf.data_kontakta" label="Дата следующего контакта" type="date" value={fieldValue('cf.data_kontakta', String(customFields.data_kontakta || '').slice(0, 10))} onChange={(v) => setField('cf.data_kontakta', v)} />
                             <InfoField label="Сегмент клиента" value={segments || '—'} />
-                            <EditField
+                            <EditField fieldKey="cf.typ_customer_margin"
                                 label="Форма закупки"
                                 value={fieldValue('cf.typ_customer_margin', customFields.typ_customer_margin || '')}
                                 options={names.fieldOptions('typ_customer_margin')}
@@ -997,11 +1031,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         <div className="grid md:grid-cols-2 gap-2">
                             <InfoField label="Тип клиента" value={customer.type === 'customer_corporate' ? 'Юридическое лицо' : 'Клиент'} />
                             <InfoField label="Компания" value={companyName || '—'} />
-                            <EditField label="Контакт" value={fieldValue('firstName', contactName)} onChange={(v) => setField('firstName', v)} />
-                            <EditField label="Email" value={fieldValue('email', payload.email || contact.email || customer.email || '')} onChange={(v) => setField('email', v)} />
+                            <EditField fieldKey="firstName" label="Контакт" value={fieldValue('firstName', contactName)} onChange={(v) => setField('firstName', v)} />
+                            <EditField fieldKey="email" label="Email" value={fieldValue('email', payload.email || contact.email || customer.email || '')} onChange={(v) => setField('email', v)} />
                             {/* Звонок набирает то, что сейчас в поле: номер часто
                                 правят прямо здесь и звонят, не сохраняя заказ. */}
-                            <EditField
+                            <EditField fieldKey="phone"
                                 label="Основной телефон"
                                 value={fieldValue('phone', primaryPhone || '')}
                                 onChange={(v) => setField('phone', v)}
@@ -1010,19 +1044,19 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             {/* Второй номер — поле заказа `additionalPhone`: читаем и
                                 пишем одно и то же место, иначе введённый номер
                                 пропадал с экрана после сохранения. */}
-                            <EditField
+                            <EditField fieldKey="additionalPhone"
                                 label="Доп. телефон (2)"
                                 value={fieldValue('additionalPhone', payload.additionalPhone || secondaryPhone || '')}
                                 onChange={(v) => setField('additionalPhone', v)}
                                 action={<PhoneFieldCall phone={String(fieldValue('additionalPhone', payload.additionalPhone || secondaryPhone || '') ?? '')} managerId={callManagerId} orderId={String(orderId)} />}
                             />
-                            <EditField
+                            <EditField fieldKey="cf.dop_telefon3"
                                 label="Доп. телефон (3)"
                                 value={fieldValue('cf.dop_telefon3', customFields.dop_telefon3 || thirdPhone || '')}
                                 onChange={(v) => setField('cf.dop_telefon3', v)}
                                 action={<PhoneFieldCall phone={String(fieldValue('cf.dop_telefon3', customFields.dop_telefon3 || thirdPhone || '') ?? '')} managerId={callManagerId} orderId={String(orderId)} />}
                             />
-                            <EditField label="Доп. Email" value={fieldValue('cf.poshta', additionalEmail || '')} onChange={(v) => setField('cf.poshta', v)} />
+                            <EditField fieldKey="cf.poshta" label="Доп. Email" value={fieldValue('cf.poshta', additionalEmail || '')} onChange={(v) => setField('cf.poshta', v)} />
                             <InfoField label="Диалоги" value={payload.dialogsCount ? `${payload.dialogsCount} открыто` : 'Нет открытых диалогов'} />
                             <InfoField label="Партнёр" value={customer.partner || '—'} />
                         </div>
@@ -1063,9 +1097,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
                     <div className="bg-white border border-gray-200 p-4">
                         <div className="grid md:grid-cols-2 gap-2">
-                            <EditField label="Должность" value={fieldValue('cf.dolzhnost', customFields.dolzhnost || '')} onChange={(v) => setField('cf.dolzhnost', v)} />
+                            <EditField fieldKey="cf.dolzhnost" label="Должность" value={fieldValue('cf.dolzhnost', customFields.dolzhnost || '')} onChange={(v) => setField('cf.dolzhnost', v)} />
                             <InfoField label="Сегмент клиента" value={segments || '—'} />
-                            <EditField
+                            <EditField fieldKey="cf.sfera_deiatelnosti"
                                 label="Сфера деятельности"
                                 required
                                 value={fieldValue('cf.sfera_deiatelnosti', customFields.sfera_deiatelnosti || '')}
@@ -1074,17 +1108,17 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             />
                             <InfoField label="Часовой пояс" value={timezoneValue || '—'} />
                             <InfoField label="Основание подписи" value={contractBasis || '—'} />
-                            <EditField
+                            <EditField fieldKey="cf.kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoyalo"
                                 label="Когда нужно оборудование"
                                 value={fieldValue('cf.kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoyalo', customFields.kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoyalo || logisticNeedBy || '')}
                                 onChange={(v) => setField('cf.kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoyalo', v)}
                             />
-                            <EditField
+                            <EditField fieldKey="cf.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete"
                                 label="Для кого закупка"
                                 value={fieldValue('cf.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete', customFields.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete || logisticBuyerType || '')}
                                 onChange={(v) => setField('cf.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete', v)}
                             />
-                            <EditField label="Адрес фактический" value={fieldValue('cf.adres_fakt', customFields.adres_fakt || logisticAddress || '')} onChange={(v) => setField('cf.adres_fakt', v)} />
+                            <EditField fieldKey="cf.adres_fakt" label="Адрес фактический" value={fieldValue('cf.adres_fakt', customFields.adres_fakt || logisticAddress || '')} onChange={(v) => setField('cf.adres_fakt', v)} />
                         </div>
                     </div>
                 </section>
@@ -1095,8 +1129,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         <div className="grid md:grid-cols-2 gap-2">
                             <InfoField label="Причина отмены" value={names.field('prichiny_otmeny', payload.cancelReason || customFields.prichiny_otmeny) || '—'} />
                             <InfoField label="Плановая дата закупки" value={formatDate(planPurchaseDate)} />
-                            <EditField label="Маржа, %" value={fieldValue('cf.marzha', customFields.marzha || '')} onChange={(v) => setField('cf.marzha', v)} />
-                            <EditField label="Датасчёт" type="date" value={fieldValue('cf.datacheta', String(customFields.datacheta || '').slice(0, 10))} onChange={(v) => setField('cf.datacheta', v)} />
+                            <EditField fieldKey="cf.marzha" label="Маржа, %" value={fieldValue('cf.marzha', customFields.marzha || '')} onChange={(v) => setField('cf.marzha', v)} />
+                            <EditField fieldKey="cf.datacheta" label="Датасчёт" type="date" value={fieldValue('cf.datacheta', String(customFields.datacheta || '').slice(0, 10))} onChange={(v) => setField('cf.datacheta', v)} />
                             <InfoField label="Изменение менеджера" value={changeManager || '—'} />
                         </div>
                     </div>
@@ -1429,11 +1463,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                         <div className="grid md:grid-cols-2 gap-2">
                             <InfoField label="Дата отгрузки" value={formatDate(shipping.date || logisticDate)} />
-                            <EditField label="Срок изготовления, дней" type="number" value={fieldValue('cf.srok_izgot', customFields.srok_izgot ?? '')} onChange={(v) => setField('cf.srok_izgot', v)} />
+                            <EditField fieldKey="cf.srok_izgot" label="Срок изготовления, дней" type="number" value={fieldValue('cf.srok_izgot', customFields.srok_izgot ?? '')} onChange={(v) => setField('cf.srok_izgot', v)} />
                             {/* Какие это дни — «80» само по себе читается двояко
                                 (замечание Евгении 05.10.2026). Единица идёт в КП,
                                 счёт и договор. */}
-                            <EditField
+                            <EditField fieldKey="order.srok_izgot_edinica"
                                 label="Дни считаем"
                                 value={fieldValue('order.srok_izgot_edinica', order?.srok_izgot_edinica || 'kalendarnye')}
                                 onChange={(v) => setField('order.srok_izgot_edinica', v)}
@@ -1442,13 +1476,13 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     { value: 'rabochie', label: 'Рабочие' },
                                 ]}
                             />
-                            <EditField label="Комментарий логисту" value={fieldValue('cf.komment_diveleri', customFields.komment_diveleri || '')} onChange={(v) => setField('cf.komment_diveleri', v)} />
+                            <EditField fieldKey="cf.komment_diveleri" label="Комментарий логисту" value={fieldValue('cf.komment_diveleri', customFields.komment_diveleri || '')} onChange={(v) => setField('cf.komment_diveleri', v)} />
                         </div>
                     </div>
 
                     <div className="bg-white border border-gray-200 p-4">
                         <div className="grid md:grid-cols-2 gap-2">
-                            <EditField
+                            <EditField fieldKey="delivery.code"
                                 label="Тип доставки"
                                 value={fieldValue('delivery.code', delivery.code || delivery.type || '')}
                                 options={names.enumOptions('deliveryType')}
@@ -1456,13 +1490,13 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             />
                             <InfoField label="Дата доставки" value={formatDate(delivery.date || expectedDelivery)} />
                             <InfoField label="Время доставки" value={logisticTime || '—'} />
-                            <EditField label="Стоимость доставки" type="number" value={fieldValue('delivery.cost', logisticCost ?? 0)} onChange={(v) => setField('delivery.cost', v)} />
+                            <EditField fieldKey="delivery.cost" label="Стоимость доставки" type="number" value={fieldValue('delivery.cost', logisticCost ?? 0)} onChange={(v) => setField('delivery.cost', v)} />
                             <InfoField label="Себестоимость" value={formatCurrency(logisticSelfCost)} />
                             <InfoField label="Регион" value={logisticRegion || '—'} />
                             <InfoField label="Город" value={logisticCity || '—'} />
                             <InfoField label="Метро" value={logisticMetro || '—'} />
                             <InfoField label="Индекс" value={logisticIndex || '—'} />
-                            <EditField label="Адрес доставки" value={fieldValue('delivery.address', logisticAddress || '')} onChange={(v) => setField('delivery.address', v)} />
+                            <EditField fieldKey="delivery.address" label="Адрес доставки" value={fieldValue('delivery.address', logisticAddress || '')} onChange={(v) => setField('delivery.address', v)} />
                             <InfoField label="Получатель" value={logisticReceiver || '—'} />
                             <InfoField label="Коммент клиента" value={delivery.comment || '—'} />
                         </div>
@@ -1904,7 +1938,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 <div className="grid md:grid-cols-2 gap-2">
                     {/* Справочники — выпадающими списками, как в RetailCRM:
                         значения тянем из синканутого каталога. */}
-                    <EditField
+                    <EditField fieldKey="orderMethod"
                         label="Способ оформления"
                         value={fieldValue('orderMethod', payload.orderMethod || '')}
                         options={names.enumOptions('orderMethod')}
@@ -2240,6 +2274,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     };
 
     return (
+        <FieldErrorsContext.Provider value={fieldErrors}>
         <div
             className="fixed z-[130] flex"
             role="dialog"
@@ -2545,5 +2580,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 </footer>
             </div>
         </div>
+        </FieldErrorsContext.Provider>
     );
 }
