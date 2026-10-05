@@ -2439,7 +2439,15 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                     <span className={`text-[9px] font-black px-1.5 py-0.5 uppercase ${call.direction === 'outgoing' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
                                                         {call.direction === 'outgoing' ? 'Исходящий' : 'Входящий'}
                                                     </span>
-                                                    <span className="text-[10px] text-gray-400 font-mono">{call.duration_sec}s</span>
+                                                    {/* Закон владельца 05.10.2026: звонок состоялся, только если
+                                                        был разговор с клиентом. Попытку дозвона Телфин отдаёт
+                                                        как отвеченный звонок с длительностью — её временем не
+                                                        подписываем, иначе выдаём за разговор. */}
+                                                    {call.answered === false ? (
+                                                        <span className="text-[9px] font-black text-amber-700 bg-amber-50 px-1.5 py-0.5 uppercase">Дозвона не было</span>
+                                                    ) : (
+                                                        <span className="text-[10px] text-gray-400 font-mono">{call.duration_sec}s</span>
+                                                    )}
                                                 </div>
                                                 <div className="text-xs font-semibold text-gray-800 flex justify-between">
                                                     <span>{new Date(call.started_at).toLocaleDateString('ru-RU')}</span>

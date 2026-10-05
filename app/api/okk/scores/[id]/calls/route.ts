@@ -64,10 +64,19 @@ export async function GET(request: Request, { params }: { params: { id: string }
                     // догадке нашего матчинга решения принимать нельзя.
                     call_source: c.source,
                     match_explanation:
-                        c.source === 'crm'
-                            ? 'Привязка к заказу сделана в RetailCRM'
-                            : 'Привязка по номеру телефона нашим матчингом — возможна ошибка',
+                        c.source === 'own'
+                            ? 'Набран из карточки этого заказа'
+                            : c.source === 'crm'
+                                ? 'Привязка к заказу сделана в RetailCRM'
+                                : 'Привязка по номеру телефона нашим матчингом — возможна ошибка',
                     is_fallback: c.source === 'match',
+                    /**
+                     * Был ли разговор с клиентом (закон владельца 05.10.2026).
+                     * Телфин отдаёт попытку дозвона как отвеченный звонок с
+                     * длительностью — карточка не должна выдавать её за
+                     * разговор.
+                     */
+                    answered: c.answered,
                 };
             })
             .sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)));
