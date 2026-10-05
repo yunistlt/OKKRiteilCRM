@@ -12,6 +12,7 @@
  * поэтому сбой связи безопасен: заказ просто уедет на следующем проходе.
  */
 import type { Sql } from 'postgres';
+import { sendNotification } from '@/lib/notify/send';
 
 export type PushResult = {
     /** Сколько строк взяли из очереди в этот проход. */
@@ -45,6 +46,15 @@ type OutboxRow = {
  * когда связь только включили и хотят посмотреть результат, прежде чем открывать поток.
  */
 const BATCH = 20;
+
+/** Оповещение не должно мешать передаче заказа: сбой телеграма пишем в журнал и идём дальше. */
+async function notify(code: string, text: string): Promise<void> {
+    try {
+        await sendNotification(code, text);
+    } catch (e) {
+        console.error('[tseh-push] оповещение не ушло:', code, e instanceof Error ? e.message : e);
+    }
+}
 
 export async function pushProductionQueue(sql: Sql, limit = BATCH): Promise<PushResult> {
     const url = process.env.TSEH_API_URL;
@@ -99,6 +109,13 @@ export async function pushProductionQueue(sql: Sql, limit = BATCH): Promise<Push
                     WHERE id = ${row.id}
                 `;
                 out.accepted++;
+                // Техническое оповещение: заказ уехал в производство, пора проверить оформление
+                // (решение владельца 05.10.2026). Сбой отправки не трогает саму передачу заказа.
+                await notify('tseh.order_accepted',
+                    `Заказ № ${row.order_number} заведён в ЦехУспехе под № ${no}.\n`
+                    + `Заказчик: ${row.customer_name || '—'}\n`
+                    + `Сумма: ${row.total_summ ?? '—'}\n`
+                    + 'Проверьте оформление: состав, сроки, реквизиты заказчика.');
                 continue;
             }
 
@@ -115,6 +132,10 @@ export async function pushProductionQueue(sql: Sql, limit = BATCH): Promise<Push
                     WHERE id = ${row.id}
                 `;
                 out.rejected++;
+                await notify('tseh.order_rejected',
+                    `Заказ № ${row.order_number} НЕ принят производством.\n`
+                    + `Заказчик: ${row.customer_name || '—'}\n`
+                    + `Причина: ${reason}`);
             } else {
                 await sql`UPDATE tseh_production_outbox SET error = ${reason} WHERE id = ${row.id}`;
                 out.failed++;
