@@ -5,7 +5,8 @@ import { collectPeriodMetrics, type ManagerMetrics } from '@/lib/salary/metrics'
 import { getPlansForPeriod, resolveManagerComp } from '@/lib/salary/schemes';
 import { resolveManagerGrades } from '@/lib/salary/grades';
 import { loadPeriodView } from '@/lib/salary/period-view';
-import type { BlockComputeContext, BlockInstance } from '@/lib/salary/blocks/types';
+import type { BlockComputeContext, BlockInstance, BlockContribution } from '@/lib/salary/blocks/types';
+import { effectiveAmount, factorForGroup, summarizeComposition } from '@/lib/salary/composition-view';
 
 // Read-only salary tools for the "Семён" consultant (OpenAI function calling).
 // Source of truth: loadPeriodView — открытый период считается на лету, закрытый берётся
@@ -79,12 +80,53 @@ function buildConvLever(row: SalaryCalcRow, breakdown: any, totalZayavki: number
     };
 }
 
+// Начисления, которые «действуют», но до итога не доходят: премии и переменную
+// часть умножают множители скобки (К_команды, К_личного плана, К_грейда…).
+// Если какой-то из них ×0 — вся премия обнуляется, и объяснять надо именно это,
+// а не «сделай ещё заявок» (заявки тоже умножатся на 0).
+function buildComposition(breakdown: any) {
+    const contributions: BlockContribution[] = Array.isArray(breakdown?.blockContributions) ? breakdown.blockContributions : [];
+    if (!contributions.length) return null;
+    const s = summarizeComposition(contributions);
+    const blocks = contributions
+        .filter((c) => c.kind !== 'multiplier')
+        .map((c) => ({
+            code: c.code,
+            name: c.name,
+            accrued: r2(num(c.amount)),
+            factor: c.kind === 'penalty' ? 1 : factorForGroup(c.group, s),
+            inTotal: r2(effectiveAmount(c, s)),
+            explain: c.explain,
+        }));
+    const lost = blocks.filter((b) => b.accrued !== 0 && b.inTotal !== b.accrued);
+    return {
+        multipliers: [...s.premiaMultipliers, ...s.bracketMultipliers].map((m) => ({
+            code: m.code, name: m.name, multiplier: m.multiplier, explain: m.explain,
+        })),
+        mPremia: s.mPremia,
+        mBracket: s.mBracket,
+        /** Множитель начисления премии до итога: 0 — премии в выплату не идут. */
+        premiaFactor: r2(s.mPremia * s.mBracket),
+        zeroedBy: s.zeroing.map((m) => ({ code: m.code, name: m.name, explain: m.explain })),
+        blocks,
+        blocksNotInTotal: lost.filter((b) => b.inTotal === 0).map((b) => b.name),
+        lostAmount: r2(lost.reduce((sum, b) => sum + (b.accrued - b.inTotal), 0)),
+        note: s.zeroing.length
+            ? `Начислено по ставкам, но в выплату не вошло: ${r2(lost.reduce((sum, b) => sum + (b.accrued - b.inTotal), 0))} ₽ — обнуляет ${s.zeroing.map((m) => `${m.name} (${m.explain})`).join('; ')}. Пока этот множитель ×0, ни одна дополнительная заявка премию не принесёт — сначала нужно снять обнуление.`
+            : 'Все начисления дошли до итога без обнулений.',
+    };
+}
+
 function buildFacts(row: SalaryCalcRow, year: number, month: number, config: SalaryConfig | null) {
     const breakdown = row.breakdown || {};
     const rates = breakdown.rates || {};
     const counts = breakdown.counts || {};
     const kQuality = mult(row.k_quality);
     const kTeam = mult(row.k_team);
+    const composition = buildComposition(breakdown);
+    // Предельная прибавка считается по РЕАЛЬНОЙ формуле: ставка × все множители
+    // над премией. При обнулённой скобке это 0 — и Семён не советует «добить заявками».
+    const premiaFactor = composition ? composition.mPremia * composition.mBracket : kQuality * kTeam;
     const rateNew = num(rates.new);
     const rateOld = num(rates.permanent);
     const totalZayavki = num(counts.new) + num(counts.permanent);
@@ -105,12 +147,13 @@ function buildFacts(row: SalaryCalcRow, year: number, month: number, config: Sal
         rateNewOrder: rateNew,
         rateOldOrder: rateOld,
         // Предельная прибавка к итогу за ОДНУ дополнительную заявку данного типа.
-        marginalNew: r2(rateNew * kQuality * kTeam),
-        marginalOld: r2(rateOld * kQuality * kTeam),
+        marginalNew: r2(rateNew * premiaFactor),
+        marginalOld: r2(rateOld * premiaFactor),
         // Рычаг конверсии (конв-бонус по порогам) — отдельный способ поднять итог.
         convLever: buildConvLever(row, breakdown, totalZayavki, config),
+        composition,
         levers: `Переменная часть умножается на K_качества=${kQuality} и K_команды=${kTeam}. Рост этих коэффициентов и конверсии увеличивает выплату сильнее, чем просто число заявок.`,
-        note: 'marginalNew/Old — прибавка к итогу за одну новую/постоянную заявку (ставка×K_качества×K_команды). Конв-бонус и премия за категории считаются отдельно по порогам.',
+        note: 'marginalNew/Old — прибавка к итогу за одну новую/постоянную заявку (ставка × все множители премии). Конв-бонус и премия за категории считаются отдельно по порогам. composition показывает, какие начисления не дошли до итога и какой множитель их обнулил — если спрашивают «почему премия не в зарплате», отвечать по нему.',
     };
 }
 
@@ -121,6 +164,18 @@ function ordersToReach(facts: ReturnType<typeof buildFacts>, target: number) {
     }
     if (missing <= 0) {
         return { available: true, target: r2(target), current: facts.total, missing: 0, message: 'Цель уже достигнута или превышена.' };
+    }
+    const zeroedBy = facts.composition?.zeroedBy ?? [];
+    if (zeroedBy.length && facts.marginalNew === 0 && facts.marginalOld === 0) {
+        return {
+            available: true,
+            reachable: false,
+            target: r2(target),
+            current: facts.total,
+            missing,
+            blockedBy: zeroedBy,
+            reason: `Заявками цель сейчас не достигается: ${zeroedBy.map((m: any) => `${m.name} ×0 (${m.explain})`).join('; ')} обнуляет всю премиальную часть. Пока этот коэффициент ×0, каждая новая заявка даёт 0 ₽ — сначала надо снять обнуление.`,
+        };
     }
     const ordersNewOnly = facts.marginalNew > 0 ? Math.ceil(missing / facts.marginalNew) : null;
     const ordersOldOnly = facts.marginalOld > 0 ? Math.ceil(missing / facts.marginalOld) : null;
@@ -284,7 +339,7 @@ export const SALARY_TOOLS = [
         type: 'function' as const,
         function: {
             name: 'get_my_salary',
-            description: 'Текущий расчёт зарплаты пользователя за период (как на странице «Моя зарплата»): итого, оклад, премия за заявки, K_качества, K_команды, конверсия, число засчитанных заказов, ставки за новую/постоянную заявку и предельная прибавка за одну дополнительную заявку. Только зарплата текущего пользователя.',
+            description: 'Текущий расчёт зарплаты пользователя за период (как на странице «Моя зарплата»): итого, оклад, премия за заявки, K_качества, K_команды, конверсия, число засчитанных заказов, ставки за новую/постоянную заявку и предельная прибавка за одну дополнительную заявку. Поле composition объясняет, почему начисленное по ставкам могло не попасть в выплату (какой множитель обнулил премиальную скобку) — используй его для вопросов «премия начислена, а в зарплате её нет», «показатели пропали», «почему так мало». Только зарплата текущего пользователя.',
             parameters: {
                 type: 'object',
                 properties: {
