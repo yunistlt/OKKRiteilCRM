@@ -7,6 +7,7 @@ import PhoneFieldCall from './calls/PhoneFieldCall';
 import ManagerTransfer from './orders/ManagerTransfer';
 import TextWithOrderLinks from './ui/TextWithOrderLinks';
 import { prependComment } from '@/lib/own-crm/comment-entries';
+import { clientTime } from '@/lib/own-crm/phone-timezone';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { priceSourceLabel } from '@/lib/format';
 import { orderTotals } from '@/lib/own-crm/discount';
@@ -303,6 +304,24 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     const [replySource, setReplySource] = useState<{ to: string | null; subject: string | null; quote: string | null } | null>(null);
     /** Новая запись в комментарий: метку ставит система при добавлении. */
     const [newComment, setNewComment] = useState('');
+    /** Время тикает: пересчитываем раз в минуту, иначе «у клиента» застывает. */
+    const [now, setNow] = useState(() => new Date());
+    useEffect(() => {
+        const timer = setInterval(() => setNow(new Date()), 60_000);
+        return () => clearInterval(timer);
+    }, []);
+
+    /**
+     * Подпись поля телефона с местным временем клиента: «Основной телефон ·
+     * 19:00 у клиента (+7 ч к Москве)». По мобильному время не показываем — он
+     * переносится между регионами и соврал бы.
+     */
+    const phoneLabel = (label: string, phone: string) => {
+        const local = clientTime(phone, now);
+        if (!local) return label;
+        return `${label} · ${local.time} у клиента${local.shift ? ` (${local.shift})` : ''}`;
+    };
+
     /** Разбор адреса доставки по частям: идёт ли сейчас и что сказать человеку. */
     const [parsingAddress, setParsingAddress] = useState(false);
     const [addressNote, setAddressNote] = useState<string | null>(null);
@@ -1095,7 +1114,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             {/* Звонок набирает то, что сейчас в поле: номер часто
                                 правят прямо здесь и звонят, не сохраняя заказ. */}
                             <EditField fieldKey="phone"
-                                label="Основной телефон"
+                                // Местное время клиента в подписи поля: звонок в
+                                // 17:00 по Москве — это полночь во Владивостоке
+                                // (просьба Евгении Матвеевой 05.10.2026).
+                                label={phoneLabel('Основной телефон', String(fieldValue('phone', primaryPhone || '') ?? ''))}
                                 value={fieldValue('phone', primaryPhone || '')}
                                 onChange={(v) => setField('phone', v)}
                                 action={<PhoneFieldCall phone={String(fieldValue('phone', primaryPhone || '') ?? '')} managerId={callManagerId} orderId={String(orderId)} />}
@@ -1104,7 +1126,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 пишем одно и то же место, иначе введённый номер
                                 пропадал с экрана после сохранения. */}
                             <EditField fieldKey="additionalPhone"
-                                label="Доп. телефон (2)"
+                                label={phoneLabel('Доп. телефон (2)', String(fieldValue('additionalPhone', payload.additionalPhone || secondaryPhone || '') ?? ''))}
                                 value={fieldValue('additionalPhone', payload.additionalPhone || secondaryPhone || '')}
                                 onChange={(v) => setField('additionalPhone', v)}
                                 action={<PhoneFieldCall phone={String(fieldValue('additionalPhone', payload.additionalPhone || secondaryPhone || '') ?? '')} managerId={callManagerId} orderId={String(orderId)} />}
