@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatIntRu, formatRub } from '@/lib/format';
 import { isReseller } from '@/lib/own-crm/okved';
+import { sameCompany } from '@/lib/own-crm/same-company';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
 
 type Requisites = {
@@ -541,6 +542,23 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                             Нажмите «Править» и сохраните: дальше они будут подтягиваться в каждый новый заказ.
                         </div>
                     )}
+                    {/* Реквизиты взяты из заказа, а юрлицо в них другое: в карточке
+                        «ООО Ресурс Комплект Сервис» показывалась «Росхимзащита», и
+                        понять это было нельзя (замечание владельца 05.10.2026).
+                        Молчать тут опаснее всего — по этим реквизитам выставляют
+                        счёт. */}
+                    {!editing
+                        && requisites?.source === 'order'
+                        && requisites?.legalName
+                        && client?.company_name
+                        && !sameCompany(requisites.legalName, client.company_name) && (
+                        <div className="border border-amber-200 bg-amber-50 px-4 py-2 text-[11px] leading-relaxed text-amber-900">
+                            Реквизиты показаны из заказа №{requisites.fromOrderNumber ?? '—'}, и юрлицо в них
+                            другое: <b>{requisites.legalName}</b>. Проверьте, тот ли это заказчик, и внесите
+                            реквизиты в карточку.
+                        </div>
+                    )}
+
                     {!editing && requisites?.source === 'client' && requisites?.updatedAt && (
                         <div className="px-4 py-2 text-[11px] text-gray-500">
                             Обновлены {new Date(requisites.updatedAt).toLocaleDateString('ru-RU')}

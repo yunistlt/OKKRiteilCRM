@@ -40,6 +40,31 @@ export default function ClientsRegistry() {
     const router = useRouter();
     const [rows, setRows] = useState<ClientRow[]>([]);
     const [total, setTotal] = useState(0);
+    /** Окно «Новый клиент»: открыто ли и что в нём набрали. */
+    const [creating, setCreating] = useState(false);
+    const [newClient, setNewClient] = useState({ companyName: '', inn: '', phone: '', email: '', contactName: '' });
+    const [creatingBusy, setCreatingBusy] = useState(false);
+    const [createError, setCreateError] = useState<string | null>(null);
+
+    const createClient = async () => {
+        setCreatingBusy(true);
+        setCreateError(null);
+        try {
+            const res = await fetch('/api/clients/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newClient),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось завести клиента');
+            window.location.href = `/clients/${payload.clientId}`;
+        } catch (e: any) {
+            setCreateError(e.message);
+        } finally {
+            setCreatingBusy(false);
+        }
+    };
+
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(50);
     const [sort, setSort] = useState('total_summ');
@@ -74,10 +99,70 @@ export default function ClientsRegistry() {
 
     return (
         <div className="flex h-screen flex-col bg-gray-50 p-4">
+            {creating && (
+                <div className="fixed inset-0 z-[150] flex items-start justify-center overflow-auto bg-black/40 p-6" onClick={() => setCreating(false)}>
+                    <div className="w-full max-w-md bg-white p-4" onClick={(e) => e.stopPropagation()}>
+                        <div className="mb-3 flex items-center justify-between border-b border-gray-200 pb-2">
+                            <h3 className="text-lg font-semibold text-gray-900">Новый клиент</h3>
+                            <button onClick={() => setCreating(false)} className="px-2 text-xl leading-none text-gray-400 hover:text-gray-900">×</button>
+                        </div>
+
+                        <div className="space-y-2">
+                            {([
+                                ['companyName', 'Название клиента', 'ООО «Ромашка»'],
+                                ['inn', 'ИНН', '10 или 12 цифр'],
+                                ['contactName', 'Контактное лицо', 'Иванов Иван'],
+                                ['phone', 'Телефон', '+7 999 123-45-67'],
+                                ['email', 'Почта', 'client@mail.ru'],
+                            ] as const).map(([key, label, hint]) => (
+                                <label key={key} className="block">
+                                    <span className="mb-0.5 block text-[11px] uppercase tracking-wide text-gray-500">{label}</span>
+                                    <input
+                                        value={(newClient as any)[key]}
+                                        onChange={(e) => setNewClient({ ...newClient, [key]: e.target.value })}
+                                        placeholder={hint}
+                                        className="w-full border border-gray-300 px-2 py-1 text-sm"
+                                    />
+                                </label>
+                            ))}
+
+                            <p className="text-[11px] text-gray-500">
+                                Реквизиты заполним в карточке: по ИНН из реестра или из карточки предприятия.
+                            </p>
+
+                            {createError && <p className="bg-red-50 px-3 py-2 text-sm text-red-700">{createError}</p>}
+
+                            <div className="flex items-center gap-2 border-t border-gray-200 pt-3">
+                                <button
+                                    onClick={createClient}
+                                    disabled={creatingBusy || newClient.companyName.trim().length < 2}
+                                    className="bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-gray-300"
+                                >
+                                    {creatingBusy ? 'Заводим…' : 'Завести клиента'}
+                                </button>
+                                <button onClick={() => setCreating(false)} className="border border-gray-300 px-4 py-2 text-sm text-gray-700">
+                                    Отмена
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3 border-b border-gray-200 pb-2">
                 <div className="flex items-baseline gap-3">
                     <h1 className="text-xl font-bold text-gray-900">Клиенты</h1>
                     <span className="text-xs text-gray-500">найдено {formatIntRu(total)}</span>
+                    {/* Завести покупателя, который позвонил: раньше клиенты
+                        появлялись только из RetailCRM и из писем (владелец
+                        05.10.2026). */}
+                    <button
+                        type="button"
+                        onClick={() => setCreating(true)}
+                        className="bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700"
+                    >
+                        + Новый клиент
+                    </button>
                 </div>
                 <form
                     className="flex items-center gap-2"

@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabase } from '@/utils/supabase';
+import { sameCompany } from '@/lib/own-crm/same-company';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,27 +69,59 @@ export async function GET(request: Request) {
         }
     }
 
-    // Телефон в карточках клиентов не заполнен ни у одного из 20 699 — берём его
-    // из последнего заказа. Один запрос на страницу, не по клиенту.
+    /**
+     * Телефон, ИНН и контактное лицо в карточках клиентов почти не заполнены:
+     * они приезжают в заказах, а не в справочнике покупателей. Берём их из
+     * последнего заказа клиента — колонки «ИНН» и «Контакт» в списке стояли
+     * пустыми у всех (замечание владельца 05.10.2026).
+     *
+     * Один запрос на страницу, не по клиенту.
+     */
     const ids = rows.map((r) => String(r.id)).filter(Boolean);
     const phones = new Map<string, string>();
+    const inns = new Map<string, string>();
+    const contacts = new Map<string, string>();
+
     if (ids.length) {
-        const { data: withPhone } = await supabase
+        const { data: fromOrders } = await supabase
             .from('orders')
-            .select('"customer", phone, "createdAt"')
+            .select('"customer", phone, "contragent", "firstName", "lastName", "createdAt"')
             .filter('customer->>id', 'in', `(${ids.join(',')})`)
-            .not('phone', 'is', null)
             .order('createdAt', { ascending: false });
 
-        for (const row of (withPhone || []) as any[]) {
+        for (const row of (fromOrders || []) as any[]) {
             const key = String(row.customer?.id ?? '');
-            if (key && !phones.has(key) && row.phone) {
-                phones.set(key, String(row.phone));
+            if (!key) continue;
+
+            if (!phones.has(key) && row.phone) phones.set(key, String(row.phone));
+
+            /**
+             * ИНН берём из заказа, только если контрагент в нём — тот же, что
+             * клиент. В заказе бывает совсем другое юрлицо, и чужой ИНН в
+             * карточке клиента опаснее пустой клетки.
+             */
+            const client = rows.find((r) => String(r.id) === key);
+            if (!inns.has(key)
+                && row.contragent?.INN
+                && sameCompany(row.contragent?.legalName, (client as any)?.company_name)) {
+                inns.set(key, String(row.contragent.INN));
             }
+
+            const contact = [row.lastName, row.firstName].filter(Boolean).join(' ').trim();
+            if (!contacts.has(key) && contact) contacts.set(key, contact);
         }
     }
 
-    rows = rows.map((row) => ({ ...row, phone_from_order: phones.get(String(row.id)) || null }));
+    rows = rows.map((row) => {
+        const key = String(row.id);
+        return {
+            ...row,
+            phone_from_order: phones.get(key) || null,
+            // Своё значение главнее: его вписал человек.
+            inn: row.inn || inns.get(key) || null,
+            contact_name: row.contact_name || contacts.get(key) || null,
+        };
+    });
 
     return NextResponse.json({
         clients: rows,

@@ -48,6 +48,24 @@ export default function Sidebar() {
         return () => window.removeEventListener('open-mobile-sidebar', handleOpenMobileSidebar);
     }, []);
 
+    /**
+     * Сколько оповещений человек ещё не прочитал. Спрашиваем нечасто: это
+     * подсказка, а не рабочий экран.
+     */
+    const [unreadCount, setUnreadCount] = useState(0);
+    useEffect(() => {
+        if (!user) return;
+        const load = () => {
+            fetch('/api/notifications')
+                .then((r) => (r.ok ? r.json() : null))
+                .then((d) => { if (d) setUnreadCount(Number(d.unread ?? 0)); })
+                .catch(() => undefined);
+        };
+        load();
+        const timer = setInterval(load, 120_000);
+        return () => clearInterval(timer);
+    }, [user]);
+
     const groups: NavGroup[] = NAV_GROUPS;
 
     const visibleGroups = groups
@@ -200,6 +218,15 @@ export default function Sidebar() {
                                                         className="w-5 h-5 border border-white/20"
                                                     />
                                                 </div>
+                                            )}
+
+                                            {/* Непрочитанные оповещения — числом прямо на пункте
+                                                меню: колокольчик в шапке налезал на телефон
+                                                (решение владельца 05.10.2026). */}
+                                            {item.href === '/notifications' && unreadCount > 0 && (
+                                                <span className="ml-auto min-w-[18px] bg-red-600 px-1 text-center text-[10px] font-bold leading-[18px] text-white">
+                                                    {unreadCount > 99 ? '99+' : unreadCount}
+                                                </span>
                                             )}
 
                                             {/* Tooltip for collapsed mode */}

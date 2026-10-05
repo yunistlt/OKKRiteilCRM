@@ -45,9 +45,6 @@ export const NAV_GROUPS: NavGroup[] = [
                 // Оповещения рядом с письмами и звонками: это тот же поток
                 // событий по заказам (решение владельца 05.10.2026).
                 { name: 'Оповещения', href: '/notifications', icon: '🔔', allowed: ['admin', 'okk', 'rop', 'manager'] },
-                // Инструкции: как делать то, что делается не каждый день
-                // (решение владельца 05.10.2026).
-                { name: 'Инструкции', href: '/help', icon: '📖', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 { name: 'Статусы и переходы', href: '/settings/statuses/board', icon: '🔀', allowed: ['admin'] },
                 { name: 'Контроль Качества', href: '/okk', icon: '📋', agent: 'maxim' },
             ]
@@ -95,7 +92,20 @@ export const NAV_GROUPS: NavGroup[] = [
                 { name: 'Настройка Промпта', href: '/settings/ai', icon: '✍️', allowed: ['admin'] },
                 { name: 'Примеры обучения', href: '/settings/ai/training-examples', icon: '📚', allowed: ['admin'] },
             ]
-        }
+        },
+        {
+            // Справка — внизу меню и для всех: ролей, которым инструкции не
+            // нужны, не бывает (решение владельца 05.10.2026).
+            title: 'Справка',
+            items: [
+                {
+                    name: 'Справка по работе системы',
+                    href: '/help',
+                    icon: '📖',
+                    allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view', 'jurist', 'demo'],
+                },
+            ],
+        },
     ]
 
 /** Название страницы для шапки и заголовка окна: самый длинный подходящий путь. */
