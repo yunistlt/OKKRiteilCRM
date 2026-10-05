@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Loader, Send } from 'lucide-react';
+import { stripOrderThreadTag } from '@/lib/email-subject';
 
 interface OrderReplyFormProps {
     orderNumber: string;
@@ -72,11 +73,11 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                 setThread(data);
                 setTo(replyTo?.to || data.to || '');
                 // Отвечаем — тема письма с «Re:», иначе обычная тема по заказу.
-                setSubject(
-                    replyTo?.subject
-                        ? (/^re:/i.test(replyTo.subject) ? replyTo.subject : `Re: ${replyTo.subject}`)
-                        : data.subjectText || `По заказу №${orderNumber}`,
-                );
+                // Номер заказа в тему ставит сервер — здесь только человеческая
+                // часть. Поэтому чистим тему исходного письма от тега и от
+                // цепочки Re:, иначе номер встал бы в тему дважды.
+                const human = replyTo?.subject ? stripOrderThreadTag(replyTo.subject) : '';
+                setSubject(human ? `Re: ${human}` : data.subjectText || `По заказу №${orderNumber}`);
                 // Подпись ставим сразу: менеджер дописывает письмо над ней, как в RetailCRM.
                 // При ответе под подписью цитируем исходное письмо.
                 const quote = replyTo?.quote

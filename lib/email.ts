@@ -91,23 +91,11 @@ export function htmlToPlainText(html: string): string {
  * интеграция RetailCRM привязывает письмо к заказу (см. docs/email-secretary/OVERVIEW.md,
  * lib/email/classify.ts). Исходящие письма по заказу ОБЯЗАНЫ нести этот тег.
  */
-export function buildOrderThreadSubject(orderNumber: string | number, text: string, seq = 1): string {
-    return `[#${seq}/${orderNumber}] ${text}`.trim();
-}
+// Разбор и сборка темы живут отдельно (`lib/email-subject.ts`): ими пользуется
+// и браузер, а сюда тянется nodemailer.
+import { buildOrderThreadSubject } from './email-subject';
 
-/** Убирает из темы служебный тег `[#N/NNNNN]` и цепочку Re:/Fwd: — остаётся человеческая часть. */
-export function stripOrderThreadTag(subject: string): string {
-    return (subject || '')
-        .replace(/\[#\d+\/\d+\]/g, '')
-        .replace(/^(\s*(re|fwd|fw)\s*:\s*)+/i, '')
-        .trim();
-}
-
-/** Достаёт номер заказа из служебного тега темы `[#N/NNNNN]`, иначе null. */
-export function parseOrderNumberFromSubject(subject: string): string | null {
-    const m = subject.match(/\[#\d+\/(\d+)\]/);
-    return m ? m[1] : null;
-}
+export { buildOrderThreadSubject, stripOrderThreadTag, parseOrderNumberFromSubject } from './email-subject';
 
 export interface SendOrderEmailInput {
     to: string;
