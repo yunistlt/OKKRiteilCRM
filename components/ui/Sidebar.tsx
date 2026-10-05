@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { canAccessPathWithRules } from '@/lib/rbac';
+import { ROLE_LABELS } from '@/lib/access-control';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { resolveMessengerAvatarSrc } from '@/lib/messenger/avatar';
 import { NAV_GROUPS, type NavGroup } from '@/lib/nav';
@@ -229,7 +230,11 @@ export default function Sidebar() {
                             {(!isCollapsed || isMobileOpen) && (
                                 <div className="flex flex-col min-w-0">
                                     <span className="text-sm font-black truncate">{displayName}</span>
-                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{user.role}</span>
+                                    {/* Название роли по-русски: в интерфейсе кодов
+                                        быть не должно (закон проекта). */}
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                                        {ROLE_LABELS[user.role] ?? user.role}
+                                    </span>
                                 </div>
                             )}
                             {(!isCollapsed || isMobileOpen) && (

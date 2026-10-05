@@ -15,13 +15,14 @@ export type RoleCapabilityProfile = {
     canRunBulkOperations: boolean;
 };
 
-export const ROLE_DISPLAY_ORDER: AppRole[] = ['admin', 'manager', 'okk', 'rop', 'jurist', 'demo'];
+export const ROLE_DISPLAY_ORDER: AppRole[] = ['admin', 'manager', 'okk', 'rop', 'logistics', 'jurist', 'demo'];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
     admin: 'Админ',
     manager: 'Менеджер ОП',
     okk: 'Контролёр ОКК',
     rop: 'РОП',
+    logistics: 'Логистика и закупки',
     jurist: 'Юрист',
     demo: 'ДЕМО',
 };
@@ -54,6 +55,19 @@ export const DEFAULT_ROLE_CAPABILITIES: RoleCapabilityProfile[] = [
         role: 'manager',
         dataScope: 'own',
         editScope: 'own',
+        canViewAnalytics: false,
+        canViewAudit: false,
+        canViewSalary: false,
+        canViewSettings: false,
+        canManageUsers: false,
+        canRunBulkOperations: false,
+    },
+    {
+        // Логистика и закупки: вся работа по заказам, но без денег людей
+        // (решение владельца 05.10.2026).
+        role: 'logistics',
+        dataScope: 'all',
+        editScope: 'all',
         canViewAnalytics: false,
         canViewAudit: false,
         canViewSalary: false,
