@@ -5,10 +5,10 @@
  * быть у нас». Повод — Евгения искала звонки клиента за август 2024, а у нас
  * база начинается с 02.06.2025: раньше звонков просто нет.
  *
- * Что берём: саму историю и ссылку на запись разговора. Расшифровку тут НЕ
- * заказываем — это платно и на десятках тысяч старых звонков стоило бы дорого;
- * текст подтянем отдельно и осознанно. Поэтому очередь транскрибации скрипт не
- * трогает, в отличие от обычной синхронизации.
+ * Что берём: историю, ссылку на запись и дальше всё как у обычной
+ * синхронизации — звонок встаёт в очередь на привязку к заказу, а оттуда его
+ * сам подбирает наш STT-сервер и расшифровывает (транскрибация своя и ничего
+ * не стоит — уточнение владельца 05.10.2026).
  *
  * Идём окнами по дню от конца к началу, чтобы свежее появлялось раньше, и
  * помним, где остановились (`sync_state.telphin_history_backfill_day`): прогон
@@ -22,8 +22,11 @@
 import { supabase } from '@/utils/supabase';
 import { fetchTelphin, getTelphinToken } from '@/lib/telphin';
 import { formatTelphinDate, telphinCallToRaw } from '@/lib/sync/telphin-map';
+import { safeEnqueueCallTranscriptionJob, safeEnqueueSystemJob } from '@/lib/system-jobs';
 
 const CURSOR_KEY = 'telphin_history_backfill_day';
+/** Чем помечены задачи этого прогона — чтобы отличать от текущей синхронизации. */
+const SOURCE = 'telphin_history_backfill';
 /** Сколько звонков просим за один заход: у Телфина это предел страницы. */
 const PAGE = 100;
 /** Пауза между запросами, чтобы не долбить их API. */
@@ -139,6 +142,27 @@ async function callsOfDay(token: string, clientId: string, day: string): Promise
                     .upsert(mapped.slice(i, i + 200), { onConflict: 'telphin_call_id' });
                 if (error) throw new Error(`Запись не прошла на ${day}: ${error.message}`);
             }
+
+            // Дальше — как в обычной синхронизации: привязка к заказу, а по
+            // записи наш STT-сервер сам заберёт звонок на расшифровку.
+            for (const row of mapped) {
+                await safeEnqueueSystemJob({
+                    jobType: 'call_match',
+                    payload: { telphin_call_id: row.telphin_call_id, source: SOURCE, started_at: row.started_at },
+                    priority: 60,
+                    idempotencyKey: `call_match:${row.telphin_call_id}:${SOURCE}`,
+                });
+
+                if (row.recording_url) {
+                    await safeEnqueueCallTranscriptionJob({
+                        callId: row.telphin_call_id,
+                        source: SOURCE,
+                        recordingUrl: row.recording_url,
+                        startedAt: row.started_at,
+                        payload: { recording_ready_at: new Date().toISOString() },
+                    });
+                }
+            }
         }
 
         saved += mapped.length;
@@ -152,5 +176,5 @@ async function callsOfDay(token: string, clientId: string, day: string): Promise
     }
 
     console.log(`\nГотово. Дней ${days}, звонков ${saved}, из них с записью ${withRecord}.`);
-    console.log('Расшифровки не заказывались — это отдельный шаг.');
+    console.log('Звонки с записью поставлены в очередь на расшифровку — её разберёт наш STT-сервер.');
 })();
