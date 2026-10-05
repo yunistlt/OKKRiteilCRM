@@ -152,18 +152,38 @@ export default function OrdersClient() {
     const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'createdAt', dir: 'desc' });
     const [sortable, setSortable] = useState<string[]>([]);
     const [widths, setWidths] = useState<Record<string, number>>({});
+    /**
+     * Свёрнутость фильтра и колонки статусов — тоже личные настройки экрана.
+     * Раньше это были обычные состояния страницы, и после обновления человек
+     * каждый раз сворачивал заново (жалоба владельца 05.10.2026).
+     */
+    const [filterOpen, setFilterOpen] = useState(true);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    /** Пока раскладка не прочитана — не сохраняем, иначе затрём её пустотой. */
+    const layoutLoaded = useRef(false);
 
     /** Сохраняем раскладку сразу: отдельной кнопки «Сохранить» тут быть не должно. */
-    const saveLayout = useCallback((next: { sort?: typeof sort; widths?: Record<string, number> }) => {
+    const saveLayout = useCallback((next: {
+        sort?: typeof sort;
+        widths?: Record<string, number>;
+        filterOpen?: boolean;
+        sidebarCollapsed?: boolean;
+    }) => {
+        if (!layoutLoaded.current) return;
         void fetch('/api/settings/view', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 viewKey: 'orders.layout',
-                settings: { sort: next.sort ?? sort, widths: next.widths ?? widths },
+                settings: {
+                    sort: next.sort ?? sort,
+                    widths: next.widths ?? widths,
+                    filterOpen: next.filterOpen ?? filterOpen,
+                    sidebarCollapsed: next.sidebarCollapsed ?? sidebarCollapsed,
+                },
             }),
         }).catch(() => undefined);
-    }, [sort, widths]);
+    }, [sort, widths, filterOpen, sidebarCollapsed]);
 
     /** Щелчок по заголовку: вверх → вниз → снова вверх. */
     const toggleSort = (key: string) => {
@@ -237,8 +257,12 @@ export default function OrdersClient() {
                 const saved = data.settings ?? {};
                 if (saved.sort?.key) setSort({ key: String(saved.sort.key), dir: saved.sort.dir === 'asc' ? 'asc' : 'desc' });
                 if (saved.widths && typeof saved.widths === 'object') setWidths(saved.widths);
+                if (typeof saved.filterOpen === 'boolean') setFilterOpen(saved.filterOpen);
+                if (typeof saved.sidebarCollapsed === 'boolean') setSidebarCollapsed(saved.sidebarCollapsed);
             } catch {
                 // Раскладка не пришла — порядок и ширины по умолчанию.
+            } finally {
+                layoutLoaded.current = true;
             }
         })();
     }, []);
@@ -428,6 +452,8 @@ export default function OrdersClient() {
                 managers={managers}
                 statuses={statusTree.flatMap((g) => g.statuses.map((s) => ({ value: s.code, label: s.label })))}
                 onApply={(next) => { setFilter(next); setPage(1); }}
+                open={filterOpen}
+                onOpenChange={(next) => { setFilterOpen(next); saveLayout({ filterOpen: next }); }}
             />
 
             <div className="relative flex border-t border-gray-200">
@@ -436,6 +462,8 @@ export default function OrdersClient() {
                         tree={statusTree}
                         selected={filter.statuses}
                         onSelect={(statuses) => { setFilter({ ...filter, statuses }); setPage(1); }}
+                        collapsed={sidebarCollapsed}
+                        onCollapsedChange={(next) => { setSidebarCollapsed(next); saveLayout({ sidebarCollapsed: next }); }}
                     />
                 </div>
 

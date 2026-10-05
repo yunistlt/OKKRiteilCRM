@@ -13,6 +13,9 @@ interface OrdersFilterPanelProps {
     managers: Option[];
     statuses: Option[];
     onApply: (filter: OrdersFilter) => void;
+    /** Развёрнут ли фильтр. Запоминается за человеком списком заказов. */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
 }
 
 interface Preset { id: string; name: string; filters: Partial<OrdersFilter>; owner_user_id: string | null }
@@ -21,8 +24,18 @@ interface Preset { id: string; name: string; filters: Partial<OrdersFilter>; own
  * Панель фильтров списка заказов — повторяет экран «Заказы» RetailCRM: те же поля,
  * тот же порядок, полоса сохранённых фильтров справа и шестерёнка выбора полей.
  */
-export default function OrdersFilterPanel({ value, managers, statuses, onApply }: OrdersFilterPanelProps) {
-    const [open, setOpen] = useState(true);
+export default function OrdersFilterPanel({ value, managers, statuses, onApply, open: openProp, onOpenChange }: OrdersFilterPanelProps) {
+    /**
+     * Свёрнут фильтр или нет — личная настройка человека, а не состояние
+     * страницы: она переживает обновление (жалоба владельца 05.10.2026 —
+     * «при каждом обновлении слетают все настройки интерфейса»). Хранит её
+     * список заказов вместе с колонками и ширинами, здесь она только
+     * показывается.
+     */
+    const open = openProp ?? true;
+    const setOpen = (next: boolean | ((prev: boolean) => boolean)) => {
+        onOpenChange?.(typeof next === 'function' ? (next as (prev: boolean) => boolean)(open) : next);
+    };
     const [draft, setDraft] = useState<OrdersFilter>(value);
     const [options, setOptions] = useState<{ categories: Option[]; sferas: Option[] }>({ categories: [], sferas: [] });
     const [presets, setPresets] = useState<Preset[]>([]);
