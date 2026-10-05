@@ -137,6 +137,21 @@ export async function resolveRoute(code: string, ctx: NotifyContext = {}): Promi
   return { def, target, chatId, threadId, enabled, token: botToken(def.bot) };
 }
 
+/**
+ * Адрес чата по роли адресата — без учёта переопределений под конкретный тип.
+ * Нужен для копии сообщения второму адресату (copyTo в каталоге).
+ */
+export async function chatIdForTarget(target: NotifyTarget): Promise<string | null> {
+  const chats = await salesRopChats().catch(() => ({ group: '', owner: '' }));
+  if (target === 'group_sales') return chats.group || null;
+  if (target === 'owner_dm') return chats.owner || null;
+  if (target === 'project_stolyarka') return process.env.TELEGRAM_PROJECT_STOLYARKA_CHAT || null;
+  if (target === 'project_consulting') return process.env.TELEGRAM_PROJECT_CONSULTING_CHAT || null;
+  // manager_dm зависит от того, кому адресовано, а accounting рассылается своим списком —
+  // копией такие адресаты не поддерживаются.
+  return null;
+}
+
 /** Все типы с текущим адресатом — для экрана настроек. */
 export async function listRoutes(): Promise<
   Array<{ def: NotifyTypeDef; target: NotifyTarget; chatId: string | null; threadId: string | null; enabled: boolean }>
