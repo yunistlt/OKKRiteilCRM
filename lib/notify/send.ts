@@ -5,7 +5,8 @@
  * Куда это уедет, решает маршрут (route.ts) — поэтому правка адресата одного типа
  * не может увести куда-то ещё сообщения другого типа.
  */
-import { resolveRoute, type NotifyContext } from './route';
+import { resolveRoute, chatIdForTarget, type NotifyContext } from './route';
+import type { NotifyTarget } from './catalog';
 import { deliverToConsultantChat } from './consultant-chat';
 
 /** Телеграм не принимает больше 4096 символов — длинный план режем по строкам. */
@@ -82,5 +83,28 @@ export async function sendNotification(
       .then((j: any) => Number(j?.result?.message_id) || messageId)
       .catch(() => messageId);
   }
+  // Копия второму адресату (см. copyTo в каталоге). Её сбой не должен отменять основную
+  // отправку: ответственный своё сообщение уже получил.
+  if (route.def.copyTo && route.def.copyTo !== route.target) {
+    await sendCopy(route.def.copyTo, route.token, text, code).catch((e) =>
+      console.error('[notify] копия не ушла:', code, e instanceof Error ? e.message : e),
+    );
+  }
+
   return { sent: true, chatId: route.chatId, messageId };
+}
+
+/** Копия сообщения второму адресату. Адрес не настроен — молча пропускаем. */
+async function sendCopy(target: NotifyTarget, token: string, text: string, code: string): Promise<void> {
+  const chatId = await chatIdForTarget(target);
+  if (!chatId) return;
+
+  for (const chunk of splitForTelegram(text)) {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: chunk, parse_mode: 'HTML', disable_web_page_preview: true }),
+    });
+    if (!res.ok) throw new Error(`Telegram копия ${code} → ${res.status}`);
+  }
 }

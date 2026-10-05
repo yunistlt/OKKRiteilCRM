@@ -62,6 +62,13 @@ export interface NotifyTypeDef {
   target: NotifyTarget;
   /** Адресат жёстко задан природой сообщения (личный план — только этому менеджеру). */
   targetFixed?: boolean;
+  /**
+   * Копия сообщения второму адресату. Нужна там, где у события есть ответственный И
+   * команда, которой это тоже важно: заказ в производстве проверяет один человек, но
+   * отдел должен видеть, что заказ уехал. Копия не заменяет основного адресата и молча
+   * пропускается, если её адрес не настроен.
+   */
+  copyTo?: NotifyTarget;
 }
 
 export const NOTIFY_TYPES: NotifyTypeDef[] = [
@@ -91,6 +98,7 @@ export const NOTIFY_TYPES: NotifyTypeDef[] = [
     group: 'quality',
     bot: 'igor',
     target: 'owner_dm',
+    copyTo: 'group_sales',
   },
   {
     code: 'tseh.order_rejected',
@@ -101,6 +109,7 @@ export const NOTIFY_TYPES: NotifyTypeDef[] = [
     group: 'quality',
     bot: 'igor',
     target: 'owner_dm',
+    copyTo: 'group_sales',
   },
   {
     code: 'system.crm_site_missing',
