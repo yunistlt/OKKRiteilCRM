@@ -83,19 +83,27 @@ export default function OrdersClient() {
     // здесь врал бы, а ноль у суммы заказов встречается только по-настоящему.
     const [totals, setTotals] = useState<{ count: number; sum: number | null }>({ count: 0, sum: null });
     const [loading, setLoading] = useState(true);
-    const [openOrderId, setOpenOrderId] = useState<number | null>(() => {
-        const requested = Number(searchParams.get('order'));
-        return Number.isFinite(requested) && requested > 0 ? requested : null;
-    });
+    // В адресе держим НОМЕР заказа (закон: номер — всегда ссылка), в карточку
+    // отдаём идентификатор. У заказов из RetailCRM они совпадают, у своих нет:
+    // номер 900043, идентификатор 900000043.
+    const [openOrderNumber, setOpenOrderNumber] = useState<string | null>(
+        () => (searchParams.get('order') || '').trim() || null,
+    );
+    const [openOrderId, setOpenOrderId] = useState<number | null>(null);
 
     /**
-     * В ссылке может стоять НОМЕР заказа, а не идентификатор: у своих заказов он
-     * с кириллической «А» («1039А»), и такая ссылка раньше просто открывала
-     * список. Номер переводим в идентификатор и открываем карточку.
+     * В ссылке стоит НОМЕР заказа, а не идентификатор карточки. У заказов из
+     * RetailCRM они совпадают, у своих — нет: номер 900043, идентификатор
+     * 900000043. Пока свои номера были с буквой («1039А»), числовые ссылки
+     * открывались напрямую; после перехода на цифры такая ссылка стала вести в
+     * пустоту — «Ошибка загрузки» вместо карточки (05.10.2026).
+     *
+     * Поэтому номер переводим в идентификатор всегда, а числом пользуемся
+     * только как запасным вариантом, если заказ с таким номером не нашёлся.
      */
     useEffect(() => {
-        const requested = (searchParams.get('order') || '').trim();
-        if (!requested || Number.isFinite(Number(requested))) return;
+        const requested = openOrderNumber;
+        if (!requested) { setOpenOrderId(null); return; }
 
         let cancelled = false;
         void (async () => {
@@ -105,13 +113,16 @@ export default function OrdersClient() {
                 const found = (payload.rows || payload.orders || []).find(
                     (row: any) => String(row.number) === requested,
                 );
-                if (!cancelled && found?.orderId) setOpenOrderId(Number(found.orderId));
+                if (cancelled) return;
+                if (found?.orderId) { setOpenOrderId(Number(found.orderId)); return; }
             } catch {
-                // Молча: не открылась карточка — человек видит список и найдёт заказ сам.
+                // Молча: список человек увидит в любом случае.
             }
+            const asId = Number(requested);
+            if (!cancelled && Number.isFinite(asId) && asId > 0) setOpenOrderId(asId);
         })();
         return () => { cancelled = true; };
-    }, [searchParams]);
+    }, [openOrderNumber]);
 
     const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS);
     const [columnsOpen, setColumnsOpen] = useState(false);
@@ -181,14 +192,14 @@ export default function OrdersClient() {
 
         const url = new URL(window.location.href);
         const current = url.searchParams.get('order');
-        const next = openOrderId === null ? null : String(openOrderId);
+        const next = openOrderNumber;
 
         if (current === next) return;
         if (next === null) url.searchParams.delete('order');
         else url.searchParams.set('order', next);
 
         window.history.replaceState(null, '', `${url.pathname}${url.search}`);
-    }, [openOrderId]);
+    }, [openOrderNumber]);
 
 
     const headerFor = (key: string) => ORDER_COLUMNS.find((c) => c.key === key)?.label ?? key;
@@ -344,7 +355,7 @@ export default function OrdersClient() {
                                     <tr
                                         key={order.orderId}
                                         data-ui-audit="order-row"
-                                        onClick={() => setOpenOrderId(order.orderId)}
+                                        onClick={() => setOpenOrderNumber(order.number)}
                                         className={`cursor-pointer border-b border-gray-200 align-top hover:bg-blue-50 ${order.overdue ? 'bg-red-50' : ''}`}
                                     >
                                         {columns.map((key) => (
@@ -421,8 +432,12 @@ export default function OrdersClient() {
                 />
             )}
 
+            {/* Закрыли карточку — перечитываем список: иначе в строке остаётся текст,
+                который был до правки. Ирина 05.10.2026: вписала комментарий в заказ
+                900043, сохранила, вышла — а в колонке по-прежнему висела
+                автоподсказка «возможно дубль …». */}
             {openOrderId !== null && (
-                <OrderDetailsModal orderId={openOrderId} isOpen onClose={() => setOpenOrderId(null)} />
+                <OrderDetailsModal orderId={openOrderId} isOpen onClose={() => { setOpenOrderNumber(null); void load(); }} />
             )}
         </div>
     );
