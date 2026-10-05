@@ -1,4 +1,4 @@
-import { isCronHeaderAuthorized } from '@/lib/cron-auth';
+import { isCronAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import postgres from 'postgres';
 import { pushProductionQueue } from '@/lib/own-crm/tseh-push';
@@ -16,7 +16,10 @@ export const maxDuration = 300;
 // повторная отправка у них дубля не создаёт. Подробности: docs/tseh-integration/OVERVIEW.md.
 
 export async function GET(req: NextRequest) {
-    if (!isCronHeaderAuthorized(req)) {
+    // Полная проверка, а не только заголовки: администратор должен иметь возможность
+    // запустить отправку руками из браузера — например, пропустить первый заказ и
+    // посмотреть результат, прежде чем открывать поток расписанием.
+    if (!(await isCronAuthorized(req))) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
