@@ -129,11 +129,19 @@ export async function computeTaskResults(date: string): Promise<{ rows: number; 
     for (let i = 0; i < orderIds.length; i += 300) {
         const { data: links } = await supabase
             .from('call_order_link')
-            .select('order_id, telphin_call_id, started_at, duration_sec, direction, source')
+            .select('order_id, telphin_call_id, started_at, duration_sec, direction, source, answered')
             .in('order_id', orderIds.slice(i, i + 300))
             .gte('started_at', dayFrom)
             .lte('started_at', dayTo);
         for (const l of ((links ?? []) as any[])) {
+            /**
+             * Попытки дозвона в счёт не идут: результатом работы считается
+             * только разговор с клиентом (закон владельца 05.10.2026). Пример
+             * того же дня: заказ 54023 — звонок 0 секунд, без записи, ни одно
+             * плечо не говорило, а в плане стояло «Отработан: звонок».
+             */
+            if (l.answered === false) continue;
+
             const id = Number(l.order_id);
             const arr = callsByOrder.get(id) ?? [];
             arr.push({
