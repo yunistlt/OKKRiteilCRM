@@ -45,6 +45,9 @@ export const NAV_GROUPS: NavGroup[] = [
                 // Оповещения рядом с письмами и звонками: это тот же поток
                 // событий по заказам (решение владельца 05.10.2026).
                 { name: 'Оповещения', href: '/notifications', icon: '🔔', allowed: ['admin', 'okk', 'rop', 'manager'] },
+                // Инструкции: как делать то, что делается не каждый день
+                // (решение владельца 05.10.2026).
+                { name: 'Инструкции', href: '/help', icon: '📖', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 { name: 'Статусы и переходы', href: '/settings/statuses/board', icon: '🔀', allowed: ['admin'] },
                 { name: 'Контроль Качества', href: '/okk', icon: '📋', agent: 'maxim' },
             ]

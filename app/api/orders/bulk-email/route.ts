@@ -30,9 +30,16 @@ const bodySchema = z.object({
     body: z.string().max(20000).optional().nullable(),
     /** Дата следующего контакта, на которую двигаем заказы. */
     nextContact: z.string().trim().max(10).optional().nullable(),
+    /**
+     * Только собрать письма и показать, ничего не отправляя. Массовая отправка
+     * уходит сразу и вслепую, поэтому человек должен иметь возможность сперва
+     * прочитать, что именно уйдёт (решение владельца 05.10.2026).
+     */
+    preview: z.boolean().optional(),
 });
 
 type Result = { number: string; ok: boolean; to?: string; reason?: string };
+type Preview = { number: string; to: string | null; client: string | null; subject: string; text: string; reason?: string };
 
 export async function POST(request: Request) {
     const session = await getSession();
@@ -43,7 +50,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Выберите заказы и напишите письмо' }, { status: 400 });
     }
 
-    const { numbers, templateCode, subject, body, nextContact } = parsed.data;
+    const { numbers, templateCode, subject, body, nextContact, preview } = parsed.data;
     if (!templateCode && !(subject && body)) {
         return NextResponse.json({ error: 'Либо выберите шаблон, либо напишите тему и текст' }, { status: 400 });
     }
@@ -61,12 +68,15 @@ export async function POST(request: Request) {
     }
 
     const results: Result[] = [];
+    const previews: Preview[] = [];
 
     for (const number of numbers) {
         try {
             const context = await buildOrderContext(number);
             if (!context) {
-                results.push({ number, ok: false, reason: 'заказ не найден' });
+                const reason = 'заказ не найден';
+                if (preview) previews.push({ number, to: null, client: null, subject: '', text: '', reason });
+                else results.push({ number, ok: false, reason });
                 continue;
             }
 
@@ -75,7 +85,9 @@ export async function POST(request: Request) {
             const order: any = (context as any).order ?? {};
             const to = String(order.email || order.customer?.email || order.contact?.email || '').trim();
             if (!to) {
-                results.push({ number, ok: false, reason: 'у заказа нет почты клиента' });
+                const reason = 'у заказа нет почты клиента';
+                if (preview) previews.push({ number, to: null, client: null, subject: '', text: '', reason });
+                else results.push({ number, ok: false, reason });
                 continue;
             }
 
@@ -108,6 +120,25 @@ export async function POST(request: Request) {
                 continue;
             }
 
+            if (preview) {
+                previews.push({
+                    number,
+                    to,
+                    client: order.contragent?.legalName || order.customer?.nickName || null,
+                    subject: stripOrderThreadTag(letterSubject),
+                    // Показываем текстом: читать вёрстку письма человеку незачем.
+                    // Абзацы письма — пустой строкой: иначе текст слипается
+                    // в одну простыню и прочитать его нельзя.
+                    text: letterHtml
+                        .replace(/<br\s*\/?>/gi, '\n')
+                        .replace(/<\/(p|div)>/gi, '\n\n')
+                        .replace(/<[^>]+>/g, '')
+                        .replace(/\n{3,}/g, '\n\n')
+                        .trim(),
+                });
+                continue;
+            }
+
             // Номер заказа в тему ставит отправка — здесь только человеческая часть.
             const sent = await sendOrderEmail({
                 to,
@@ -121,8 +152,15 @@ export async function POST(request: Request) {
                 ? { number, ok: true, to }
                 : { number, ok: false, reason: sent.error || 'почта не приняла письмо' });
         } catch (e: any) {
-            results.push({ number, ok: false, reason: e?.message?.slice(0, 120) || 'ошибка' });
+            const reason = e?.message?.slice(0, 120) || 'ошибка';
+            if (preview) previews.push({ number, to: null, client: null, subject: '', text: '', reason });
+            else results.push({ number, ok: false, reason });
         }
+    }
+
+    // Предпросмотр: ничего не отправляли и дату не двигали.
+    if (preview) {
+        return NextResponse.json({ ok: true, preview: true, letters: previews });
     }
 
     /**
