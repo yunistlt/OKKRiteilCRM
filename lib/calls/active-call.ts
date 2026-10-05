@@ -11,6 +11,18 @@
 import { supabase } from '@/utils/supabase';
 import { clientByPhone, existingBinding, ordersByPhone } from '@/lib/call-binding';
 
+/**
+ * Короткий номер добавочного: Телфин присылает «12037*120@corp.telphin.ru», а в
+ * карточке менеджера записано просто «120».
+ */
+export function extensionNumber(value: any): string | null {
+    const text = String(value ?? '').trim();
+    if (!text) return null;
+    const afterStar = text.includes('*') ? text.split('*').pop()! : text;
+    const digits = afterStar.split('@')[0].replace(/\D/g, '');
+    return digits || null;
+}
+
 export type RingingCall = {
     callId: string;
     direction?: 'incoming' | 'outgoing';
@@ -43,6 +55,23 @@ export async function callIsRinging(call: RingingCall): Promise<void> {
     let orderNumber: string | null = null;
     let managerId: number | null = null;
 
+    /**
+     * Чей это телефон. Окно показываем хозяину добавочного, а не всем подряд
+     * (решение владельца 05.10.2026). Добавочный, который не принадлежит
+     * никому, — это очередь: там телефон звонит у нескольких сразу, и окно
+     * видят все.
+     */
+    const ext = extensionNumber(call.extension);
+    let isQueue = false;
+    if (ext) {
+        const { data: owner } = await supabase
+            .from('managers')
+            .select('id')
+            .eq('telphin_extension', ext)
+            .limit(1);
+        isQueue = !((owner ?? []) as any[]).length;
+    }
+
     // Заказа ещё нет — смотрим, нет ли у клиента единственного открытого: тогда
     // менеджер сразу увидит, по чему звонят.
     if (!orderId && clientPhone) {
@@ -66,6 +95,8 @@ export async function callIsRinging(call: RingingCall): Promise<void> {
         from_number: call.fromNumber ?? null,
         to_number: call.toNumber ?? null,
         extension: call.extension ?? null,
+        extension_number: ext,
+        is_queue: isQueue,
         manager_id: managerId,
         client_name: who?.name ?? null,
         client_id: who?.clientId ?? null,

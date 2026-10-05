@@ -25,10 +25,37 @@ type Ringing = {
     order_number: string | null;
     status: string | null;
     started_at: string | null;
+    /** Добавочный, на который идёт звонок: по нему окно адресуется хозяину телефона. */
+    extension_number: string | null;
+    /** Звонок на очередь — телефон звонит у нескольких, окно видят все. */
+    is_queue: boolean | null;
 };
 
 export default function RingingCallAlert() {
     const [calls, setCalls] = useState<Ringing[]>([]);
+    /**
+     * Чей это телефон. Окно всплывает у хозяина добавочного; руководитель и ОКК
+     * видят все звонки, звонок на очередь — тоже все (решение владельца
+     * 05.10.2026).
+     */
+    const [me, setMe] = useState<{ extension: string | null; seeAll: boolean } | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        void fetch('/api/calls/my-extension')
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => { if (!cancelled && data) setMe({ extension: data.extension ?? null, seeAll: !!data.seeAll }); })
+            .catch(() => undefined);
+        return () => { cancelled = true; };
+    }, []);
+
+    const forMe = useCallback((call: Ringing): boolean => {
+        if (!me) return false;              // Пока не знаем, чей телефон, — молчим.
+        if (me.seeAll) return true;
+        if (call.is_queue) return true;     // Очередь звонит у всех сразу.
+        if (!call.extension_number) return true; // Добавочный не пришёл — лучше показать.
+        return call.extension_number === me.extension;
+    }, [me]);
 
     const drop = useCallback((callId: string) => {
         setCalls((current) => current.filter((row) => row.telphin_call_id !== callId));
@@ -36,17 +63,17 @@ export default function RingingCallAlert() {
 
     useEffect(() => {
         const supabase = getSupabaseBrowser();
-        if (!supabase) return;
+        if (!supabase || !me) return;
 
         // Звонок мог начаться за секунду до того, как человек открыл вкладку.
         let cancelled = false;
         void supabase
             .from('active_calls')
-            .select('telphin_call_id, direction, from_number, client_name, order_number, status, started_at')
+            .select('telphin_call_id, direction, from_number, client_name, order_number, status, started_at, extension_number, is_queue')
             .eq('status', 'ringing')
             .gte('started_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
             .then(({ data }) => {
-                if (!cancelled && data) setCalls(data as Ringing[]);
+                if (!cancelled && data) setCalls((data as Ringing[]).filter(forMe));
             });
 
         const channel = supabase
@@ -61,6 +88,8 @@ export default function RingingCallAlert() {
                     return;
                 }
 
+                if (!forMe(row)) return; // Звонок не на этот телефон.
+
                 setCalls((current) => {
                     const rest = current.filter((item) => item.telphin_call_id !== row.telphin_call_id);
                     return [row, ...rest].slice(0, 3);
@@ -72,7 +101,7 @@ export default function RingingCallAlert() {
             cancelled = true;
             void supabase.removeChannel(channel);
         };
-    }, [drop]);
+    }, [drop, me, forMe]);
 
     if (!calls.length) return null;
 
