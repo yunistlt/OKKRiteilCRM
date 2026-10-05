@@ -71,6 +71,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             .filter((row) => String(row.reason_text ?? '').trim())
             .map((row) => ({ date: row.plan_date, text: String(row.reason_text).trim() }));
 
+        /**
+         * Название компании заказчика. В заказе `customer` часто лежит одним
+         * идентификатором — у своих заявок там только `{id, type}`, — и поле
+         * «Компания» в карточке показывало прочерк, хотя карточка клиента
+         * заполнена (Лена Парфёнова 05.10.2026, заказ 900048). Берём название
+         * оттуда, где оно живёт, — из карточки клиента.
+         */
+        const customerId = (order as any).raw_payload?.customer?.id ?? (order as any).customer?.id ?? null;
+        let clientCompanyName: string | null = null;
+        if (customerId) {
+            const { data: client } = await supabase
+                .from('clients')
+                .select('company_name, "legalName", full_name')
+                .eq('id', String(customerId))
+                .maybeSingle();
+            const row = client as any;
+            clientCompanyName = row?.company_name || row?.legalName || row?.full_name || null;
+        }
+
         const emails = [
             ...mail.map((entry) => ({
                 id: entry.id,
@@ -206,6 +225,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             calls,
             emails: emails,
             ropNotes,
+            clientCompanyName,
             history: history || [],
             raw_payload: order.raw_payload
         });
