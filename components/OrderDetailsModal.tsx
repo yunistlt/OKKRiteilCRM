@@ -6,6 +6,7 @@ import CallInitiator from './calls/CallInitiator';
 import PhoneFieldCall from './calls/PhoneFieldCall';
 import ManagerTransfer from './orders/ManagerTransfer';
 import TextWithOrderLinks from './ui/TextWithOrderLinks';
+import { CardSection, CardSectionsProvider } from './orders/CardSections';
 import { prependComment } from '@/lib/own-crm/comment-entries';
 import { clientTime } from '@/lib/own-crm/phone-timezone';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -165,7 +166,16 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
                     type={type}
                     value={value ?? ''}
                     onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
-                    className={`w-full px-2 py-1 border text-sm text-gray-900 ${frame}`}
+                    // Календарь открывается щелчком по всему полю, а не только по
+                    // маленькому значку справа (просьба владельца 05.10.2026).
+                    // Руками дату по-прежнему можно напечатать: поле остаётся
+                    // обычным полем ввода.
+                    onClick={(e) => {
+                        if (type !== 'date') return;
+                        const el = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
+                        try { el.showPicker?.(); } catch { /* старый браузер — останется значок */ }
+                    }}
+                    className={`w-full px-2 py-1 border text-sm text-gray-900 ${frame} ${type === 'date' ? 'cursor-pointer' : ''}`}
                 />
                 {action}
             </div>
@@ -988,12 +998,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         return (
             <div className="space-y-12">
                 <section id="order-common" className="space-y-3">
-                    <div className="bg-white border border-gray-200 p-4">
-                        <div className="flex justify-between items-center mb-4">
-                            {/* Статус показываем один раз — в баре сверху. Три одинаковых
-                                плашки на экране только мешали (требование владельца 01.10.2026). */}
-                            <h3 className="text-lg font-semibold text-gray-900">Основное</h3>
-                        </div>
+                    {/* Статус показываем один раз — в баре сверху. Три одинаковых
+                        плашки на экране только мешали (требование владельца 01.10.2026).
+                        Блок сворачивается, и это запоминается за человеком
+                        (решение владельца 05.10.2026). */}
+                    <CardSection id="order-common" title="Основное">
                         <div className="grid gap-2 md:grid-cols-2">
                             <InfoField label="Страна" required value={countryValue} />
                             <InfoField label="Тип заказа" value={names.resolve('orderType', payload.orderType) || 'Не указан'} />
@@ -1024,10 +1033,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 <InfoField label="Магазин" required value={names.resolve('site', payload.site || order.site || payload.slug) || '—'} />
                             )}
                         </div>
-                    </div>
+                    </CardSection>
 
-                    <div className="bg-white border border-gray-200 p-4">
-                        <h3 className="text-base font-semibold text-gray-900 mb-2">Контроль</h3>
+                    <CardSection id="order-control" title="Контроль">
                         <div className="grid md:grid-cols-3 gap-2">
                             <EditField fieldKey="cf.typ_castomer"
                                 label="Категория товара"
@@ -1046,7 +1054,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             />
                             <InfoField label="Сегмент покупателя" value={sphere || 'Требуется уточнить'} />
                         </div>
-                    </div>
+                    </CardSection>
                 </section>
 
                 <section id="order-customer" className="space-y-3">
@@ -1054,9 +1062,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         02.10.2026: «реквизиты заказчика и клиент — это один блок
                         данных», как в RetailCRM). Заказчика можно поменять: заказ
                         бывает заведён не на то юрлицо. */}
-                    <div className="bg-white border border-gray-200 p-4">
-                        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                            <h3 className="text-base font-semibold text-gray-900">Клиент</h3>
+                    <CardSection
+                        id="order-client"
+                        title="Клиент"
+                        action={
                             <div className="flex items-center gap-3 text-xs">
                                 {customer.id && (
                                     <a href={`/clients/${customer.id}`} className="text-blue-700 hover:underline">
@@ -1071,8 +1080,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                     {customerPicker ? 'отменить' : 'выбрать другого заказчика'}
                                 </button>
                             </div>
-                        </div>
-
+                        }
+                    >
                         {customerPicker && (
                             <div className="mb-3 border border-gray-300">
                                 <input
@@ -1174,9 +1183,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                         : 'Реквизитов нет ни в карточке клиента, ни в заказе. Внесите их в карточке клиента.'}
                             </p>
                         </div>
-                    </div>
+                    </CardSection>
 
-                    <div className="bg-white border border-gray-200 p-4">
+                    <CardSection id="order-client-extra" title="Дополнительно о клиенте">
                         <div className="grid md:grid-cols-2 gap-2">
                             <EditField fieldKey="cf.dolzhnost" label="Должность" value={fieldValue('cf.dolzhnost', customFields.dolzhnost || '')} onChange={(v) => setField('cf.dolzhnost', v)} />
                             <InfoField label="Сегмент клиента" value={segments || '—'} />
@@ -1201,12 +1210,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             />
                             <EditField fieldKey="cf.adres_fakt" label="Адрес фактический" value={fieldValue('cf.adres_fakt', customFields.adres_fakt || logisticAddress || '')} onChange={(v) => setField('cf.adres_fakt', v)} />
                         </div>
-                    </div>
+                    </CardSection>
                 </section>
 
 <section id="order-custom-fields" className="space-y-3">
-                    <div className="bg-white border border-gray-200 p-4">
-                        <h3 className="text-base font-semibold text-gray-900 mb-2">Дополнительные данные</h3>
+                    <CardSection id="order-custom-fields" title="Дополнительные данные">
                         <div className="grid md:grid-cols-2 gap-2">
                             <InfoField label="Причина отмены" value={names.field('prichiny_otmeny', payload.cancelReason || customFields.prichiny_otmeny) || '—'} />
                             <InfoField label="Плановая дата закупки" value={formatDate(planPurchaseDate)} />
@@ -1214,8 +1222,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             <EditField fieldKey="cf.datacheta" label="Датасчёт" type="date" value={fieldValue('cf.datacheta', String(customFields.datacheta || '').slice(0, 10))} onChange={(v) => setField('cf.datacheta', v)} />
                             <InfoField label="Изменение менеджера" value={changeManager || '—'} />
                         </div>
-                    </div>
-
+                    </CardSection>
                 </section>
 
                 <section id="order-list">
@@ -1588,12 +1595,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                 </section>
 
                 <section id="order-delivery" className="space-y-3">
-                    <div className="bg-white border border-gray-200 p-4">
-                        {/* Складских полей здесь нет: склада у компании нет, всё идёт
-                            прямо с производства (решение владельца 30.09.2026). */}
-                        <div className="flex items-center gap-3 mb-4">
-                            <h3 className="text-lg font-semibold text-gray-900">Отгрузка и доставка</h3>
-                        </div>
+                    {/* Складских полей здесь нет: склада у компании нет, всё идёт
+                        прямо с производства (решение владельца 30.09.2026). */}
+                    <CardSection id="order-shipping" title="Отгрузка и доставка">
                         <div className="grid md:grid-cols-2 gap-2">
                             <InfoField label="Дата отгрузки" value={formatDate(shipping.date || logisticDate)} />
                             <EditField fieldKey="cf.srok_izgot" label="Срок изготовления, дней" type="number" value={fieldValue('cf.srok_izgot', customFields.srok_izgot ?? '')} onChange={(v) => setField('cf.srok_izgot', v)} />
@@ -1611,9 +1615,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             />
                             <EditField fieldKey="cf.komment_diveleri" label="Комментарий логисту" value={fieldValue('cf.komment_diveleri', customFields.komment_diveleri || '')} onChange={(v) => setField('cf.komment_diveleri', v)} />
                         </div>
-                    </div>
+                    </CardSection>
 
-                    <div className="bg-white border border-gray-200 p-4">
+                    <CardSection id="order-delivery" title="Доставка">
                         <div className="grid md:grid-cols-2 gap-2">
                             <EditField fieldKey="delivery.code"
                                 label="Тип доставки"
@@ -1698,7 +1702,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 onChange={(v) => setField('cf.primecanie_po_otgruzke', v)}
                             />
                         </div>
-                    </div>
+                    </CardSection>
 
                     <div className="bg-white border border-gray-200 p-4">
                         <div className="flex items-center justify-between mb-4">
@@ -2513,6 +2517,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     return (
         <FieldErrorsContext.Provider value={fieldErrors}>
         <FieldDirtyContext.Provider value={dirtyKeys}>
+        {/* Свёрнутые блоки помнятся за человеком, а не за браузером. */}
+        <CardSectionsProvider>
         <div
             className="fixed z-[130] flex"
             role="dialog"
@@ -2818,6 +2824,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                 </footer>
             </div>
         </div>
+        </CardSectionsProvider>
         </FieldDirtyContext.Provider>
         </FieldErrorsContext.Provider>
     );
