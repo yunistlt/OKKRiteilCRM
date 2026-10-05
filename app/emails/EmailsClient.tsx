@@ -5,6 +5,7 @@
 // клиента.
 import { useCallback, useEffect, useState } from 'react';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
+import TextWithOrderLinks from '@/components/ui/TextWithOrderLinks';
 
 /**
  * Ответить можно из заказа: письмо уходит с его номером в теме и ложится в
@@ -159,7 +160,11 @@ export default function EmailsClient() {
                             >
                                 <td className="px-3 py-2">
                                     <div className="flex items-start justify-between gap-2">
-                                        <div className="font-semibold text-blue-700">{mail.subject || 'Без темы'}</div>
+                                        {/* Номер заказа в теме — ссылка: закон
+                                            проекта, номер кликабелен везде. */}
+                                        <div className="font-semibold text-gray-900">
+                                            <TextWithOrderLinks text={mail.subject || 'Без темы'} />
+                                        </div>
                                         {replyHref(mail) && (
                                             <a
                                                 href={replyHref(mail) as string}
@@ -215,7 +220,9 @@ export default function EmailsClient() {
                         <div className="max-h-full w-full max-w-3xl overflow-auto border border-gray-300 bg-white" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-4 py-3">
                                 <div>
-                                    <div className="font-semibold text-gray-900">{mail.subject || 'Без темы'}</div>
+                                    <div className="font-semibold text-gray-900">
+                                        <TextWithOrderLinks text={mail.subject || 'Без темы'} />
+                                    </div>
                                     <div className="mt-1 text-xs text-gray-600">
                                         {mail.direction} · {formatDate(mail.date)} · {mail.partyEmail || '—'}
                                         {mail.managerName ? ` · менеджер: ${mail.managerName}` : ''}
@@ -243,7 +250,7 @@ export default function EmailsClient() {
                                 </div>
                             </div>
                             <p className="whitespace-pre-line px-4 py-3 text-sm text-gray-800">
-                                {mail.body || 'Текст этого письма у нас не сохранён.'}
+                                <TextWithOrderLinks text={mail.body || 'Текст этого письма у нас не сохранён.'} />
                             </p>
                         </div>
                     </div>

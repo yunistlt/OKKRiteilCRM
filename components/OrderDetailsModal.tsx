@@ -5,6 +5,7 @@ import { checkCounterpartyByInn, CounterpartyScoreResult } from '@/lib/legal-cou
 import CallInitiator from './calls/CallInitiator';
 import PhoneFieldCall from './calls/PhoneFieldCall';
 import ManagerTransfer from './orders/ManagerTransfer';
+import TextWithOrderLinks from './ui/TextWithOrderLinks';
 import { prependComment } from '@/lib/own-crm/comment-entries';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { priceSourceLabel } from '@/lib/format';
@@ -1786,7 +1787,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                 className="block w-full text-left"
                                             >
                                                 <p className="text-sm font-semibold text-gray-900">
-                                                    {email.subject || 'Без темы'}
+                                                    <TextWithOrderLinks text={email.subject || 'Без темы'} />
                                                 </p>
                                                 {!open && (
                                                     <p className="mt-1 text-xs text-gray-500">
@@ -1801,7 +1802,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                             {open && (
                                                 <div className="mt-2 border-t border-gray-100 pt-2">
                                                     <p className="whitespace-pre-line text-sm text-gray-800">
-                                                        {email.body || 'Текст этого письма у нас не сохранён — в ленте есть только факт отправки.'}
+                                                        <TextWithOrderLinks text={email.body || 'Текст этого письма у нас не сохранён — в ленте есть только факт отправки.'} />
                                                     </p>
                                                     {email.attachments > 0 && (
                                                         <p className="mt-2 text-xs text-gray-500">
