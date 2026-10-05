@@ -25,6 +25,10 @@ export async function middleware(request: NextRequest) {
         // Служебный доступ консультанта ЦехУспеха: сессии у внешней системы нет,
         // поэтому маршрут закрыт не сессией, а токеном в самом обработчике.
         pathname.startsWith('/api/duty') ||
+        // Связь с ЦехУспехом: сессии у завода нет и учётки мы им не заводим, поэтому оба маршрута
+        // закрыты не сессией, а в самих обработчиках — страница просмотра заказа проверяет подпись
+        // ссылки и её срок, а проверка номера заказа требует ключ X-Api-Key.
+        pathname.startsWith('/api/external/tseh/') ||
         pathname === '/api/payments/tochka' ||
         pathname.startsWith('/api/sync') ||
         pathname.startsWith('/api/matching') ||
