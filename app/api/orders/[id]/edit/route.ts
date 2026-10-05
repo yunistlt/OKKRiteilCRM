@@ -54,6 +54,7 @@ const bodySchema = z.object({
     /** Юрлицо (магазин) заказа: реквизиты продавца, счёт и НДС. */
     site: z.string().trim().max(100).optional().nullable(),
     productionDaysUnit: z.enum(['rabochie', 'kalendarnye']).optional().nullable(),
+    cancelReasonText: z.string().trim().max(5000).optional().nullable(),
     delivery: z.record(z.string(), z.any()).optional(),
 });
 

@@ -69,6 +69,12 @@ export type OrderEdit = {
      * для заказов RetailCRM тоже (просьба Евгении 05.10.2026).
      */
     productionDaysUnit?: string | null;
+    /**
+     * Причина отмены словами. Поле наше: в RetailCRM причина — только код из
+     * справочника, а владелец 05.10.2026 просил подробный текст, «это потом
+     * позволит делать анализ глубже».
+     */
+    cancelReasonText?: string | null;
 };
 
 export type EditResult =
@@ -91,6 +97,7 @@ export function describeEdit(edit: OrderEdit): string[] {
     if (edit.delivery && Object.keys(edit.delivery).length) changed.push('доставку');
     if (edit.site) changed.push('юрлицо заказа');
     if (edit.productionDaysUnit !== undefined) changed.push('единицу срока изготовления');
+    if (edit.cancelReasonText !== undefined) changed.push('причину отмены');
     return changed;
 }
 
@@ -162,10 +169,13 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
     }
 
     // Единица срока — наша колонка, её храним у себя при любом источнике заказа.
-    if (edit.productionDaysUnit !== undefined) {
+    if (edit.productionDaysUnit !== undefined || edit.cancelReasonText !== undefined) {
         await supabase
             .from('orders')
-            .update({ srok_izgot_edinica: edit.productionDaysUnit || null })
+            .update({
+                ...(edit.productionDaysUnit !== undefined ? { srok_izgot_edinica: edit.productionDaysUnit || null } : {}),
+                ...(edit.cancelReasonText !== undefined ? { prichina_otmeny_text: edit.cancelReasonText || null } : {}),
+            })
             .eq('order_id', (order as any).order_id ?? orderKey);
     }
 

@@ -768,6 +768,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     ...('order.srok_izgot_edinica' in draftFields
                         ? { productionDaysUnit: draftFields['order.srok_izgot_edinica'] || null }
                         : {}),
+                    // Причина отмены словами — тоже наша колонка.
+                    ...('order.prichina_otmeny_text' in draftFields
+                        ? { cancelReasonText: draftFields['order.prichina_otmeny_text'] || null }
+                        : {}),
                     customFields: Object.fromEntries(
                         Object.entries(draftFields)
                             .filter(([key]) => key.startsWith('cf.'))
@@ -1247,8 +1251,17 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
 <section id="order-custom-fields" className="space-y-3">
                     <CardSection id="order-custom-fields" title="Дополнительные данные">
                         <div className="grid md:grid-cols-2 gap-2">
+                            {/* Причину отмены пишут словами: список позволял
+                                бездумно тыкать, а подробный текст даёт разбор
+                                (решение владельца 05.10.2026). Код причины рядом
+                                остался — по нему считается конверсия в зарплате. */}
+                            <EditField fieldKey="order.prichina_otmeny_text"
+                                label="Причина отмены (словами, подробно)"
+                                value={fieldValue('order.prichina_otmeny_text', order?.prichina_otmeny_text || '')}
+                                onChange={(v) => setField('order.prichina_otmeny_text', v)}
+                            />
                             <EditField fieldKey="cf.prichiny_otmeny"
-                                label="Причина отмены"
+                                label="Причина отмены — тип для отчётов"
                                 value={fieldValue('cf.prichiny_otmeny', customFields.prichiny_otmeny || payload.cancelReason || '')}
                                 options={names.fieldOptions('prichiny_otmeny')}
                                 onChange={(v) => setField('cf.prichiny_otmeny', v)}

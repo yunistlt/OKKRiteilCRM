@@ -4,14 +4,26 @@
     {
       "name": "jurist-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "-p", "3021"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3021"
+      ],
       "port": 3021
     },
     {
       "name": "okk-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 3000
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3031"
+      ],
+      "port": 3031
     }
   ]
 }
