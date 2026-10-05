@@ -3,7 +3,7 @@
 // Карточка клиента: кто это, его реквизиты, связанные карточки того же юрлица
 // и все его заказы. Реквизиты в RetailCRM лежат на заказе, поэтому под ними
 // подписано, из какого заказа они взяты — число должно раскладываться.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatIntRu, formatRub } from '@/lib/format';
 import { isReseller } from '@/lib/own-crm/okved';
@@ -107,6 +107,32 @@ function formatDuration(seconds: number | null) {
 
 function Dash() {
     return <span className="text-gray-300">—</span>;
+}
+
+/**
+ * Поле на несколько строк, которое растёт под содержимое. Юридический адрес и
+ * название организации в одну строку не влезают никогда, а обрезанное значение
+ * нельзя проверить глазами (замечание владельца 05.10.2026).
+ */
+function AutoTextarea({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+    const ref = useRef<HTMLTextAreaElement | null>(null);
+
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+    }, [value]);
+
+    return (
+        <textarea
+            ref={ref}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            rows={2}
+            className="w-full resize-y overflow-hidden border border-gray-300 px-2 py-1"
+        />
+    );
 }
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -356,13 +382,29 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                                 ['corrAccount', 'Корреспондентский счёт'],
                                 ['bankAddress', 'Адрес банка'],
                             ] as Array<[keyof Requisites, string]>).map(([key, label]) => (
-                                <label key={String(key)} className="flex items-center gap-2 px-4 py-1.5">
-                                    <span className="w-40 shrink-0 text-gray-500">{label}</span>
-                                    <input
-                                        value={String(draft[key] ?? '')}
-                                        onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
-                                        className="w-full border border-gray-300 px-2 py-1"
-                                    />
+                                /* Подпись сверху, поле во всю ширину: подпись сбоку
+                                   съедала 160px узкой колонки, и расчётный счёт с
+                                   юридическим адресом обрезались на середине —
+                                   проверить введённое было нельзя (замечание
+                                   владельца 05.10.2026). Так же, как в режиме
+                                   просмотра. */
+                                <label key={String(key)} className="block px-4 py-1.5">
+                                    <span className="mb-0.5 block text-[11px] uppercase tracking-wide text-gray-500">{label}</span>
+                                    {key === 'legalAddress' || key === 'bankAddress' || key === 'legalName' || key === 'bank' ? (
+                                        /* Адреса, название и банк в одну строку не влезают
+                                           никогда — показываем их целиком в несколько строк. */
+                                        <AutoTextarea
+                                            value={String(draft[key] ?? '')}
+                                            onChange={(next) => setDraft({ ...draft, [key]: next })}
+                                        />
+                                    ) : (
+                                        <input
+                                            value={String(draft[key] ?? '')}
+                                            onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
+                                            title={String(draft[key] ?? '')}
+                                            className="w-full border border-gray-300 px-2 py-1"
+                                        />
+                                    )}
                                 </label>
                             ))}
                         </div>
