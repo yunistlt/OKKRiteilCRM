@@ -37,6 +37,7 @@ export const metadata: Metadata = {
 import Sidebar from "../components/ui/Sidebar";
 import { PhonePanel } from "@/components/softphone/PhonePanel";
 import IncomingMailAlerts from "@/components/orders/IncomingMailAlerts";
+import RingingCallAlert from "@/components/calls/RingingCallAlert";
 import QaOverlay from "@/components/qa/QaOverlay";
 
 export default async function RootLayout({
@@ -93,6 +94,8 @@ export default async function RootLayout({
                     {/* Письмо по заказу — повод ответить сегодня: показываем его
                         сразу, а не когда менеджер зайдёт в карточку. */}
                     {session ? <IncomingMailAlerts /> : null}
+                    {/* Звонок, который идёт прямо сейчас: событие от Телфина, а не запись. */}
+                    {session ? <RingingCallAlert /> : null}
                     {session ? <Suspense fallback={null}><QaOverlay /></Suspense> : null}
                 </AuthProvider>
             </body>

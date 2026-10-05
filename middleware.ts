@@ -35,6 +35,11 @@ export async function middleware(request: NextRequest) {
         pathname.startsWith('/api/monitoring') ||
         pathname.startsWith('/api/stt') ||
         pathname.startsWith('/api/telphin') ||
+        // События телефонии: Телфин шлёт их своим сервером, сессии у него нет.
+        // Маршрут закрыт не сессией, а ключом TELPHIN_WEBHOOK_SECRET в самом
+        // обработчике (решение владельца 05.10.2026 — нужно оповещение во
+        // время звонка, а не по его записи).
+        pathname.startsWith('/api/calls/webhooks') ||
         pathname.startsWith('/api/widget') ||
         // Файлы приложения-установки: браузер обновляет воркер фоновым запросом,
         // и если тот упирается в редирект на вход, воркер остаётся старым
