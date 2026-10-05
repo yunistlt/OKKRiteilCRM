@@ -1196,7 +1196,16 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 options={names.fieldOptions('sfera_deiatelnosti')}
                                 onChange={(v) => setField('cf.sfera_deiatelnosti', v)}
                             />
-                            <InfoField label="Часовой пояс" value={timezoneValue || '—'} />
+                            {/* Часовой пояс и причина отмены — обычные поля заказа,
+                                их правит менеджер (Лена Парфёнова 05.10.2026:
+                                «часовой пояс не активна строка»). Значения — из
+                                справочника RetailCRM, не придуманные. */}
+                            <EditField fieldKey="cf.chasovoi_poias"
+                                label="Часовой пояс"
+                                value={fieldValue('cf.chasovoi_poias', customFields.chasovoi_poias || '')}
+                                options={names.fieldOptions('chasovoi_poias')}
+                                onChange={(v) => setField('cf.chasovoi_poias', v)}
+                            />
                             <InfoField label="Основание подписи" value={contractBasis || '—'} />
                             <EditField fieldKey="cf.kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoyalo"
                                 label="Когда нужно оборудование"
@@ -1216,7 +1225,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
 <section id="order-custom-fields" className="space-y-3">
                     <CardSection id="order-custom-fields" title="Дополнительные данные">
                         <div className="grid md:grid-cols-2 gap-2">
-                            <InfoField label="Причина отмены" value={names.field('prichiny_otmeny', payload.cancelReason || customFields.prichiny_otmeny) || '—'} />
+                            <EditField fieldKey="cf.prichiny_otmeny"
+                                label="Причина отмены"
+                                value={fieldValue('cf.prichiny_otmeny', customFields.prichiny_otmeny || payload.cancelReason || '')}
+                                options={names.fieldOptions('prichiny_otmeny')}
+                                onChange={(v) => setField('cf.prichiny_otmeny', v)}
+                            />
                             <InfoField label="Плановая дата закупки" value={formatDate(planPurchaseDate)} />
                             <EditField fieldKey="cf.marzha" label="Маржа, %" value={fieldValue('cf.marzha', customFields.marzha || '')} onChange={(v) => setField('cf.marzha', v)} />
                             <EditField fieldKey="cf.datacheta" label="Датасчёт" type="date" value={fieldValue('cf.datacheta', String(customFields.datacheta || '').slice(0, 10))} onChange={(v) => setField('cf.datacheta', v)} />
