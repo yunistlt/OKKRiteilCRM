@@ -2,10 +2,28 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "plangate-dev",
+      "name": "jurist-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "-p", "3037"],
-      "port": 3037
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3021"
+      ],
+      "port": 3021
+    },
+    {
+      "name": "okk-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3031"
+      ],
+      "port": 3031
     }
   ]
 }
