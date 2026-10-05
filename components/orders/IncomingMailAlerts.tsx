@@ -18,11 +18,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
+import CallOrderPicker from '@/components/orders/CallOrderPicker';
 
 type Alert = {
     id: string;
     /** Письмо, задача или звонок: заголовок и содержимое у них разные. */
     kind: 'mail' | 'task' | 'call';
+    /** Идентификатор звонка — по нему менеджер указывает заказ. */
+    callId?: string | null;
     orderNumber: string;
     /** Тема письма или текст задачи — то, ради чего человек это читает. */
     text: string;
@@ -89,6 +92,7 @@ export default function IncomingMailAlerts() {
                     fresh.push({
                         id: call.id,
                         kind: 'call',
+                        callId: call.callId || null,
                         orderNumber: call.orderNumber || '',
                         // Кто звонит — главное в этом оповещении: номер сам по
                         // себе ничего не говорит (Женя 05.10.2026).
@@ -147,8 +151,19 @@ export default function IncomingMailAlerts() {
                             </div>
                         ) : (
                             // Звонок с незнакомого номера — заказа у него нет, и
-                            // врать про заказ нельзя.
-                            <div className="text-sm font-semibold text-gray-900">Заказ не найден</div>
+                            // врать про заказ нельзя. Менеджер называет заказ сам:
+                            // угадывать по телефону мы перестали (решение
+                            // владельца 05.10.2026).
+                            <div>
+                                <div className="text-sm font-semibold text-gray-900">Заказ не найден</div>
+                                {alert.kind === 'call' && alert.callId && (
+                                    <CallOrderPicker
+                                        callId={alert.callId}
+                                        onBound={(orderNumber) => setAlerts((current) =>
+                                            current.map((item) => (item.id === alert.id ? { ...item, orderNumber } : item)))}
+                                    />
+                                )}
+                            </div>
                         )}
                         <div className="mt-1 text-sm text-gray-800" title={alert.text}>{alert.text}</div>
                         <div className="mt-0.5 truncate text-xs text-gray-500">{alert.note}</div>

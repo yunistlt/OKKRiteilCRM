@@ -11,6 +11,10 @@ type Call = {
     phone: string | null;
     managerName: string | null;
     orderNumber: string | null;
+    /** Идентификатор звонка — по нему подтверждается подсказанный заказ. */
+    callId?: string | null;
+    /** Разбор разговора нашёл в тексте номер заказа; привязкой станет после подтверждения. */
+    suggestedOrder?: { orderId: number; number: string } | null;
     missed: boolean;
     durationSec: number;
     recordingUrl: string | null;
@@ -41,6 +45,26 @@ export default function CallsClient() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [openId, setOpenId] = useState<number | null>(null);
+
+    // Подтверждение подсказанного заказа: после него звонок привязан к заказу
+    // способом «указал менеджер».
+    const [bindingId, setBindingId] = useState<string | null>(null);
+    const confirmOrder = async (callId: string, orderId: number) => {
+        setBindingId(callId);
+        try {
+            const res = await fetch(`/api/calls/${encodeURIComponent(callId)}/order`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId }),
+            });
+            if (!res.ok) throw new Error((await res.json()).error || 'Не удалось привязать');
+            await load();
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setBindingId(null);
+        }
+    };
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -168,7 +192,26 @@ export default function CallsClient() {
                                     </td>
                                     <td className="whitespace-nowrap px-3 py-2 text-gray-800">{call.phone || '—'}</td>
                                     <td className="px-3 py-2 text-gray-700">{call.managerName || '—'}</td>
-                                    <td className="px-3 py-2"><OrderNumberLink number={call.orderNumber} /></td>
+                                    <td className="px-3 py-2">
+                                        {call.orderNumber ? (
+                                            <OrderNumberLink number={call.orderNumber} />
+                                        ) : call.suggestedOrder && call.callId ? (
+                                            // Подсказка разбора: номер прозвучал в разговоре.
+                                            // Привязкой становится только после подтверждения
+                                            // человеком (решение владельца 05.10.2026).
+                                            <button
+                                                type="button"
+                                                disabled={bindingId === call.callId}
+                                                onClick={() => void confirmOrder(call.callId!, call.suggestedOrder!.orderId)}
+                                                className="border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                                                title="Номер прозвучал в разговоре — подтвердите, что звонок по этому заказу"
+                                            >
+                                                №{call.suggestedOrder.number}? подтвердить
+                                            </button>
+                                        ) : (
+                                            <OrderNumberLink number={call.orderNumber} />
+                                        )}
+                                    </td>
                                     <td className="whitespace-nowrap px-3 py-2 text-gray-700">{formatDuration(call.durationSec)}</td>
                                     <td className="whitespace-nowrap px-3 py-2">
                                         {call.recordingUrl ? (

@@ -10,7 +10,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
-import { phoneTail } from '@/lib/orders-filter';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,18 +48,29 @@ export async function GET(req: Request) {
      */
     const result = [];
     for (const call of rows) {
-        const tail = phoneTail(call.from_number_normalized || call.from_number || '');
         let order: any = null;
 
-        if (tail) {
+        /**
+         * Заказ звонка берём из привязки — той, что сделали в ОКК или RetailCRM
+         * (`call_order_link`). Раньше здесь шёл поиск по телефону прямо в
+         * оповещении: он показывал первый попавшийся заказ этого номера, даже
+         * если звонят по другому. Угадывать мы перестали (решение владельца
+         * 05.10.2026) — если привязки нет, менеджер указывает заказ сам.
+         */
+        const { data: link } = await supabase
+            .from('call_order_link')
+            .select('order_id')
+            .eq('telphin_call_id', call.telphin_call_id)
+            .limit(1);
+
+        const linkedId = ((link ?? []) as any[])[0]?.order_id ?? null;
+        if (linkedId) {
             const { data: found } = await supabase
                 .from('orders')
                 .select('number, manager_id, raw_payload')
-                .ilike('phone', `%${tail}%`)
-                .is('crm_deleted_at', null)
-                .order('createdAt', { ascending: false })
-                .limit(1);
-            order = (found || [])[0] ?? null;
+                .eq('id', linkedId)
+                .maybeSingle();
+            order = (found as any) ?? null;
         }
 
         let managerName: string | null = null;
@@ -77,6 +87,8 @@ export async function GET(req: Request) {
         const payload = order?.raw_payload ?? {};
         result.push({
             id: `call-${call.telphin_call_id}`,
+            // Нужен, чтобы менеджер мог указать заказ прямо из оповещения.
+            callId: call.telphin_call_id,
             phone: call.from_number,
             orderNumber: order?.number ?? null,
             clientName: payload.customer?.nickName

@@ -4,6 +4,7 @@
 import { supabase } from '@/utils/supabase';
 import { enqueueCallSemanticRulesJob, enqueueOrderRefreshJob } from '@/lib/system-jobs';
 import { orderOfCall } from '@/lib/calls-of-order';
+import { suggestOrderFromTranscript } from '@/lib/call-binding';
 
 export async function enqueueTranscriptionDownstream(
     callId: string,
@@ -11,11 +12,26 @@ export async function enqueueTranscriptionDownstream(
     parentJobId?: number,
 ): Promise<{ orderId: string | null; jobs: string[] }> {
     try {
-        // Заказ звонка: сначала спрашиваем RetailCRM — там привязку сделали
-        // в карточке, а не угадали по номеру телефона. Наш матчинг остаётся
-        // запасным и ошибается примерно в трети случаев.
+        // Заказ звонка берём из привязки, сделанной в ОКК или RetailCRM.
         const found = await orderOfCall(callId);
-        if (!found) return { orderId: null, jobs: [] };
+        if (!found) {
+            /**
+             * Привязки нет — пробуем подсказать заказ по самому разговору:
+             * номер в нём почти всегда звучит вслух (третий способ из решения
+             * владельца 05.10.2026). Это подсказка, а не привязка: разборы по
+             * ней не запускаем, менеджер подтверждает её в разделе «Звонки».
+             */
+            const { data: call } = await supabase
+                .from('raw_telphin_calls')
+                .select('transcript')
+                .eq('telphin_call_id', callId)
+                .maybeSingle();
+
+            const transcript = (call as any)?.transcript;
+            if (transcript) await suggestOrderFromTranscript(callId, String(transcript));
+
+            return { orderId: null, jobs: [] };
+        }
 
         const orderId = String(found.orderId);
         const transcriptCompletedAt = new Date().toISOString();

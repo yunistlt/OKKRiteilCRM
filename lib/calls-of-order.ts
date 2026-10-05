@@ -42,8 +42,12 @@ export type OrderCall = {
     durationSec: number;
     direction: 'incoming' | 'outgoing';
     managerId: number | null;
-    /** Откуда привязка: 'own' — набран из карточки заказа, 'crm' — из RetailCRM, 'match' — наша догадка. */
+    /** Откуда привязка: 'own' — установили в ОКК, 'crm' — из RetailCRM, 'match' — старая догадка по телефону. */
     source: 'own' | 'crm' | 'match';
+    /** Чем именно привязали: okk_card / manual / okk_auto / retailcrm / by_phone_*. */
+    matchType: string;
+    /** Человеческое объяснение привязки — его видно в карточке. */
+    explanation: string | null;
     /**
      * Был ли разговор с клиентом.
      *
@@ -76,7 +80,7 @@ export async function callsByOrders(
     for (let i = 0; i < orderIds.length; i += 300) {
         let q = supabase
             .from('call_order_link')
-            .select('order_id, telphin_call_id, started_at, duration_sec, direction, manager_id, source, answered')
+            .select('order_id, telphin_call_id, started_at, duration_sec, direction, manager_id, source, match_type, explanation, answered')
             .in('order_id', orderIds.slice(i, i + 300));
         if (opts.from) q = q.gte('started_at', opts.from);
         if (opts.to) q = q.lte('started_at', opts.to);
@@ -95,6 +99,8 @@ export async function callsByOrders(
             direction: r.direction === 'incoming' ? 'incoming' : 'outgoing',
             managerId: r.manager_id === null || r.manager_id === undefined ? null : Number(r.manager_id),
             source: r.source === 'own' ? 'own' : r.source === 'crm' ? 'crm' : 'match',
+            matchType: String(r.match_type ?? ''),
+            explanation: r.explanation ?? null,
             answered: Boolean(r.answered),
         });
         result.set(Number(r.order_id), list);

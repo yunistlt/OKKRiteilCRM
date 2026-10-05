@@ -74,15 +74,48 @@ export async function GET(req: Request) {
     // Запись и расшифровка лежат у Телфина. Связь идёт по `external_id` из CRM
     // («469589-7b6e…»): именно он лежит в массиве `record_uuids`, а поле
     // `record_uuid` — только его хвост, по нему ничего не сходится.
-    const extras = new Map<string, { recordingUrl: string | null; transcript: string | null }>();
+    const extras = new Map<string, { recordingUrl: string | null; transcript: string | null; callId: string | null }>();
+    const callIds: string[] = [];
     if (uuids.length) {
         const { data: telphin } = await supabase
             .from('raw_telphin_calls')
-            .select('record_uuids, recording_url, transcript')
+            .select('telphin_call_id, record_uuids, recording_url, transcript')
             .overlaps('record_uuids', uuids);
         for (const row of ((telphin || []) as any[])) {
+            callIds.push(String(row.telphin_call_id));
             for (const uuid of row.record_uuids || []) {
-                extras.set(String(uuid), { recordingUrl: row.recording_url ?? null, transcript: row.transcript ?? null });
+                extras.set(String(uuid), {
+                    recordingUrl: row.recording_url ?? null,
+                    transcript: row.transcript ?? null,
+                    callId: String(row.telphin_call_id),
+                });
+            }
+        }
+    }
+
+    /**
+     * Подсказанные заказы: разбор разговора нашёл в тексте номер заказа, но
+     * привязкой это станет только после подтверждения человеком (решение
+     * владельца 05.10.2026 — угадывать мы перестали).
+     */
+    const suggested = new Map<string, { orderId: number; number: string }>();
+    if (callIds.length) {
+        const { data: hints } = await supabase
+            .from('call_order_matches')
+            .select('telphin_call_id, retailcrm_order_id')
+            .eq('match_type', 'ai_suggested')
+            .in('telphin_call_id', callIds);
+
+        const hintRows = (hints || []) as any[];
+        if (hintRows.length) {
+            const { data: orderRows } = await supabase
+                .from('orders')
+                .select('id, number')
+                .in('id', hintRows.map((h) => h.retailcrm_order_id));
+            const numbers = new Map(((orderRows || []) as any[]).map((o) => [Number(o.id), String(o.number)]));
+            for (const hint of hintRows) {
+                const number = numbers.get(Number(hint.retailcrm_order_id));
+                if (number) suggested.set(String(hint.telphin_call_id), { orderId: Number(hint.retailcrm_order_id), number });
             }
         }
     }
@@ -102,6 +135,8 @@ export async function GET(req: Request) {
                 recordingUrl: extra?.recordingUrl ?? null,
                 hasTranscript: !!extra?.transcript,
                 transcript: extra?.transcript ?? null,
+                callId: extra?.callId ?? null,
+                suggestedOrder: extra?.callId ? (suggested.get(extra.callId) ?? null) : null,
             };
         }),
     });
