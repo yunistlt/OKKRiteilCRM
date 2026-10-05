@@ -294,6 +294,7 @@ function TasksList({ orderNumber, onChanged }: { orderNumber: string; onChanged?
     const [tasks, setTasks] = useState<any[] | null>(null);
     const [title, setTitle] = useState('');
     const [due, setDue] = useState('');
+    const [dueTime, setDueTime] = useState('');
     const [saving, setSaving] = useState(false);
 
     const load = useCallback(async () => {
@@ -312,10 +313,11 @@ function TasksList({ orderNumber, onChanged }: { orderNumber: string; onChanged?
             await fetch(`/api/orders/${orderNumber}/tasks`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title: title.trim(), dueDate: due || null }),
+                body: JSON.stringify({ title: title.trim(), dueDate: due || null, dueTime: dueTime || null }),
             });
             setTitle('');
             setDue('');
+            setDueTime('');
             await load();
         } finally {
             setSaving(false);
@@ -333,19 +335,31 @@ function TasksList({ orderNumber, onChanged }: { orderNumber: string; onChanged?
 
     return (
         <>
-            <div className="mb-3 flex gap-2">
+            {/* Переносим по месту: на узкой панели четыре поля в одну строку
+                сжимали текст задачи до нечитаемого. */}
+            <div className="mb-3 flex flex-wrap gap-2">
                 <input
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
                     placeholder="Что нужно сделать"
-                    className="flex-1 border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none"
+                    className="min-w-[12rem] flex-1 border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none"
                 />
                 <input
                     type="date"
                     value={due}
                     onChange={(e) => setDue(e.target.value)}
                     className="border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none"
+                />
+                {/* Время срока: «перезвонить в 14:30», а не «сегодня» (просьба
+                    Ирины Гордеевой 05.10.2026). Без даты время смысла не имеет. */}
+                <input
+                    type="time"
+                    value={dueTime}
+                    onChange={(e) => setDueTime(e.target.value)}
+                    disabled={!due}
+                    title={due ? 'Во сколько' : 'Сначала выберите дату'}
+                    className="border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
                 />
                 <button
                     onClick={add}
@@ -373,7 +387,9 @@ function TasksList({ orderNumber, onChanged }: { orderNumber: string; onChanged?
                             <div className="min-w-0 flex-1">
                                 <p className={`text-sm ${t.done ? 'text-gray-400 line-through' : 'font-medium text-gray-900'}`}>{t.title}</p>
                                 <p className="text-[11px] text-gray-500">
-                                    {t.due_date ? `Срок: ${new Date(t.due_date).toLocaleDateString('ru-RU')}` : 'Без срока'}
+                                    {t.due_date
+                                        ? `Срок: ${new Date(t.due_date).toLocaleDateString('ru-RU')}${t.due_time ? ` в ${String(t.due_time).slice(0, 5)}` : ''}`
+                                        : 'Без срока'}
                                     {t.created_by ? ` · поставил ${t.created_by}` : ''}
                                 </p>
                             </div>
