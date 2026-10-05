@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { stripOrderThreadTag } from '@/lib/email';
+import { isNoReplySender } from '@/lib/email/classify';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,7 +69,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         const conversation = [...incoming, ...outgoing]
             .sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime());
 
-        const last = thread[0] || null;
+        /**
+         * Кому отвечать.
+         *
+         * Берём последнее письмо ЖИВОГО отправителя. Заказ из корзины сайта
+         * заводит письмо-робот (`noreply@webasyst.biz`), и раньше именно его
+         * адрес подставлялся в «Кому» — менеджер правил руками, а мог и не
+         * заметить и отправить коммерческое предложение роботу (жалоба
+         * Евгении 05.10.2026, заказ 900057: в карточке стоит почта клиента
+         * engineer_111@mail.ru). Таких заказов 63.
+         */
+        const last = thread.find((m) => !isNoReplySender(m.from_email)) || null;
 
         // Адресат из заказа — на случай, когда клиент ещё не писал.
         // Ищем по НОМЕРУ заказа: в маршрут приходит именно он («1038А»), а не
@@ -81,8 +92,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             .maybeSingle();
 
         const payload = (order?.raw_payload ?? {}) as any;
-        const orderEmail =
+        const orderEmailRaw =
             (order as any)?.email || payload.email || payload.contact?.email || payload.customer?.email || null;
+        // Заявка с формы сайта приходит без почты клиента, и в заказ попадает
+        // адрес робота. Лучше оставить «Кому» пустым — менеджер впишет сам, чем
+        // подставить адрес, на который нельзя писать.
+        const orderEmail = isNoReplySender(orderEmailRaw) ? null : orderEmailRaw;
 
         // Подпись менеджера — та же, что в RetailCRM: имя из справочника менеджеров,
         // добавочный — из его настроек Телфина (там, где он уже заполнен).
