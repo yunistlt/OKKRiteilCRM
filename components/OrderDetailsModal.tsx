@@ -676,7 +676,17 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                 // у себя; сайт не трогаем (решение владельца 02.10.2026).
                 name: decodeEntities(String(item.offer?.displayName || item.offer?.name || item.productName || 'Позиция')),
                 quantity: Number(item.quantity || 0),
-                price: Number(item.initialPrice ?? item.price ?? 0),
+                /**
+                 * Цена — ВСЕГДА базовая, до скидки.
+                 *
+                 * Если `initialPrice` в позиции нет, восстанавливаем её из цены
+                 * со скидкой: иначе карточка покажет уценённую цену, человек её
+                 * сохранит, и базовая цена потеряется навсегда — скидка окажется
+                 * «вшита» в цену и перестанет убираться (заказ 900055: 96 930
+                 * превратились в 82 390, Ирина Гордеева 06.10.2026 — «убирала
+                 * скидку из позиций, не удалялась»).
+                 */
+                price: Number(item.initialPrice ?? (Number(item.price ?? 0) + Number(item.discountTotal ?? 0))),
                 /**
                  * Скидка позиции: рублями и процентом — два РАЗНЫХ поля, и они
                  * складываются.
@@ -1559,8 +1569,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                 />
                                             </td>
                                             <td className="px-3 py-2">
+                                                {/* Копейки не режем: цена со скидкой бывает дробной
+                                                    (82 390,50), и округление до рублей при каждом
+                                                    сохранении уводило сумму заказа (06.10.2026). */}
                                                 <NumberInput
                                                     value={row.price}
+                                                    maxFractionDigits={2}
                                                     onChange={(v: number | null) => changeItem(index, { price: Number(v) || 0 })}
                                                     className="w-full border border-gray-300 px-2 py-1 text-right"
                                                 />
@@ -1573,6 +1587,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                 <div className="flex items-center gap-1">
                                                     <NumberInput
                                                         value={row.discount}
+                                                        maxFractionDigits={2}
                                                         onChange={(v: number | null) => changeItem(index, { discount: Math.max(0, Number(v) || 0) })}
                                                         className="w-full border border-gray-300 px-2 py-1 text-right"
                                                     />
