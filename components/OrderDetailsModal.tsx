@@ -677,7 +677,20 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                 name: decodeEntities(String(item.offer?.displayName || item.offer?.name || item.productName || 'Позиция')),
                 quantity: Number(item.quantity || 0),
                 price: Number(item.initialPrice ?? item.price ?? 0),
-                discount: Number(item.discountManualAmount ?? item.discountTotal ?? 0),
+                /**
+                 * Скидка позиции: рублями и процентом — два РАЗНЫХ поля, и они
+                 * складываются.
+                 *
+                 * `discountTotal` — уже посчитанный итог обеих скидок на
+                 * единицу. Поэтому подставлять его в рублёвое поле можно
+                 * только когда процента нет: иначе скидка считается дважды.
+                 * Ирина Гордеева 05.10.2026: «ставлю 15%, сразу даёт 30%
+                 * скидку» — ровно этот случай.
+                 */
+                discount: Number(
+                    item.discountManualAmount
+                    ?? (Number(item.discountManualPercent ?? 0) > 0 ? 0 : (item.discountTotal ?? 0)),
+                ),
                 // Скидка процентом по позиции — третий вид скидки RetailCRM
                 // (`discountManualPercent`). Правится в строке, рядом с рублями.
                 discountPercent: Number(item.discountManualPercent ?? 0),
