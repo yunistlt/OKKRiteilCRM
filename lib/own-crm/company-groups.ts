@@ -117,6 +117,32 @@ export async function loadGroup(groupId: number): Promise<CompanyGroup | null> {
     };
 }
 
+/**
+ * Добавить в группу текущей карточки выбранные компании.
+ *
+ * Группы ещё нет — заводим её здесь же: менеджер выбрал компании, спрашивать
+ * его о названии отдельно незачем (решение владельца 06.10.2026 — «сами
+ * ручками выберут поиском из списка», без лишних шагов).
+ */
+export async function addCompanies(
+    clientId: number,
+    companyIds: number[],
+    groupName: string,
+    actor: string | null,
+): Promise<CompanyGroup | null> {
+    const ids = Array.from(new Set(companyIds.map(Number).filter(Number.isFinite)));
+
+    let group = await groupOfClient(clientId);
+    if (!group) {
+        group = await createGroup(groupName, clientId, actor);
+    }
+    for (const id of ids) {
+        if (id === clientId) continue;
+        await addToGroup(group.id, id, actor);
+    }
+    return loadGroup(group.id);
+}
+
 /** Завести группу и положить в неё карточку. */
 export async function createGroup(name: string, clientId: number, actor: string | null): Promise<CompanyGroup> {
     const clean = String(name ?? '').trim();

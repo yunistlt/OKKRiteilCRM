@@ -6,7 +6,7 @@
  */
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { groupOfClient, createGroup, addToGroup, removeFromGroup } from '@/lib/own-crm/company-groups';
+import { groupOfClient, createGroup, addToGroup, addCompanies, removeFromGroup } from '@/lib/own-crm/company-groups';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +35,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const actor = actorOf(session);
 
     try {
-        // Либо заводим новую группу, либо присоединяем карточку к готовой.
+        // Менеджер выбрал компании в окне — присоединяем их к группе этой
+        // карточки, а если группы ещё нет, заводим её тем же действием.
+        if (Array.isArray(body.add) && body.add.length) {
+            const group = await addCompanies(clientId, body.add, String(body.name || ''), actor);
+            return NextResponse.json({ group });
+        }
         if (body.groupId) {
             await addToGroup(Number(body.groupId), clientId, actor);
             return NextResponse.json({ group: await groupOfClient(clientId) });
