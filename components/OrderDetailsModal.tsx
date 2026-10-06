@@ -1010,7 +1010,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const productCategory = names.field('typ_castomer', pickValue(customFields.typ_castomer, customFields.tovarnaya_kategoriya, customFields.product_category, payload.category));
         const nextContact = pickValue(customFields.data_kontakta, customFields.next_contact_date, customFields.follow_up_date);
         const purchaseForm = names.field('typ_customer_margin', pickValue(customFields.typ_customer_margin, customFields.purchase_form, customFields.forma_zakupki));
-        const sphere = names.field('sfera_deiatelnosti', pickValue(customFields.sfera_deiatelnosti, customFields.sfera_deyatelnosti, customFields.sphere_of_activity) || payload.industry);
         // Часовой пояс — справочник chasovoi_poias из RetailCRM, не хардкод.
         const timezoneValue = names.field('chasovoi_poias', pickValue(customFields.chasovoi_poias, customFields.timezone)) || null;
         const logisticDeadline = pickValue(customFields.srok_izgot, shipping.productionDays, delivery.productionDays);
@@ -1024,7 +1023,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const priorityNumber = pickValue(customFields.prioriry_number);
         const contractBasis = names.field('osnovanie_podpisi', pickValue(customFields.osnovanie_podpisi));
         const changeManager = pickValue(customFields.change_name_manager);
-        const planPurchaseDate = pickValue(customFields.purchase_date, customFields.plan_purchase_date, payload.purchaseDate);
         const logisticAddress = pickValue(address.text, [address.region, address.city, address.street, address.house, address.building].filter(Boolean).join(', '));
         const logisticIndex = pickValue(address.index);
         const logisticMetro = pickValue(address.metro);
@@ -1111,14 +1109,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 onChange={(v) => setField('cf.typ_castomer', v)}
                             />
                             <EditField fieldKey="cf.data_kontakta" label="Дата следующего контакта" type="date" value={fieldValue('cf.data_kontakta', String(customFields.data_kontakta || '').slice(0, 10))} onChange={(v) => setField('cf.data_kontakta', v)} />
-                            <InfoField label="Сегмент клиента" value={segments || '—'} />
                             <EditField fieldKey="cf.typ_customer_margin"
                                 label="Форма закупки"
                                 value={fieldValue('cf.typ_customer_margin', customFields.typ_customer_margin || '')}
                                 options={names.fieldOptions('typ_customer_margin')}
                                 onChange={(v) => setField('cf.typ_customer_margin', v)}
                             />
-                            <InfoField label="Сегмент покупателя" value={sphere || 'Требуется уточнить'} />
                         </div>
                     </CardSection>
                 </section>
@@ -1213,8 +1209,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 action={<PhoneFieldCall phone={String(fieldValue('cf.dop_telefon3', customFields.dop_telefon3 || thirdPhone || '') ?? '')} managerId={callManagerId} orderId={String(orderId)} />}
                             />
                             <EditField fieldKey="cf.poshta" label="Доп. Email" value={fieldValue('cf.poshta', additionalEmail || '')} onChange={(v) => setField('cf.poshta', v)} />
-                            <InfoField label="Диалоги" value={payload.dialogsCount ? `${payload.dialogsCount} открыто` : 'Нет открытых диалогов'} />
-                            <InfoField label="Партнёр" value={customer.partner || '—'} />
                         </div>
 
                         {/* Реквизиты — того же заказчика, поэтому здесь же.
@@ -1313,8 +1307,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 options={names.fieldOptions('prichiny_otmeny')}
                                 onChange={(v) => setField('cf.prichiny_otmeny', v)}
                             />
-                            <InfoField label="Плановая дата закупки" value={formatDate(planPurchaseDate)} />
-                            <EditField fieldKey="cf.marzha" label="Маржа, %" value={fieldValue('cf.marzha', customFields.marzha || '')} onChange={(v) => setField('cf.marzha', v)} />
                             <EditField fieldKey="cf.datacheta" label="Датасчёт" type="date" value={fieldValue('cf.datacheta', String(customFields.datacheta || '').slice(0, 10))} onChange={(v) => setField('cf.datacheta', v)} />
                             <InfoField label="Изменение менеджера" value={changeManager || '—'} />
                         </div>
@@ -1808,7 +1800,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             <EditField fieldKey="delivery.date" label="Дата доставки" type="date" value={fieldValue('delivery.date', String(delivery.date || expectedDelivery || '').slice(0, 10))} onChange={(v) => setField('delivery.date', v)} />
                             <EditField fieldKey="delivery.time" label="Время доставки" value={fieldValue('delivery.time', logisticTime || '')} onChange={(v) => setField('delivery.time', v)} />
                             <EditField fieldKey="delivery.cost" label="Стоимость доставки" type="number" value={fieldValue('delivery.cost', logisticCost ?? 0)} onChange={(v) => setField('delivery.cost', v)} />
-                            <InfoField label="Себестоимость" value={formatCurrency(logisticSelfCost)} />
                             <EditField fieldKey="delivery.region" label="Регион" value={fieldValue('delivery.region', logisticRegion || '')} onChange={(v) => setField('delivery.region', v)} />
                             <EditField fieldKey="delivery.city" label="Город" value={fieldValue('delivery.city', logisticCity || '')} onChange={(v) => setField('delivery.city', v)} />
                             <InfoField label="Метро" value={logisticMetro || '—'} />
@@ -2151,11 +2142,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             <InfoField label="Сумма заказа" value={formatCurrency(totalSummValue)} />
                             <InfoField label="Предоплата" value={formatCurrency(toNumber(payload.prepaySum))} />
                             <InfoField label="Ожидается" value={formatCurrency(toNumber(payload.purchaseSumm))} />
-                            <InfoField label="Статус оплаты" value={names.resolve('paymentStatus', payload.payment?.status) || 'Не указан'} />
-                            <InfoField label="Дата оплаты" value={formatDate(payload.payment?.date)} />
-                            <InfoField label="Комментарий" value={payload.payment?.comment || '—'} />
                             <InfoField label="Приоритет" value={priorityNumber || '—'} />
-                            <InfoField label="Дата передачи в производство" value={formatDate(customFields.data_peredachi_v_proizvodstvo || payload.productionDate)} />
                         </div>
                     </div>
 
@@ -2361,10 +2348,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const createdDate = formatDateTime(pickValue(payload.createdAt, order.created_at));
         const statusUpdated = formatDateTime(pickValue(payload.statusUpdatedAt, order.updated_at));
         const privilegeType = pickValue(payload.privilegeType);
-        const documentFlow = formatBooleanYesNo(customFields.dokumentooborot);
         const documentsViaEDO = formatBooleanYesNo(customFields.dokumentooborot_cherez_edo);
         const invoiceValidDays = pickValue(customFields.schiot_deistvitelen_v_techenie_dnei);
-        const roistat = pickValue(customFields.roistat, payload.roistat);
+        const selfCost = toNumber(pickValue(payload.delivery?.selfCost, customFields.sebestoimost2));
 
         return (
             <div className="bg-white border border-gray-200 p-4">
@@ -2382,10 +2368,25 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     <InfoField label="Дата поступления" value={createdDate} />
                     <InfoField label="Обновлён" value={statusUpdated} />
                     <InfoField label="Привилегия" value={privilegeType || '—'} />
-                    <InfoField label="Документооборот" value={documentFlow} />
                     <InfoField label="Документооборот через ЭДО" value={documentsViaEDO} />
                     <InfoField label="Счёт действителен (дней)" value={invoiceValidDays || '—'} />
-                    <InfoField label="Roistat" value={roistat || '—'} />
+                    {/* Перенесено с рабочего экрана по решению владельца
+                        06.10.2026. Поля настоящие, но в работе не нужны: маржа
+                        заполнена у 20 заказов из 1831, себестоимость — у 278, а
+                        статус и дата оплаты, диалоги и партнёр не приходят из
+                        RetailCRM ни по одному заказу (настоящие оплаты показаны
+                        списком в блоке «Оплата»). */}
+                    <EditField fieldKey="cf.marzha"
+                        label="Маржа, %"
+                        value={fieldValue('cf.marzha', customFields.marzha || '')}
+                        onChange={(v) => setField('cf.marzha', v)}
+                    />
+                    <InfoField label="Себестоимость" value={formatCurrency(selfCost)} />
+                    <InfoField label="Статус оплаты" value={names.resolve('paymentStatus', payload.payment?.status) || 'Не указан'} />
+                    <InfoField label="Дата оплаты" value={formatDate(payload.payment?.date)} />
+                    <InfoField label="Комментарий к оплате" value={payload.payment?.comment || '—'} />
+                    <InfoField label="Диалоги" value={payload.dialogsCount ? `${payload.dialogsCount} открыто` : 'Нет открытых диалогов'} />
+                    <InfoField label="Партнёр" value={customer.partner || '—'} />
                 </div>
                 <p className="mt-2 text-xs text-gray-500">
                     Здесь то, что в работе с заказом не нужно: служебные пометки и метка рекламной
