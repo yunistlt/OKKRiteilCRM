@@ -1178,7 +1178,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         )}
 
                         <div className="grid md:grid-cols-2 gap-2">
-                            <InfoField label="Тип клиента" value={customer.type === 'customer_corporate' ? 'Юридическое лицо' : 'Клиент'} />
                             <InfoField label="Компания" value={companyName || '—'} />
                             <EditField fieldKey="firstName" label="Контакт" value={fieldValue('firstName', contactName)} onChange={(v) => setField('firstName', v)} />
                             <EditField fieldKey="email" label="Email" value={fieldValue('email', payload.email || contact.email || customer.email || '')} onChange={(v) => setField('email', v)} />
@@ -2387,6 +2386,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     <InfoField label="Комментарий к оплате" value={payload.payment?.comment || '—'} />
                     <InfoField label="Диалоги" value={payload.dialogsCount ? `${payload.dialogsCount} открыто` : 'Нет открытых диалогов'} />
                     <InfoField label="Партнёр" value={customer.partner || '—'} />
+                    {/* Тип клиента — в технические по решению владельца
+                        06.10.2026: «у нас всегда один тип». Заказы на физлицо
+                        всё же встречаются (79 из 1831 за полгода), поэтому поле
+                        не удалено — его видно здесь. */}
+                    <InfoField label="Тип клиента" value={customer.type === 'customer_corporate' ? 'Юридическое лицо' : 'Клиент'} />
                 </div>
                 <p className="mt-2 text-xs text-gray-500">
                     Здесь то, что в работе с заказом не нужно: служебные пометки и метка рекламной
