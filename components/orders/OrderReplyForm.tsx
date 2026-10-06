@@ -390,10 +390,31 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                 <span className="text-[11px] text-gray-500">Уйдёт с общего ящика компании rop@zmktlt.ru</span>
             </div>
 
-            {files.length > 0 && (
+            {(files.length > 0 || documents.length > 0) && (
                 <div className="mt-2 border border-gray-200 bg-white p-2">
                     <p className="mb-1 text-[10px] font-black uppercase text-gray-400">Вложения</p>
                     <ul className="space-y-1">
+                        {/* Документы заказа — в том же списке, что и файлы с диска.
+                            Раньше о них говорила только надпись на кнопке, и человек
+                            не видел, приложилось ли: «КП не прикрепляет к письму.
+                            Получается нужно сохранять на комп и добавлять файлом»
+                            (Ирина Гордеева 05.10.2026). Сам файл собирается при
+                            отправке — из этого же заказа, поэтому размер неизвестен. */}
+                        {documents.map((kind) => (
+                            <li key={kind} className="flex items-center justify-between text-xs text-gray-700">
+                                <span>
+                                    {kind === 'proposal' ? `КП №${orderNumber}.pdf` : `Счёт №${orderNumber}.pdf`}
+                                    <span className="ml-2 text-gray-400">соберётся при отправке</span>
+                                </span>
+                                <button
+                                    onClick={() => attachOrderDocument(kind)}
+                                    className="px-2 text-gray-400 hover:text-red-600"
+                                    title="Убрать документ"
+                                >
+                                    ×
+                                </button>
+                            </li>
+                        ))}
                         {files.map((file, index) => (
                             <li key={`${file.name}-${index}`} className="flex items-center justify-between text-xs text-gray-700">
                                 <span>{file.name} · {Math.round(file.size / 1024)} КБ</span>

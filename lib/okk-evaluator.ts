@@ -16,6 +16,7 @@ import { runInsightAnalysisDetailed, type BusinessInsights } from './insight-age
 import { OKK_CONSULTANT_GUIDES } from './okk-consultant';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 import { cachedAiResult } from '@/lib/ai-cache';
+import { cutForAi } from '@/lib/email/classify';
 import { resolveRetailCRMLabel } from '@/lib/retailcrm/mapping';
 import { getOpenAIClient } from '@/utils/openai';
 
@@ -221,11 +222,12 @@ async function buildScriptGateContext(orderId: number, order: any, currentStatus
     // Комментарии заказа — куда менеджер заносит то, что выяснил в разговоре
     // (отдельного поля под годовой объём в CRM нет).
     const rp = (order?.raw_payload as any) || {};
-    const commentsRaw = [rp.managerComment, rp.customerComment]
+    // Режем целыми символами: обрубленное эмодзи в комментарии ломает запрос к
+    // разбору — на этом семь часов висели неразобранные письма (05.10.2026).
+    const commentsRaw = cutForAi([rp.managerComment, rp.customerComment]
         .map((c: any) => String(c ?? '').trim())
         .filter(Boolean)
-        .join(' | ')
-        .slice(0, 2000);
+        .join(' | '), 2000);
     const statusCodes = await collectOrderStatusCodes(orderId, currentStatus);
     const [approval, production, sphereKnown, tech, terms, price] = await Promise.all([
         reachedApprovalStatus(statusCodes, currentStatus),

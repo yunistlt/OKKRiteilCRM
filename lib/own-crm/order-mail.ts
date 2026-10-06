@@ -42,6 +42,17 @@ export type OrderMailEntry = {
     body: string | null;
     /** Сколько вложений — их открывают через «Файлы» заказа. */
     attachments: number;
+    /**
+     * Сами вложения: имя и размер, плюс идентификатор письма — по ним лента даёт
+     * ссылку на файл.
+     *
+     * Ирина Гордеева 05.10.2026: «можно в письмах, чтобы было ТЗ; в заказе в
+     * файле ТЗ есть, а в письме нет — в СРМ было в письмах». Раньше мы отдавали
+     * только количество, и человек видел «2 вложения», не зная каких.
+     */
+    attachmentList: Array<{ name: string; size: number | null }>;
+    /** Письмо, из которого качается вложение (входящие). */
+    emailId: string | null;
 };
 
 /**
@@ -146,6 +157,14 @@ export async function loadOrderMail(params: {
     }
 
     const countAttachments = (meta: unknown) => (Array.isArray(meta) ? meta.length : 0);
+    /** Имена вложений как есть: по ним лента строит ссылку на файл. */
+    const listAttachments = (meta: unknown): Array<{ name: string; size: number | null }> =>
+        (Array.isArray(meta) ? meta : [])
+            .map((item: any) => ({
+                name: String(item?.filename ?? '').trim(),
+                size: Number.isFinite(Number(item?.size)) ? Number(item.size) : null,
+            }))
+            .filter((item) => item.name);
 
     const entries: OrderMailEntry[] = [
         ...((incoming.data ?? []) as any[]).map((row) => ({
@@ -157,6 +176,8 @@ export async function loadOrderMail(params: {
             subject: row.subject || null,
             body: mailBody(row),
             attachments: countAttachments(row.attachments_meta),
+            attachmentList: listAttachments(row.attachments_meta),
+            emailId: String(row.id),
             text: [row.subject ? `Тема: ${row.subject}` : null, preview(mailBody(row))].filter(Boolean).join('\n\n'),
             source: 'incoming' as const,
         })),
@@ -174,6 +195,8 @@ export async function loadOrderMail(params: {
                 subject: row.subject || null,
                 body: body ? String(body).replace(/\u00a0/g, ' ').trim() : null,
                 attachments: countAttachments(twin?.attachments_meta),
+                attachmentList: listAttachments(twin?.attachments_meta),
+                emailId: twin ? String(twin.id) : null,
                 text: row.subject ? `Тема: ${row.subject}` : 'Письмо отправлено',
                 source: 'outgoing' as const,
             };
@@ -190,6 +213,8 @@ export async function loadOrderMail(params: {
                 subject: row.subject || null,
                 body: mailBody(row),
                 attachments: countAttachments(row.attachments_meta),
+                attachmentList: listAttachments(row.attachments_meta),
+                emailId: String(row.id),
                 text: [row.subject ? `Тема: ${row.subject}` : null, preview(mailBody(row))].filter(Boolean).join('\n\n'),
                 source: 'outgoing' as const,
             })),

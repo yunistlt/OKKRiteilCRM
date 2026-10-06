@@ -275,12 +275,19 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
     const items: DocumentItem[] = (rows || []).map((row: any) => ({
         name: row.offer?.displayName || row.offer?.name || row.productName || 'Позиция',
         quantity: Number(row.quantity || 0),
-        // Цена за единицу с учётом скидки по позиции — то, что клиент увидит в счёте.
-        price: Math.max(0, Number(row.initialPrice || 0) - (Number(row.quantity || 0) > 0
-            ? Number(row.discountTotal || 0) / Number(row.quantity)
-            : 0)),
+        /**
+         * `discountTotal` в RetailCRM — скидка НА ЕДИНИЦУ, а не на строку.
+         *
+         * Проверено на боевых заказах 05.10.2026: у 53356, 54650 и 54568 итог
+         * сходится копейка в копейку только так. Раньше здесь скидку делили на
+         * количество, и цена со скидкой выходила завышенной, а в КП сумма
+         * строки считалась так, будто скидку дали один раз на всю партию
+         * (заказ 900055: 595 955,80 вместо 445 666,90).
+         */
+        price: Math.max(0, Number(row.initialPrice || 0) - Number(row.discountTotal || 0)),
         initialPrice: Number(row.initialPrice || 0),
-        discount: Number(row.discountTotal || 0),
+        // В документ отдаём скидку ЗА ВСЮ СТРОКУ: её и ждёт человек в колонке.
+        discount: Number(row.discountTotal || 0) * Number(row.quantity || 0),
         image: catalogOf(catalog, row)?.image ?? null,
         url: catalogOf(catalog, row)?.url ?? null,
     }));

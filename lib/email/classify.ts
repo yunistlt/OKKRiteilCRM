@@ -449,6 +449,23 @@ const DEFAULT_SYSTEM_PROMPT = `Ты — Катерина, секретарь к�
  * Загружает системный промпт секретаря из ai_prompts (key=email_secretary_classifier).
  * При отсутствии/ошибке — встроенный дефолт. Так инструкция живёт там же, где у других агентов.
  */
+/**
+ * Обрезка текста для отправки в разбор — без разрубленных эмодзи.
+ *
+ * Обычный `slice` режет строку по UTF-16, и эмодзи на границе распадается на
+ * половинку (непарный суррогат). Такое письмо OpenAI отбивает: «400 Invalid
+ * body: failed to parse JSON value», воркер оставляет письмо на повтор — и оно
+ * висит вечно. Поймано 05.10.2026 на рассылке с эмодзи в теле: два письма
+ * семь часов крутились неразобранными и будили сторожа.
+ */
+export function cutForAi(text: string | null | undefined, limit: number): string {
+    const source = String(text ?? '');
+    // Режем по символам, а не по кодовым единицам: эмодзи остаётся целым.
+    const cut = Array.from(source).slice(0, limit).join('');
+    // Подчищаем одиночные суррогаты, если они были в самом тексте.
+    return cut.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+}
+
 export async function loadSecretaryPrompt(): Promise<string> {
     try {
         const { data } = await supabase
@@ -479,7 +496,7 @@ export async function classifyRoute(
     const openai = getOpenAIClient();
     // Тело для анализа: plain-текст, а если его нет (HTML-only письмо) — вытаскиваем из HTML.
     const rawBody = (email.bodyText && email.bodyText.trim()) ? email.bodyText : stripHtml(email.bodyHtml);
-    const body = (rawBody || '').replace(/\s+\n/g, '\n').slice(0, 4000);
+    const body = cutForAi((rawBody || '').replace(/\s+\n/g, '\n'), 4000);
     const docs = documentAttachmentNames(email.attachments);
     const attachmentsLine = docs.length
         ? `\nВложения (документы): ${docs.join('; ')}`
@@ -488,7 +505,7 @@ export async function classifyRoute(
         ? `\n\n${email.crmDossier.trim()}`
         : '';
     // Новый текст отправителя (без цитаты) — отдельным блоком: по нему судим, есть ли НОВЫЙ запрос.
-    const freshText = stripQuotedReply(rawBody).slice(0, 2000);
+    const freshText = cutForAi(stripQuotedReply(rawBody), 2000);
     const freshBlock = freshText && freshText !== body
         ? `\n\nНОВЫЙ ТЕКСТ ОТПРАВИТЕЛЯ (без цитаты старой переписки) — только по нему суди, есть ли новый запрос:\n${freshText}`
         : '';

@@ -7,6 +7,8 @@ import PhoneFieldCall from './calls/PhoneFieldCall';
 import ManagerTransfer from './orders/ManagerTransfer';
 import TextWithOrderLinks from './ui/TextWithOrderLinks';
 import { CardSection, CardSectionsProvider } from './orders/CardSections';
+import ItemPhoto from './orders/ItemPhoto';
+import AttachmentList from './orders/AttachmentList';
 import { prependComment } from '@/lib/own-crm/comment-entries';
 import { clientTime } from '@/lib/own-crm/phone-timezone';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -674,8 +676,31 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                 // у себя; сайт не трогаем (решение владельца 02.10.2026).
                 name: decodeEntities(String(item.offer?.displayName || item.offer?.name || item.productName || 'Позиция')),
                 quantity: Number(item.quantity || 0),
-                price: Number(item.initialPrice ?? item.price ?? 0),
-                discount: Number(item.discountManualAmount ?? item.discountTotal ?? 0),
+                /**
+                 * Цена — ВСЕГДА базовая, до скидки.
+                 *
+                 * Если `initialPrice` в позиции нет, восстанавливаем её из цены
+                 * со скидкой: иначе карточка покажет уценённую цену, человек её
+                 * сохранит, и базовая цена потеряется навсегда — скидка окажется
+                 * «вшита» в цену и перестанет убираться (заказ 900055: 96 930
+                 * превратились в 82 390, Ирина Гордеева 06.10.2026 — «убирала
+                 * скидку из позиций, не удалялась»).
+                 */
+                price: Number(item.initialPrice ?? (Number(item.price ?? 0) + Number(item.discountTotal ?? 0))),
+                /**
+                 * Скидка позиции: рублями и процентом — два РАЗНЫХ поля, и они
+                 * складываются.
+                 *
+                 * `discountTotal` — уже посчитанный итог обеих скидок на
+                 * единицу. Поэтому подставлять его в рублёвое поле можно
+                 * только когда процента нет: иначе скидка считается дважды.
+                 * Ирина Гордеева 05.10.2026: «ставлю 15%, сразу даёт 30%
+                 * скидку» — ровно этот случай.
+                 */
+                discount: Number(
+                    item.discountManualAmount
+                    ?? (Number(item.discountManualPercent ?? 0) > 0 ? 0 : (item.discountTotal ?? 0)),
+                ),
                 // Скидка процентом по позиции — третий вид скидки RetailCRM
                 // (`discountManualPercent`). Правится в строке, рядом с рублями.
                 discountPercent: Number(item.discountManualPercent ?? 0),
@@ -762,11 +787,24 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     customerComment: draftClientComment,
                     managerComment: draftManagerComment,
                     // Правка остальных полей: раскладываем ключи по местам заказа.
-                    contact: Object.fromEntries(
-                        Object.entries(draftFields)
-                            .filter(([key]) => !key.includes('.'))
-                            .map(([key, value]) => [key, value]),
-                    ),
+                    contact: {
+                        ...Object.fromEntries(
+                            Object.entries(draftFields)
+                                .filter(([key]) => !key.includes('.'))
+                                .map(([key, value]) => [key, value]),
+                        ),
+                        /**
+                         * «Контакт» — ОДНО поле, и в нём всё имя целиком.
+                         *
+                         * Показывается оно как «фамилия имя отчество», а правится
+                         * в firstName. Поэтому мусорная фамилия не стиралась:
+                         * человек убирал «ИИ-Лид Ирина», сохранял, а «ИИ-Лид»
+                         * сидел в lastName и возвращался на экран и в счёт
+                         * (Елена Парфёнова 06.10.2026: «удаляю, сохраняю, не
+                         * убирает»). Правим имя — чистим и остальные части.
+                         */
+                        ...('firstName' in draftFields ? { lastName: '', patronymic: '' } : {}),
+                    },
                     // Юрлицо заказа едет своим полем: в `contact` его класть нельзя —
                     // RetailCRM такого поля у заказа не знает.
                     ...('order.site' in draftFields ? { site: draftFields['order.site'] || null } : {}),
@@ -1476,12 +1514,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                         || (row.siteId && catalogLinks[`id:${row.siteId}`])
                                                         || (row.article && catalogLinks[`art:${row.article}`])
                                                         || null;
+                                                    // При наведении фото увеличивается — как было в
+                                                    // RetailCRM (просьба Ирины Гордеевой 05.10.2026):
+                                                    // по клетке 48×48 шкаф от стеллажа не отличить.
                                                     return found?.image ? (
-                                                        <img
-                                                            src={found.image}
-                                                            alt=""
-                                                            className="h-12 w-12 border border-gray-200 object-contain"
-                                                        />
+                                                        <ItemPhoto src={found.image} alt={row.name} />
                                                     ) : null;
                                                 })()}
                                             </td>
@@ -1532,8 +1569,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                 />
                                             </td>
                                             <td className="px-3 py-2">
+                                                {/* Копейки не режем: цена со скидкой бывает дробной
+                                                    (82 390,50), и округление до рублей при каждом
+                                                    сохранении уводило сумму заказа (06.10.2026). */}
                                                 <NumberInput
                                                     value={row.price}
+                                                    maxFractionDigits={2}
                                                     onChange={(v: number | null) => changeItem(index, { price: Number(v) || 0 })}
                                                     className="w-full border border-gray-300 px-2 py-1 text-right"
                                                 />
@@ -1546,6 +1587,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                 <div className="flex items-center gap-1">
                                                     <NumberInput
                                                         value={row.discount}
+                                                        maxFractionDigits={2}
                                                         onChange={(v: number | null) => changeItem(index, { discount: Math.max(0, Number(v) || 0) })}
                                                         className="w-full border border-gray-300 px-2 py-1 text-right"
                                                     />
@@ -2040,11 +2082,23 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                     <p className="whitespace-pre-line text-sm text-gray-800">
                                                         <TextWithOrderLinks text={email.body || 'Текст этого письма у нас не сохранён — в ленте есть только факт отправки.'} />
                                                     </p>
-                                                    {email.attachments > 0 && (
+                                                    {/* Вложения письма: PDF и картинки открываются
+                                                        всплывающим окном, остальное скачивается
+                                                        (решение владельца 05.10.2026). */}
+                                                    {email.attachmentList?.length ? (
+                                                        <div className="mt-2">
+                                                            <AttachmentList
+                                                                files={email.attachmentList}
+                                                                href={email.emailId
+                                                                    ? (name: string) => `/api/orders/${encodeURIComponent(String(data.order?.number ?? orderId))}/files/download?emailId=${encodeURIComponent(email.emailId)}&filename=${encodeURIComponent(name)}`
+                                                                    : null}
+                                                            />
+                                                        </div>
+                                                    ) : email.attachments > 0 ? (
                                                         <p className="mt-2 text-xs text-gray-500">
                                                             Вложений: {email.attachments} — они в разделе «Файлы» заказа.
                                                         </p>
-                                                    )}
+                                                    ) : null}
                                                     <div className="mt-2 flex items-center gap-3">
                                                         <button
                                                             type="button"

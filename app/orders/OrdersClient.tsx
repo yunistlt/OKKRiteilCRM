@@ -152,18 +152,38 @@ export default function OrdersClient() {
     const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'createdAt', dir: 'desc' });
     const [sortable, setSortable] = useState<string[]>([]);
     const [widths, setWidths] = useState<Record<string, number>>({});
+    /**
+     * Свёрнутость фильтра и колонки статусов — тоже личные настройки экрана.
+     * Раньше это были обычные состояния страницы, и после обновления человек
+     * каждый раз сворачивал заново (жалоба владельца 05.10.2026).
+     */
+    const [filterOpen, setFilterOpen] = useState(true);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    /** Пока раскладка не прочитана — не сохраняем, иначе затрём её пустотой. */
+    const layoutLoaded = useRef(false);
 
     /** Сохраняем раскладку сразу: отдельной кнопки «Сохранить» тут быть не должно. */
-    const saveLayout = useCallback((next: { sort?: typeof sort; widths?: Record<string, number> }) => {
+    const saveLayout = useCallback((next: {
+        sort?: typeof sort;
+        widths?: Record<string, number>;
+        filterOpen?: boolean;
+        sidebarCollapsed?: boolean;
+    }) => {
+        if (!layoutLoaded.current) return;
         void fetch('/api/settings/view', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 viewKey: 'orders.layout',
-                settings: { sort: next.sort ?? sort, widths: next.widths ?? widths },
+                settings: {
+                    sort: next.sort ?? sort,
+                    widths: next.widths ?? widths,
+                    filterOpen: next.filterOpen ?? filterOpen,
+                    sidebarCollapsed: next.sidebarCollapsed ?? sidebarCollapsed,
+                },
             }),
         }).catch(() => undefined);
-    }, [sort, widths]);
+    }, [sort, widths, filterOpen, sidebarCollapsed]);
 
     /** Щелчок по заголовку: вверх → вниз → снова вверх. */
     const toggleSort = (key: string) => {
@@ -237,8 +257,12 @@ export default function OrdersClient() {
                 const saved = data.settings ?? {};
                 if (saved.sort?.key) setSort({ key: String(saved.sort.key), dir: saved.sort.dir === 'asc' ? 'asc' : 'desc' });
                 if (saved.widths && typeof saved.widths === 'object') setWidths(saved.widths);
+                if (typeof saved.filterOpen === 'boolean') setFilterOpen(saved.filterOpen);
+                if (typeof saved.sidebarCollapsed === 'boolean') setSidebarCollapsed(saved.sidebarCollapsed);
             } catch {
                 // Раскладка не пришла — порядок и ширины по умолчанию.
+            } finally {
+                layoutLoaded.current = true;
             }
         })();
     }, []);
@@ -428,6 +452,8 @@ export default function OrdersClient() {
                 managers={managers}
                 statuses={statusTree.flatMap((g) => g.statuses.map((s) => ({ value: s.code, label: s.label })))}
                 onApply={(next) => { setFilter(next); setPage(1); }}
+                open={filterOpen}
+                onOpenChange={(next) => { setFilterOpen(next); saveLayout({ filterOpen: next }); }}
             />
 
             <div className="relative flex border-t border-gray-200">
@@ -436,32 +462,12 @@ export default function OrdersClient() {
                         tree={statusTree}
                         selected={filter.statuses}
                         onSelect={(statuses) => { setFilter({ ...filter, statuses }); setPage(1); }}
+                        collapsed={sidebarCollapsed}
+                        onCollapsedChange={(next) => { setSidebarCollapsed(next); saveLayout({ sidebarCollapsed: next }); }}
                     />
                 </div>
 
                 <div className="min-w-0 flex-1 overflow-x-auto">
-                    {/* Панель массовых действий: появляется, когда что-то
-                        отмечено (решение владельца 05.10.2026). */}
-                    {selected.size > 0 && (
-                        <div className="mb-2 flex flex-wrap items-center gap-3 border border-blue-200 bg-blue-50 px-3 py-2 text-sm">
-                            <span className="font-semibold text-gray-900">Выбрано заказов: {selected.size}</span>
-                            <button
-                                type="button"
-                                onClick={() => setBulkOpen(true)}
-                                className="bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700"
-                            >
-                                Написать письмо
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setSelected(new Set())}
-                                className="text-xs font-semibold text-blue-700 hover:underline"
-                            >
-                                снять выделение
-                            </button>
-                        </div>
-                    )}
-
                     <table className="w-full border-collapse text-sm">
                         <thead>
                             <tr className="border-b-2 border-gray-300 bg-gray-100 text-left align-bottom font-bold text-gray-700">
@@ -575,10 +581,35 @@ export default function OrdersClient() {
                 </div>
             </div>
 
-            {/* Итого под таблицей — по всему фильтру, как в RetailCRM: менеджеру
-                нужна сумма отобранных заказов, а не текущей страницы. */}
-            <div className="flex flex-wrap items-center justify-end gap-x-6 gap-y-1 border-t border-gray-200 bg-gray-50 px-6 py-2 text-sm">
-                <span className="text-gray-600">
+            {/**
+              * Подвал списка держится внизу экрана и не уезжает при прокрутке
+              * (решение владельца 05.10.2026). В нём всё, что нужно на виду:
+              * массовые действия по отмеченным заказам, итоги по фильтру и
+              * страницы. Итоги считаются по всему фильтру, как в RetailCRM, —
+              * менеджеру нужна сумма отобранных заказов, а не текущей страницы.
+              */}
+            <div className="sticky bottom-0 z-20 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-gray-300 bg-gray-50 px-6 py-2 text-sm shadow-[0_-2px_8px_rgba(0,0,0,.06)]">
+                {selected.size > 0 && (
+                    <div className="flex flex-wrap items-center gap-3">
+                        <span className="font-semibold text-gray-900">Выбрано: {selected.size}</span>
+                        <button
+                            type="button"
+                            onClick={() => setBulkOpen(true)}
+                            className="bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700"
+                        >
+                            Написать письмо
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setSelected(new Set())}
+                            className="text-xs font-semibold text-blue-700 hover:underline"
+                        >
+                            снять выделение
+                        </button>
+                    </div>
+                )}
+
+                <span className="ml-auto text-gray-600">
                     Заказов по фильтру: <b className="text-gray-900">{totals.count.toLocaleString('ru-RU')}</b>
                 </span>
                 <span className="text-gray-600">
@@ -589,32 +620,30 @@ export default function OrdersClient() {
                         <b className="text-gray-900">{formatRub(totals.sum)}</b>
                     )}
                 </span>
-            </div>
 
-            {pagination.totalPages > 1 && (
-                <div className="flex items-center justify-between border-t border-gray-200 px-6 py-3">
-                    <span className="text-sm text-gray-500">
-                        Показано {orders.length} из {pagination.totalCount.toLocaleString('ru-RU')}
-                    </span>
+                {pagination.totalPages > 1 && (
                     <div className="flex items-center gap-2">
+                        <span className="text-gray-500">
+                            Показано {orders.length} из {pagination.totalCount.toLocaleString('ru-RU')}
+                        </span>
                         <button
                             onClick={() => setPage((p) => Math.max(1, p - 1))}
                             disabled={page === 1}
-                            className="rounded-md border border-gray-400 px-3 py-1.5 text-sm text-gray-800 disabled:text-gray-400"
+                            className="rounded-md border border-gray-400 px-3 py-1 text-gray-800 disabled:text-gray-400"
                         >
                             Назад
                         </button>
-                        <span className="text-sm text-gray-700">{page} / {pagination.totalPages}</span>
+                        <span className="text-gray-700">{page} / {pagination.totalPages}</span>
                         <button
                             onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
                             disabled={page >= pagination.totalPages}
-                            className="rounded-md border border-gray-400 px-3 py-1.5 text-sm text-gray-800 disabled:text-gray-400"
+                            className="rounded-md border border-gray-400 px-3 py-1 text-gray-800 disabled:text-gray-400"
                         >
                             Вперёд
                         </button>
                     </div>
-                </div>
-            )}
+                )}
+            </div>
 
             {columnsOpen && (
                 <ViewSettingsModal
