@@ -57,20 +57,38 @@ export async function buildOrderContext(orderNumber: string): Promise<OrderTempl
     const key = decodeURIComponent(String(orderNumber ?? '')).trim();
     const numeric = /^\d+$/.test(key);
 
+    /**
+     * Рабочие значения берём из полей заказа, снимок остаётся подложкой для
+     * вложенного — состава и структур, которым отдельных полей нет (закон
+     * владельца 06.10.2026: у каждого значения своё поле, снимок — запись
+     * истории). Иначе письмо клиенту уходит с устаревшими данными: снимок
+     * обновлял перенос из RetailCRM, его отключили.
+     */
+    const fields = `order_id, number, raw_payload, "firstName", "lastName", phone, email,
+                    totalsumm, "managerComment", "customerComment", "createdAt", site`;
     const { data: order } = numeric
-        ? await supabase.from('orders').select('order_id, number, raw_payload').eq('order_id', key).maybeSingle()
-        : await supabase.from('orders').select('order_id, number, raw_payload').eq('number', key).maybeSingle();
+        ? await supabase.from('orders').select(fields).eq('order_id', key).maybeSingle()
+        : await supabase.from('orders').select(fields).eq('number', key).maybeSingle();
 
     if (!order) return null;
 
-    const payload = (order.raw_payload ?? {}) as Record<string, any>;
+    const row = order as any;
+    const payload = (row.raw_payload ?? {}) as Record<string, any>;
 
     return {
-        // Раскладываем raw_payload как есть — это объект заказа RetailCRM.
         order: {
             ...payload,
-            number: payload.number ?? order.number ?? order.order_id,
-            id: payload.id ?? order.order_id,
+            number: row.number ?? payload.number ?? row.order_id,
+            id: row.order_id ?? payload.id,
+            firstName: row.firstName ?? payload.firstName,
+            lastName: row.lastName ?? payload.lastName,
+            phone: row.phone ?? payload.phone,
+            email: row.email ?? payload.email,
+            totalSumm: row.totalsumm ?? payload.totalSumm,
+            managerComment: row.managerComment ?? payload.managerComment,
+            customerComment: row.customerComment ?? payload.customerComment,
+            createdAt: row.createdAt ?? payload.createdAt,
+            site: row.site ?? payload.site,
         },
         company: { name: 'ЗМК', email: process.env.SMTP_USER || null },
         now: new Date().toISOString(),
