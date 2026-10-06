@@ -16,6 +16,7 @@
  * остаётся обычным текстом.
  */
 import { decodeEntities } from '@/lib/sales-rop/letter-render';
+import { proxiedImageUrl } from './catalog-image';
 import { createClient } from '@supabase/supabase-js';
 
 const URL_KEY = 'LVZ_SUPABASE_URL';
@@ -39,12 +40,18 @@ export type CatalogLink = {
     image: string | null;
 };
 
-/** Первое фото карточки товара: в каталоге они лежат списком. */
+/**
+ * Первое фото карточки товара: в каталоге они лежат списком.
+ *
+ * Адрес отдаём через российский сервер: сайт пускает только российские адреса,
+ * и напрямую фото не доходило ни в карточку заказа, ни в КП (см.
+ * `catalog-image.ts`).
+ */
 function firstImage(images: unknown): string | null {
     const list = Array.isArray(images) ? images : [];
     for (const image of list) {
         const url = String((image as any)?.url ?? '').trim();
-        if (url) return url;
+        if (url) return proxiedImageUrl(url);
     }
     return null;
 }
