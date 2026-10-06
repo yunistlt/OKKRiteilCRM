@@ -42,6 +42,17 @@ export interface OrdersFilter {
     /** Только заказы, выбившиеся из норматива времени в статусе. */
     overdueOnly: boolean;
     /**
+     * Только возможные дубли: у клиента есть другой незакрытый заказ рядом по
+     * времени (жалоба Ирины Гордеевой 06.10.2026 — «не найти дубли заказов»).
+     */
+    duplicatesOnly: boolean;
+    /**
+     * Номера заказов-кандидатов. Считает их база (`orders_duplicate_ids`), а
+     * маршрут списка подставляет сюда: условие «у клиента есть второй заказ»
+     * одним запросом к таблице не выражается.
+     */
+    duplicateIds?: string[];
+    /**
      * Поля карточки заказа: код дополнительного поля → что ищем. Человек
      * включает их шестерёнкой фильтра (решение владельца 05.10.2026).
      */
@@ -59,7 +70,8 @@ export const EMPTY_FILTER: OrdersFilter = {
     sumFrom: '', sumTo: '', categories: [], control: '',
     contactFrom: '', contactTo: '', createdFrom: '', createdTo: '',
     contragent: '', sferas: [], purchaseFrom: '', purchaseTo: '',
-    managerComment: '', customerComment: '', overdueOnly: false, customFields: {},
+    managerComment: '', customerComment: '', overdueOnly: false, duplicatesOnly: false,
+    customFields: {},
 };
 
 /**
@@ -130,6 +142,7 @@ export function parseOrdersFilter(searchParams: URLSearchParams): OrdersFilter {
         managerComment: text('managerComment'),
         customerComment: text('customerComment'),
         overdueOnly: text('overdueOnly') === 'true',
+        duplicatesOnly: text('duplicatesOnly') === 'true',
     };
 }
 
@@ -197,6 +210,14 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
         }
 
         q = q.or(conditions.join(','));
+    }
+
+    /**
+     * Дубли: список кандидатов уже посчитан базой. Пустой список означает
+     * «дублей нет» — показываем пустую таблицу, а не весь список.
+     */
+    if (filter.duplicatesOnly) {
+        q = filter.duplicateIds?.length ? q.in('order_id', filter.duplicateIds) : q.eq('order_id', -1);
     }
 
     if (filter.statuses.length) q = q.in('status', filter.statuses);
@@ -295,6 +316,8 @@ export function filterToCountParams(
         managerComment: filter.managerComment || '',
         customerComment: filter.customerComment || '',
         overdueOnly: Boolean(filter.overdueOnly),
+        duplicatesOnly: Boolean(filter.duplicatesOnly),
+        duplicateIds: filter.duplicateIds || [],
         norms,
     };
 }

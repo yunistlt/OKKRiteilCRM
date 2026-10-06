@@ -233,6 +233,19 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply, 
                                 </label>
                             </Field>
                         )}
+                        {show('duplicatesOnly') && (
+                            <Field label="Дубли заказов">
+                                <label className="flex cursor-pointer items-center gap-1.5 py-1 text-xs text-gray-800">
+                                    <input
+                                        type="checkbox"
+                                        checked={draft.duplicatesOnly}
+                                        onChange={(e) => set({ duplicatesOnly: e.target.checked })}
+                                        className="h-3.5 w-3.5 border-gray-300 text-blue-600"
+                                    />
+                                    Только возможные дубли
+                                </label>
+                            </Field>
+                        )}
                         {/* Поля карточки заказа: человек включает их шестерёнкой,
                             ищем по совпадению текста (решение владельца
                             05.10.2026). */}

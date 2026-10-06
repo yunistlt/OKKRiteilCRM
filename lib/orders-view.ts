@@ -58,6 +58,7 @@ export const FILTER_FIELDS: ViewItem[] = [
     { key: 'managerComment', label: 'Комментарий оператора', group: 'Комментарии' },
     { key: 'customerComment', label: 'Комментарий клиента', group: 'Комментарии' },
     { key: 'overdueOnly', label: 'Просроченные по нормативу', group: 'Даты' },
+    { key: 'duplicatesOnly', label: 'Только возможные дубли', group: 'Основное' },
 ];
 
 export const DEFAULT_FILTER_FIELDS = FILTER_FIELDS.map((f) => f.key);

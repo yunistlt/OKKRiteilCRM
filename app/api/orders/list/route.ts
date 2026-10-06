@@ -32,6 +32,16 @@ export async function GET(req: Request) {
     }
 
     /**
+     * Возможные дубли считает база: условие «у клиента есть второй незакрытый
+     * заказ рядом по времени» одним запросом к таблице не выражается.
+     */
+    if (filter.duplicatesOnly) {
+        const { data } = await supabase.rpc('orders_duplicate_ids', {});
+        filter.duplicateIds = ((data || []) as any[])
+            .map((row) => String(typeof row === 'object' ? Object.values(row)[0] : row));
+    }
+
+    /**
      * Порядок строк: по любой колонке, вверх или вниз (решение владельца
      * 05.10.2026). Сортируем только по настоящим колонкам таблицы — внутрь
      * `raw_payload` порядок не наводим: на 30 000 заказов это перебор всей

@@ -72,6 +72,11 @@ AS $$
        AND (COALESCE(p->>'contragent','') = '' OR COALESCE(o.raw_payload->'contragent'->>'legalName','') ILIKE '%' || (p->>'contragent') || '%')
        AND (COALESCE(p->>'managerComment','') = '' OR COALESCE(o.raw_payload->>'managerComment','') ILIKE '%' || (p->>'managerComment') || '%')
        AND (COALESCE(p->>'customerComment','') = '' OR COALESCE(o.raw_payload->>'customerComment','') ILIKE '%' || (p->>'customerComment') || '%')
+       -- Только возможные дубли: кандидатов считает orders_duplicate_ids,
+       -- маршрут списка присылает их номерами — одно условие на список и на
+       -- счётчики, иначе цифры разойдутся со строками.
+       AND (NOT COALESCE((p->>'duplicatesOnly')::boolean, false) OR
+            o.order_id::text IN (SELECT jsonb_array_elements_text(COALESCE(p->'duplicateIds','[]'::jsonb))))
        -- Только просроченные: норматив свой у каждого статуса, приходит списком
        AND (NOT COALESCE((p->>'overdueOnly')::boolean, false) OR (
              o.status_since IS NOT NULL

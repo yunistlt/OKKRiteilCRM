@@ -11,11 +11,14 @@ import { applyOrdersFilter, EMPTY_FILTER } from '../lib/orders-filter';
 /** Заглушка запроса: запоминает, какие условия на него навесили. */
 function fakeQuery() {
     const conditions: string[] = [];
+    const calls: unknown[][] = [];
+    const note = (name: string) => (...args: unknown[]) => { calls.push([name, ...args]); return q; };
     const q: any = {
         or: (c: string) => { conditions.push(c); return q; },
-        ilike: () => q, eq: () => q, in: () => q, gte: () => q, lte: () => q,
-        not: () => q, is: () => q, filter: () => q, contains: () => q, overlaps: () => q,
-        conditions,
+        ilike: note('ilike'), eq: note('eq'), in: note('in'), gte: note('gte'), lte: note('lte'),
+        not: note('not'), is: note('is'), filter: note('filter'), contains: note('contains'),
+        overlaps: note('overlaps'),
+        conditions, calls,
     };
     return q;
 }
@@ -52,5 +55,21 @@ describe('фильтр «Покупатель»', () => {
 
         expect(where).toContain('raw_payload->>lastName');
         expect(where).not.toContain('raw_payload->customer->>id.in');
+    });
+});
+
+describe('фильтр «Только возможные дубли»', () => {
+    it('показывает только присланных базой кандидатов', () => {
+        const q = applyOrdersFilter(fakeQuery(), {
+            ...EMPTY_FILTER, duplicatesOnly: true, duplicateIds: ['54912', '54905'],
+        });
+
+        expect(q.calls).toContainEqual(['in', 'order_id', ['54912', '54905']]);
+    });
+
+    it('без кандидатов показывает пустую таблицу, а не весь список', () => {
+        const q = applyOrdersFilter(fakeQuery(), { ...EMPTY_FILTER, duplicatesOnly: true, duplicateIds: [] });
+
+        expect(q.calls).toContainEqual(['eq', 'order_id', -1]);
     });
 });
