@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { catalogQueryParts } from '@/lib/shtab/lvz';
+import { catalogQueryParts, looseLike } from '@/lib/shtab/lvz';
 import { decodeEntities } from '@/lib/sales-rop/letter-render';
 
 /**
@@ -75,5 +75,26 @@ describe('модель с длинным тире и без цифр', () => {
 
     it('модель с цифрами разбирается как раньше', () => {
         expect(catalogQueryParts('Шкаф сушильный РШС-3-6 ЗМК').models).toContain('ршс-3-6');
+    });
+});
+
+describe('образец поиска не замечает знаков препинания', () => {
+    it('на месте любого знака подойдёт что угодно', () => {
+        // Требование владельца 06.10.2026: одна модель пишется по-разному —
+        // «РШС–ВД», «РШС-ВД», «РШС ВД», «РШС.ВД».
+        expect(looseLike('РШС-ВД')).toBe('РШС%ВД');
+        expect(looseLike('РШС–ВД')).toBe('РШС%ВД');
+        expect(looseLike('РШС ВД')).toBe('РШС%ВД');
+        expect(looseLike('РШС.ВД')).toBe('РШС%ВД');
+    });
+
+    it('знаки самого образца экранируются', () => {
+        // Иначе введённый процент означал бы «найди что угодно».
+        expect(looseLike('100%')).toBe('100\\%');
+        expect(looseLike('a_b')).toBe('a%b');
+    });
+
+    it('буквы и цифры не трогает', () => {
+        expect(looseLike('ШСО4В')).toBe('ШСО4В');
     });
 });

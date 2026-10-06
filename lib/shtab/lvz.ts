@@ -76,6 +76,27 @@ export function normalizeDashes(text: string): string {
     return String(text ?? '').replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-');
 }
 
+/**
+ * Образец для поиска, которому всё равно, какие знаки стоят между словами.
+ *
+ * Требование владельца 06.10.2026: «сделай фильтр, чтобы он не обращал
+ * внимания на тире и другие знаки препинания». В каталоге одна и та же модель
+ * пишется по-разному — «РШС–ВД», «РШС-ВД», «РШС ВД», «РШС.ВД», — и менеджер
+ * не обязан угадывать. Каждый знак в образце становится «%»: на его месте
+ * подойдёт что угодно, в том числе ничего.
+ *
+ * Сами символы образца, значимые для сравнения («%» и «_»), экранируем —
+ * иначе введённый процент превратился бы в «найди что угодно».
+ */
+export function looseLike(part: string): string {
+    return normalizeDashes(String(part ?? ''))
+        // Экранируем только то, что значимо для сравнения и не является знаком
+        // препинания: сам «%» и обратный слэш. Подчёркивание — обычный знак,
+        // оно становится подстановкой наравне с дефисом и точкой.
+        .replace(/[\\%]/g, (ch) => `\\${ch}`)
+        .replace(/[^a-zа-яё0-9\\%]+/gi, '%');
+}
+
 export function catalogQueryParts(query: string): { models: string[]; words: string[] } {
     const text = normalizeDashes(String(query ?? '')).toLowerCase().replace(/\u00a0/g, ' ');
 
@@ -127,15 +148,26 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
             let request = client()
                 .from('marketing_products')
                 .select('id, sku, name, price, full_url, category_id, meta, raw_data');
-            // Дефис в образце — подстановочным знаком: в каталоге на его месте
-            // бывает длинное тире, и точное сравнение не находило товар.
-            for (const part of parts) request = request.ilike('name', `%${part.replace(/-/g, '_')}%`);
+            // Знаки препинания в образце — подстановочными: в каталоге на их
+            // месте бывает длинное тире, пробел или ничего.
+            for (const part of parts) request = request.ilike('name', `%${looseLike(part)}%`);
             const { data, error } = await request.limit(take);
             if (error) throw new Error(error.message);
             return (data ?? []) as any[];
         };
 
         const attempts: string[][] = [];
+        /**
+         * Сначала — запрос целиком, как написан.
+         *
+         * Знаки между словами уже не важны (looseLike), поэтому «РШС ВД»,
+         * «РШС-ВД» и «РШС.ВД» ищут одно и то же, а порядок слов сохраняется:
+         * «Шкаф сушильный РШС-3-6 ЗМК Комфорт» находит именно его, а не
+         * РШС-3-20, который раньше выходил первым. Не нашлось — идём дальше,
+         * к попыткам по частям.
+         */
+        const whole = normalizeDashes(query).trim();
+        if (whole.length >= 4 && /[^a-zа-яё0-9]/i.test(whole)) attempts.push([whole]);
         if (models.length || words.length) attempts.push([...models, ...words]);
         if (models.length) attempts.push(models);
         // Отбрасываем слова с конца: лишнее слово в вводе не должно ронять поиск.
@@ -160,7 +192,7 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
             // Последняя попытка — «ИЛИ», как раньше, но с большой выборкой и
             // ранжированием по числу совпавших слов.
             const all = [...models, ...words];
-            const or = all.map((part) => `name.ilike.%${part.replace(/-/g, '_')}%`).join(',');
+            const or = all.map((part) => `name.ilike.%${looseLike(part)}%`).join(',');
             const { data, error } = await client()
                 .from('marketing_products')
                 .select('id, sku, name, price, full_url, category_id, meta, raw_data')
