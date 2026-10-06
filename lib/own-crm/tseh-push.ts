@@ -38,7 +38,12 @@ type OutboxRow = {
     customer_inn: string | null;
     manager_name: string | null;
     production_days: number | null;
+    production_days_unit: string | null;
     shipping_terms: string | null;
+    seller_name: string | null;
+    seller_inn: string | null;
+    seller_account: string | null;
+    seller_bank: string | null;
     items: unknown;
     total_summ: string | number | null;
     manager_comment: string | null;
@@ -60,7 +65,9 @@ export async function pushProductionQueue(sql: Sql, limit = BATCH): Promise<Push
 
     const rows = (await sql`
         SELECT id, order_number, order_id, customer_name, customer_inn, manager_name,
-               production_days, shipping_terms, items, total_summ, manager_comment
+               production_days, production_days_unit, shipping_terms,
+               seller_name, seller_inn, seller_account, seller_bank,
+               items, total_summ, manager_comment
         FROM tseh_production_outbox
         WHERE processed_at IS NULL
         ORDER BY created_at
@@ -86,7 +93,17 @@ export async function pushProductionQueue(sql: Sql, limit = BATCH): Promise<Push
                     customerInn: row.customer_inn,
                     managerName: row.manager_name,
                     productionDays: row.production_days,
+                    // В каких днях назван срок: 'kalendarnye' или 'rabochie'. Без этого
+                    // ЦехУспех считал срок рабочими днями, а менеджер называл клиенту
+                    // календарные — на 40 днях расхождение в две недели (06.10.2026).
+                    productionDaysUnit: row.production_days_unit || 'kalendarnye',
                     shippingTerms: row.shipping_terms,
+                    // Наше юрлицо: поставщик в карточке ЦехУспеха и реквизиты, на которые
+                    // пришла оплата. Раньше не передавались, и поле оставалось пустым.
+                    sellerName: row.seller_name,
+                    sellerInn: row.seller_inn,
+                    sellerAccount: row.seller_account,
+                    sellerBank: row.seller_bank,
                     items: Array.isArray(row.items) ? row.items : [],
                     totalSumm: row.total_summ === null ? null : Number(row.total_summ),
                     managerComment: row.manager_comment,

@@ -36,7 +36,7 @@ export async function queueOrderForProduction(orderId: number): Promise<OutboxRe
     try {
         const { data: order } = await supabase
             .from('orders')
-            .select('order_id, number, manager_id, raw_payload')
+            .select('order_id, number, manager_id, srok_izgot_edinica, raw_payload')
             .eq('order_id', orderId)
             .maybeSingle();
 
@@ -78,7 +78,20 @@ export async function queueOrderForProduction(orderId: number): Promise<OutboxRe
             customer_inn: customerInn,
             manager_name: managerName,
             production_days: data?.productionDays ?? null,
+            // В каких днях назван срок. Менеджер пишет календарные, а ЦехУспех считал
+            // рабочими — на сроке 40 дней это две недели разницы (замечание логистики
+            // 06.10.2026). Поле заполняется в карточке с 05.10.2026, у заказов до неё
+            // оно пустое, и по умолчанию это календарные дни — как и в карточке.
+            production_days_unit: String((order as any).srok_izgot_edinica ?? '').trim() === 'rabochie'
+                ? 'rabochie'
+                : 'kalendarnye',
             shipping_terms: data?.shippingTerms ?? null,
+            // Наше юрлицо: в карточке ЦехУспеха поле «поставщик» оставалось пустым, и
+            // производство не видело, на какие реквизиты оплачено.
+            seller_name: data?.seller?.name || null,
+            seller_inn: data?.seller?.inn || null,
+            seller_account: data?.seller?.rs || null,
+            seller_bank: data?.seller?.bank || null,
             items: (data?.items || []).map((item) => ({
                 name: item.name,
                 quantity: item.quantity,
