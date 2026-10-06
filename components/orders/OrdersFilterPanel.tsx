@@ -217,6 +217,12 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply, 
                         {show('managerComment') && (
                             <Field label="Комментарий оператора"><Text value={draft.managerComment} onChange={(v) => set({ managerComment: v })} /></Field>
                         )}
+                        {/* Наименование товара: ищем по составу заказа. Просьба
+                            Евгении Матвеевой 06.10.2026 — иначе дубль заявки по
+                            одному изделию не найти. */}
+                        {show('itemName') && (
+                            <Field label="Наименование товара"><Text value={draft.itemName} onChange={(v) => set({ itemName: v })} placeholder="Часть названия, например «стеллаж»" /></Field>
+                        )}
                         {show('customerComment') && (
                             <Field label="Комментарий клиента"><Text value={draft.customerComment} onChange={(v) => set({ customerComment: v })} /></Field>
                         )}

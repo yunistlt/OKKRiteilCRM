@@ -22,6 +22,11 @@ export const CUSTOM_FIELD_CODES = {
 export interface OrdersFilter {
     number: string;
     customer: string;
+    /**
+     * Наименование товара в составе заказа. Просьба Евгении Матвеевой
+     * 06.10.2026: без него не найти дубль заявки по одному и тому же изделию.
+     */
+    itemName: string;
     managers: string[];
     statuses: string[];
     marks: string[];              // vip, bad
@@ -66,7 +71,7 @@ export interface OrdersFilter {
 }
 
 export const EMPTY_FILTER: OrdersFilter = {
-    number: '', customer: '', managers: [], statuses: [], marks: [],
+    number: '', customer: '', itemName: '', managers: [], statuses: [], marks: [],
     sumFrom: '', sumTo: '', categories: [], control: '',
     contactFrom: '', contactTo: '', createdFrom: '', createdTo: '',
     contragent: '', sferas: [], purchaseFrom: '', purchaseTo: '',
@@ -124,6 +129,7 @@ export function parseOrdersFilter(searchParams: URLSearchParams): OrdersFilter {
         customFields,
         number: text('number'),
         customer: text('customer'),
+        itemName: text('itemName'),
         managers: list('managers').length ? list('managers') : list('manager'),
         statuses: list('statuses').length ? list('statuses') : list('status'),
         marks: list('marks'),
@@ -165,6 +171,19 @@ const COLUMNS = {
     sfera: 'sfera_deiatelnosti',
     control: 'control',
 } as const;
+
+/**
+ * Образец для поиска по названию товара: знаки препинания — подстановками.
+ *
+ * «Стеллаж СТ-15» и «Стеллаж СТ–15» должны находиться одним запросом, как и в
+ * поиске по каталогу (решение владельца 06.10.2026).
+ */
+export function itemNamePattern(text: string): string {
+    return String(text ?? '')
+        .trim()
+        .replace(/[\\%]/g, (ch) => `\\${ch}`)
+        .replace(/[^a-zа-яё0-9\\%]+/gi, '%');
+}
 
 /** Навешивает условия фильтра на запрос к orders. */
 export function applyOrdersFilter(query: any, filter: OrdersFilter) {
@@ -218,6 +237,16 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
      */
     if (filter.duplicatesOnly) {
         q = filter.duplicateIds?.length ? q.in('order_id', filter.duplicateIds) : q.eq('order_id', -1);
+    }
+
+    /**
+     * Товар ищем по названиям позиций, сложенным в `orders.items_text`.
+     * Знаки препинания не важны: в каталоге одно и то же изделие пишут и через
+     * дефис, и через длинное тире, и через пробел.
+     */
+    if (filter.itemName) {
+        const v = itemNamePattern(filter.itemName);
+        if (v) q = q.ilike('items_text', `%${v}%`);
     }
 
     if (filter.statuses.length) q = q.in('status', filter.statuses);
@@ -292,6 +321,7 @@ export function filterToCountParams(
     return {
         number: filter.number || '',
         customer: filter.customer || '',
+        itemName: filter.itemName || '',
         // Счётчики статусов и «Итого» считают по тем же карточкам, что и список,
         // иначе цифры разойдутся с показанными строками.
         customerIds: filter.customerIds || [],

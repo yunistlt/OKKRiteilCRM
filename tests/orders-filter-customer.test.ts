@@ -73,3 +73,24 @@ describe('фильтр «Только возможные дубли»', () => {
         expect(q.calls).toContainEqual(['eq', 'order_id', -1]);
     });
 });
+
+describe('фильтр «Наименование товара»', () => {
+    it('ищет по названиям позиций заказа', () => {
+        const q = applyOrdersFilter(fakeQuery(), { ...EMPTY_FILTER, itemName: 'стеллаж' });
+
+        expect(q.calls).toContainEqual(['ilike', 'items_text', '%стеллаж%']);
+    });
+
+    it('знаки препинания в названии не мешают', () => {
+        // «Стеллаж СТ-15» и «Стеллаж СТ–15» — один и тот же товар.
+        const q = applyOrdersFilter(fakeQuery(), { ...EMPTY_FILTER, itemName: 'стеллаж СТ-15' });
+
+        expect(q.calls).toContainEqual(['ilike', 'items_text', '%стеллаж%СТ%15%']);
+    });
+
+    it('пустое значение условие не добавляет', () => {
+        const q = applyOrdersFilter(fakeQuery(), { ...EMPTY_FILTER, itemName: '   ' });
+
+        expect(q.calls.filter((c) => c[1] === 'items_text')).toHaveLength(0);
+    });
+});
