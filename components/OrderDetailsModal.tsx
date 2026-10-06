@@ -1041,7 +1041,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const logisticCity = pickValue(address.city);
         const logisticRegion = pickValue(address.region);
         const logisticCost = toNumber(pickValue(delivery.cost, order.delivery_cost));
-        const logisticSelfCost = toNumber(pickValue(delivery.selfCost, customFields.sebestoimost2));
         const logisticTime = pickValue(delivery.time, customFields.vremya_dostavki);
         const operatorComment = pickValue(payload.managerComment);
         const clientComment = pickValue(payload.customerComment);
@@ -1669,7 +1668,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                         Сумма скидок по заказу: {discountTotal > 0 ? `−${formatCurrency(discountTotal)}` : formatCurrency(0)}
                                     </div>
                                     <div>Стоимость доставки: {formatCurrency(delivery)}</div>
-                                    <div>Себестоимость: {formatCurrency(logisticSelfCost)}</div>
                                     <div className="font-semibold text-gray-900">
                                         Итого: {formatCurrency(ourTotal)}
                                     </div>
