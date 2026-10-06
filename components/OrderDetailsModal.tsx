@@ -1044,7 +1044,17 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const clientComment = pickValue(payload.customerComment);
         const additionalEmail = pickValue(customFields.additional_email, customFields.dopolnitelnyi_email, payload.additionalEmail);
         const totalSummValue = toNumber(pickValue(payload.totalSumm, order.totalsumm));
-        const orderStatusCode = pickValue(payload.status?.code, payload.status, order.status);
+        /**
+         * Статус берём ТОЛЬКО из колонки заказа — она единственный источник
+         * правды (закон владельца 06.10.2026).
+         *
+         * Раньше читали сначала копию внутри raw_payload и лишь потом колонку.
+         * Копию обновляет перенос из RetailCRM, а колонку — наше приложение;
+         * перенос отключили, копия застыла, и карточка показывала старый
+         * статус. На этом же разъезде я 06.10.2026 затёр статусы 16 заказов:
+         * заказы, переданные в производство, вернулись в «Счёт на оплате».
+         */
+        const orderStatusCode = pickValue(order.status, payload.status?.code, payload.status);
         const countryValue = formatCountryName(pickValue(payload.countryIso, address.countryIso));
         const createdDate = formatDateTime(pickValue(payload.createdAt, order.created_at));
         const statusUpdated = formatDateTime(pickValue(payload.statusUpdatedAt, order.updated_at));
