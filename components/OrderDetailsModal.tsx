@@ -777,11 +777,24 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     customerComment: draftClientComment,
                     managerComment: draftManagerComment,
                     // Правка остальных полей: раскладываем ключи по местам заказа.
-                    contact: Object.fromEntries(
-                        Object.entries(draftFields)
-                            .filter(([key]) => !key.includes('.'))
-                            .map(([key, value]) => [key, value]),
-                    ),
+                    contact: {
+                        ...Object.fromEntries(
+                            Object.entries(draftFields)
+                                .filter(([key]) => !key.includes('.'))
+                                .map(([key, value]) => [key, value]),
+                        ),
+                        /**
+                         * «Контакт» — ОДНО поле, и в нём всё имя целиком.
+                         *
+                         * Показывается оно как «фамилия имя отчество», а правится
+                         * в firstName. Поэтому мусорная фамилия не стиралась:
+                         * человек убирал «ИИ-Лид Ирина», сохранял, а «ИИ-Лид»
+                         * сидел в lastName и возвращался на экран и в счёт
+                         * (Елена Парфёнова 06.10.2026: «удаляю, сохраняю, не
+                         * убирает»). Правим имя — чистим и остальные части.
+                         */
+                        ...('firstName' in draftFields ? { lastName: '', patronymic: '' } : {}),
+                    },
                     // Юрлицо заказа едет своим полем: в `contact` его класть нельзя —
                     // RetailCRM такого поля у заказа не знает.
                     ...('order.site' in draftFields ? { site: draftFields['order.site'] || null } : {}),
