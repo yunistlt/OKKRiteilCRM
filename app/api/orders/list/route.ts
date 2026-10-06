@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { parseOrdersFilter, applyOrdersFilter, applyOverdueFilter, filterToCountParams } from '@/lib/orders-filter';
+import { clientIdsByText } from '@/lib/orders-customer-search';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,16 @@ export async function GET(req: Request) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const pageSize = Math.min(200, Math.max(10, parseInt(searchParams.get('pageSize') || '50', 10)));
     const filter = parseOrdersFilter(searchParams);
+
+    /**
+     * Поле «Покупатель» ищет и по карточке клиента — её номера подбираем до
+     * запроса. Заказ может стоять на контактном лице, а клиент называться
+     * иначе, и по названию клиента заказ раньше не находился (жалобы
+     * менеджеров 06.10.2026).
+     */
+    if (filter.customer) {
+        filter.customerIds = await clientIdsByText(filter.customer);
+    }
 
     /**
      * Порядок строк: по любой колонке, вверх или вниз (решение владельца

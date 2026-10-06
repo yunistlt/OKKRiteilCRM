@@ -21,12 +21,27 @@ AS $$
        AND o.status IS NOT NULL
        -- Номер заказа
        AND (COALESCE(p->>'number','') = '' OR o.number ILIKE '%' || (p->>'number') || '%')
-       -- Покупатель: имя, фамилия, почта или телефон
+       -- Покупатель: контакт заказа, его телефоны ИЛИ карточка клиента.
+       -- Карточки подбирает код (clientIdsByText) и присылает списком: клиент
+       -- может называться не так, как записан контакт заказа.
        AND (COALESCE(p->>'customer','') = '' OR (
-             COALESCE(o.raw_payload->>'firstName','') ILIKE '%' || (p->>'customer') || '%'
-          OR COALESCE(o.raw_payload->>'lastName','')  ILIKE '%' || (p->>'customer') || '%'
-          OR COALESCE(o.raw_payload->>'email','')     ILIKE '%' || (p->>'customer') || '%'
-          OR COALESCE(o.phone,'')                     ILIKE '%' || (p->>'customer') || '%'))
+             COALESCE(o.raw_payload->>'firstName','')  ILIKE '%' || (p->>'customer') || '%'
+          OR COALESCE(o.raw_payload->>'lastName','')   ILIKE '%' || (p->>'customer') || '%'
+          OR COALESCE(o.raw_payload->>'patronymic','') ILIKE '%' || (p->>'customer') || '%'
+          OR COALESCE(o.raw_payload->>'email','')      ILIKE '%' || (p->>'customer') || '%'
+          OR COALESCE(o.raw_payload->'customer'->>'nickName','')   ILIKE '%' || (p->>'customer') || '%'
+          OR COALESCE(o.raw_payload->'contragent'->>'legalName','') ILIKE '%' || (p->>'customer') || '%'
+          OR COALESCE(o.phone,'')                      ILIKE '%' || (p->>'customer') || '%'
+          OR COALESCE(o.raw_payload->>'phone','')      ILIKE '%' || (p->>'customer') || '%'
+          -- Телефон сверяем и по последним десяти цифрам: записывают его
+          -- по-разному, а поиск молча не находил ничего.
+          OR (length(regexp_replace(p->>'customer', '\D', '', 'g')) >= 10 AND EXISTS (
+                SELECT 1 FROM unnest(COALESCE(o.customer_phones, ARRAY[]::text[])) ph
+                 WHERE regexp_replace(ph, '\D', '', 'g')
+                       LIKE '%' || right(regexp_replace(p->>'customer', '\D', '', 'g'), 10)))
+          OR (jsonb_array_length(COALESCE(p->'customerIds','[]'::jsonb)) > 0
+              AND o.raw_payload->'customer'->>'id' IN (
+                    SELECT jsonb_array_elements_text(p->'customerIds')))))
        -- Менеджеры
        AND (p->'managers' IS NULL OR jsonb_array_length(p->'managers') = 0
             OR o.manager_id::text IN (SELECT jsonb_array_elements_text(p->'managers')))

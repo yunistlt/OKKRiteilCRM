@@ -283,6 +283,19 @@ export async function editOwnOrder(
     if (edit.site) payload.site = edit.site;
 
     const update: Record<string, unknown> = { raw_payload: payload };
+    /**
+     * Телефон держим и в колонке: поиск в списке заказов ищет по ней, а не
+     * внутри `raw_payload`. Иначе исправленный в карточке номер в поиске
+     * остаётся прежним (жалобы менеджеров 06.10.2026).
+     */
+    if (payload.phone !== undefined) {
+        const phones = Array.from(new Set([
+            payload.phone,
+            ...(payload.phones || []).map((item: any) => item?.number),
+        ].filter(Boolean).map(String)));
+        update.phone = payload.phone || null;
+        update.customer_phones = phones.length ? phones : null;
+    }
     if (edit.statusCode) update.status = edit.statusCode;
     if (edit.managerId) update.manager_id = edit.managerId;
     if (edit.site) update.site = edit.site;

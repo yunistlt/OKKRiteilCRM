@@ -190,6 +190,21 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         customFields: orderData.customFields || {},
     };
 
+    /**
+     * Телефоны кладём и в колонки, не только внутрь `raw_payload`.
+     *
+     * У приехавших из RetailCRM заказов колонки `phone` и `customer_phones`
+     * заполняет перенос, и поиск в списке заказов ищет именно по ним. Свои
+     * заказы их не заполняли, и заказ нельзя было найти по номеру телефона —
+     * клиент звонит, не помня номера заказа, а список отвечает «под этот фильтр
+     * заказов нет» (Ирина Гордеева и Евгения Матвеева, 06.10.2026).
+     */
+    const orderPhone = payload.phone || (payload.phones || [])[0]?.number || null;
+    const allPhones = Array.from(new Set([
+        orderPhone,
+        ...(payload.phones || []).map((item: any) => item?.number),
+    ].filter(Boolean).map(String)));
+
     const { error } = await supabase.from('orders').insert({
         id,
         order_id: id,
@@ -199,6 +214,8 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         manager_id: orderData.managerId ?? null,
         is_own: true,
         created_at: new Date().toISOString(),
+        phone: orderPhone,
+        customer_phones: allPhones.length ? allPhones : null,
         raw_payload: payload,
     });
 

@@ -46,6 +46,12 @@ export interface OrdersFilter {
      * включает их шестерёнкой фильтра (решение владельца 05.10.2026).
      */
     customFields?: Record<string, string>;
+    /**
+     * Карточки клиентов, подошедшие под поле «Покупатель». Заполняет маршрут
+     * списка перед запросом (`clientIdsByText`): искать заказы по клиенту одним
+     * запросом нельзя — карточки лежат в своих таблицах.
+     */
+    customerIds?: string[];
 }
 
 export const EMPTY_FILTER: OrdersFilter = {
@@ -158,9 +164,25 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
         const conditions = [
             `raw_payload->>firstName.ilike.%${v}%`,
             `raw_payload->>lastName.ilike.%${v}%`,
+            `raw_payload->>patronymic.ilike.%${v}%`,
             `raw_payload->>email.ilike.%${v}%`,
+            `raw_payload->customer->>nickName.ilike.%${v}%`,
+            `raw_payload->contragent->>legalName.ilike.%${v}%`,
             `phone.ilike.%${v}%`,
+            // Телефон своего заказа живёт внутри payload: колонку заполняет
+            // перенос из RetailCRM, а свои заказы её не знали.
+            `raw_payload->>phone.ilike.%${v}%`,
+            `additionalPhone.ilike.%${v}%`,
         ];
+
+        /**
+         * Клиент ищется и по своей карточке, а не только по контакту заказа:
+         * заказ может стоять на человеке, а карточка называться иначе
+         * («Лачинов Вугар» против контакта «Александр Дубровский»).
+         */
+        if (filter.customerIds?.length) {
+            conditions.push(`raw_payload->customer->>id.in.(${filter.customerIds.join(',')})`);
+        }
 
         /**
          * Телефон ищем по последним десяти цифрам. В базе он лежит слитно
@@ -169,7 +191,10 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
          * Парфёнова 05.10.2026).
          */
         const digits = phoneTail(v);
-        if (digits) conditions.push(`phone.ilike.%${digits}%`);
+        if (digits) {
+            conditions.push(`phone.ilike.%${digits}%`);
+            conditions.push(`raw_payload->>phone.ilike.%${digits}%`);
+        }
 
         q = q.or(conditions.join(','));
     }
@@ -246,6 +271,9 @@ export function filterToCountParams(
     return {
         number: filter.number || '',
         customer: filter.customer || '',
+        // Счётчики статусов и «Итого» считают по тем же карточкам, что и список,
+        // иначе цифры разойдутся с показанными строками.
+        customerIds: filter.customerIds || [],
         managers: filter.managers.filter(Boolean),
         // Статусы нужны «Итого по фильтру» (orders_filter_totals); счётчики
         // колонки их намеренно игнорируют — иначе по колонке не переключиться.
