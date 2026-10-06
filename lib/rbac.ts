@@ -1,6 +1,6 @@
 import type { AppSession, AppRole } from '@/lib/auth';
 
-export const APP_ROLES: AppRole[] = ['admin', 'okk', 'rop', 'manager', 'jurist', 'demo'];
+export const APP_ROLES: AppRole[] = ['admin', 'okk', 'rop', 'manager', 'jurist', 'logistics', 'logistics_view', 'demo'];
 
 export type RouteRule = {
     prefix: string;
