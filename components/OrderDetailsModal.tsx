@@ -127,7 +127,7 @@ const FieldErrorsContext = createContext<Record<string, string>>({});
  */
 const FieldDirtyContext = createContext<Set<string>>(new Set());
 
-const EditField = ({ label, value, onChange, required, type = 'text', options, action, fieldKey }: {
+const EditField = ({ label, value, onChange, required, type = 'text', options, action, fieldKey, multiline }: {
     label: string;
     value: any;
     onChange?: (value: any) => void;
@@ -138,6 +138,12 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
     action?: ReactNode;
     /** Ключ черновика — по нему поле узнаёт свою ошибку. */
     fieldKey?: string;
+    /**
+     * Поле в несколько строк — для тех, куда пишут длинный текст (требование
+     * владельца 06.10.2026 про комментарий логисту: «туда пишут длинные
+     * портянки, так же как в комментарий оператору»).
+     */
+    multiline?: boolean;
 }) => {
     const problem = useContext(FieldErrorsContext)[fieldKey ?? ''];
     const changed = useContext(FieldDirtyContext).has(fieldKey ?? '');
@@ -164,6 +170,13 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
                     <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
             </select>
+        ) : onChange && multiline ? (
+            <textarea
+                value={value ?? ''}
+                onChange={(e) => onChange(e.target.value)}
+                rows={4}
+                className={`w-full resize-y px-2 py-1 border text-sm text-gray-900 ${frame}`}
+            />
         ) : onChange ? (
             <div className="flex items-stretch gap-1">
                 <input
@@ -1029,7 +1042,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const logisticRegion = pickValue(address.region);
         const logisticCost = toNumber(pickValue(delivery.cost, order.delivery_cost));
         const logisticSelfCost = toNumber(pickValue(delivery.selfCost, customFields.sebestoimost2));
-        const logisticDate = pickValue(delivery.date, customFields.data_otgruzki);
         const logisticTime = pickValue(delivery.time, customFields.vremya_dostavki);
         const operatorComment = pickValue(payload.managerComment);
         const clientComment = pickValue(payload.customerComment);
@@ -1767,22 +1779,39 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     {/* Складских полей здесь нет: склада у компании нет, всё идёт
                         прямо с производства (решение владельца 30.09.2026). */}
                     <CardSection id="order-shipping" title="Отгрузка и доставка">
-                        <div className="grid md:grid-cols-2 gap-2">
-                            <InfoField label="Дата отгрузки" value={formatDate(shipping.date || logisticDate)} />
-                            <EditField fieldKey="cf.srok_izgot" label="Срок изготовления, дней" type="number" value={fieldValue('cf.srok_izgot', customFields.srok_izgot ?? '')} onChange={(v) => setField('cf.srok_izgot', v)} />
+                        {/* Срок и единица — в одну строку и узкими: вносят туда
+                            мало, а занимали полблока (решение владельца
+                            06.10.2026). «Дата отгрузки» убрана — её не
+                            заполняет ничто, пусто у всех 1830 заказов за
+                            полгода, и такого поля нет в справочнике RetailCRM. */}
+                        <div className="flex flex-wrap items-start gap-2">
+                            <div className="w-36">
+                                <EditField fieldKey="cf.srok_izgot" label="Срок изготовления, дней" type="number" value={fieldValue('cf.srok_izgot', customFields.srok_izgot ?? '')} onChange={(v) => setField('cf.srok_izgot', v)} />
+                            </div>
                             {/* Какие это дни — «80» само по себе читается двояко
                                 (замечание Евгении 05.10.2026). Единица идёт в КП,
                                 счёт и договор. */}
-                            <EditField fieldKey="order.srok_izgot_edinica"
-                                label="Дни считаем"
-                                value={fieldValue('order.srok_izgot_edinica', order?.srok_izgot_edinica || 'kalendarnye')}
-                                onChange={(v) => setField('order.srok_izgot_edinica', v)}
-                                options={[
-                                    { value: 'kalendarnye', label: 'Календарные' },
-                                    { value: 'rabochie', label: 'Рабочие' },
-                                ]}
+                            <div className="w-44">
+                                <EditField fieldKey="order.srok_izgot_edinica"
+                                    label="Дни считаем"
+                                    value={fieldValue('order.srok_izgot_edinica', order?.srok_izgot_edinica || 'kalendarnye')}
+                                    onChange={(v) => setField('order.srok_izgot_edinica', v)}
+                                    options={[
+                                        { value: 'kalendarnye', label: 'Календарные' },
+                                        { value: 'rabochie', label: 'Рабочие' },
+                                    ]}
+                                />
+                            </div>
+                        </div>
+                        {/* Логисту пишут длинным текстом — поле в несколько строк,
+                            как комментарий оператору (решение владельца 06.10.2026). */}
+                        <div className="mt-2">
+                            <EditField fieldKey="cf.komment_diveleri"
+                                label="Комментарий логисту"
+                                multiline
+                                value={fieldValue('cf.komment_diveleri', customFields.komment_diveleri || '')}
+                                onChange={(v) => setField('cf.komment_diveleri', v)}
                             />
-                            <EditField fieldKey="cf.komment_diveleri" label="Комментарий логисту" value={fieldValue('cf.komment_diveleri', customFields.komment_diveleri || '')} onChange={(v) => setField('cf.komment_diveleri', v)} />
                         </div>
                     </CardSection>
 
