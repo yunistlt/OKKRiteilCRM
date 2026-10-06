@@ -1033,7 +1033,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const logisticReceiver = pickValue(customFields.naimenovanie_gruzopoluchatelya);
         const dsDocument = pickValue(customFields.datacheta);
         const marginValue = pickValue(customFields.marzha);
-        const priorityNumber = pickValue(customFields.prioriry_number);
         const contractBasis = names.field('osnovanie_podpisi', pickValue(customFields.osnovanie_podpisi));
         const logisticAddress = pickValue(address.text, [address.region, address.city, address.street, address.house, address.building].filter(Boolean).join(', '));
         const logisticIndex = pickValue(address.index);
@@ -1787,7 +1786,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             </div>
                         </div>
                         {/* Логисту пишут длинным текстом — поле в несколько строк,
-                            как комментарий оператору (решение владельца 06.10.2026). */}
+                            как комментарий оператору (решение владельца 06.10.2026).
+                            Сюда же слито «Примечание по отгрузке»: это было о том
+                            же самом, и менеджеры не знали, какое из двух полей
+                            заполнять. Заполненное перенесено, 15 заказов. */}
                         <div className="mt-2">
                             <EditField fieldKey="cf.komment_diveleri"
                                 label="Комментарий логисту"
@@ -1869,17 +1871,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             </div>
                         </div>
 
-                        {/* Общее поле под габариты и состав: по шкафам его
-                            постоянно спрашивают при самовывозе. Поле заказа
-                            «Примечание по отгрузке» — не заводим новое. */}
-                        <div className="mt-3">
-                            <EditField
-                                fieldKey="cf.primecanie_po_otgruzke"
-                                label="Примечание по отгрузке (габариты, состав, что сказать заказчику)"
-                                value={fieldValue('cf.primecanie_po_otgruzke', customFields.primecanie_po_otgruzke || '')}
-                                onChange={(v) => setField('cf.primecanie_po_otgruzke', v)}
-                            />
-                        </div>
                     </CardSection>
 
                     <div className="bg-white border border-gray-200 p-4">
@@ -2146,10 +2137,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     <div className="bg-white border border-gray-200 p-4">
                         <h3 className="text-base font-semibold text-gray-900 mb-2">Оплата</h3>
                         <div className="grid md:grid-cols-3 gap-2">
-                            <InfoField label="Сумма заказа" value={formatCurrency(totalSummValue)} />
                             <InfoField label="Предоплата" value={formatCurrency(toNumber(payload.prepaySum))} />
                             <InfoField label="Ожидается" value={formatCurrency(toNumber(payload.purchaseSumm))} />
-                            <InfoField label="Приоритет" value={priorityNumber || '—'} />
                         </div>
                     </div>
 

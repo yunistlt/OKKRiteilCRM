@@ -64,13 +64,32 @@ async function resolveCategories(rows: any[]): Promise<Record<string, string>> {
  * «РШС-3-6» на «ршс», «3», «6», короткие куски отбрасывались, и от модели
  * оставалось «ршс» — общее для сотен товаров. Держим такие куски целыми.
  */
-export function catalogQueryParts(query: string): { models: string[]; words: string[] } {
-    const text = String(query ?? '').toLowerCase().replace(/\u00a0/g, ' ');
+/**
+ * Любое тире — к обычному дефису.
+ *
+ * В названиях каталога встречается длинное тире: «Шкаф сушильный для одежды
+ * РШС–ВД» записан через «–» (U+2013), а менеджер набирает обычный «-». Поиск
+ * сравнивал буквально и не находил ничего (жалоба Евгении Матвеевой
+ * 06.10.2026 по заказу 52845: «на сайте есть, а в поиске нет»).
+ */
+export function normalizeDashes(text: string): string {
+    return String(text ?? '').replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, '-');
+}
 
-    // Кусок с буквами и цифрами через дефис/точку — это модель или габариты.
+export function catalogQueryParts(query: string): { models: string[]; words: string[] } {
+    const text = normalizeDashes(String(query ?? '')).toLowerCase().replace(/\u00a0/g, ' ');
+
+    /**
+     * Кусок через дефис или точку — модель или габариты.
+     *
+     * Цифра в нём больше не обязательна: «РШС-ВД» — это тоже модель, а
+     * прежнее правило выбрасывало её целиком. Дальше «ршс» уходило в слова,
+     * «вд» терялось как слишком короткое, и поиск выдавал все РШС подряд,
+     * кроме нужного.
+     */
     const models = (text.match(/[a-zа-яё0-9]+(?:[-.x×][a-zа-яё0-9]+)+/gi) ?? [])
         .map((part) => part.replace(/[.,;]+$/, ''))
-        .filter((part) => /\d/.test(part) && part.length >= 4);
+        .filter((part) => part.length >= 4);
 
     const words = text
         .split(/[^a-zа-яё0-9]+/i)
@@ -108,7 +127,9 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
             let request = client()
                 .from('marketing_products')
                 .select('id, sku, name, price, full_url, category_id, meta, raw_data');
-            for (const part of parts) request = request.ilike('name', `%${part}%`);
+            // Дефис в образце — подстановочным знаком: в каталоге на его месте
+            // бывает длинное тире, и точное сравнение не находило товар.
+            for (const part of parts) request = request.ilike('name', `%${part.replace(/-/g, '_')}%`);
             const { data, error } = await request.limit(take);
             if (error) throw new Error(error.message);
             return (data ?? []) as any[];
@@ -139,7 +160,7 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
             // Последняя попытка — «ИЛИ», как раньше, но с большой выборкой и
             // ранжированием по числу совпавших слов.
             const all = [...models, ...words];
-            const or = all.map((part) => `name.ilike.%${part}%`).join(',');
+            const or = all.map((part) => `name.ilike.%${part.replace(/-/g, '_')}%`).join(',');
             const { data, error } = await client()
                 .from('marketing_products')
                 .select('id, sku, name, price, full_url, category_id, meta, raw_data')
