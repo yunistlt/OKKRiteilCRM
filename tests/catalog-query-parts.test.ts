@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { catalogQueryParts } from '@/lib/shtab/lvz';
+import { catalogQueryParts, looseLike } from '@/lib/shtab/lvz';
 import { decodeEntities } from '@/lib/sales-rop/letter-render';
 
 /**
@@ -54,5 +54,47 @@ describe('названия товаров человеческим тексто�
         // «AC&DC; 500 кг» — не код, а настоящий текст: трогать нельзя.
         expect(decodeEntities('Подъемник SJY-0.5-11 (AC&DC; 500 кг)'))
             .toBe('Подъемник SJY-0.5-11 (AC&DC; 500 кг)');
+    });
+});
+
+describe('модель с длинным тире и без цифр', () => {
+    it('«РШС-ВД» — это модель, а не два отдельных слова', () => {
+        // Прежнее правило требовало в модели цифру: «ршс-вд» рассыпалось,
+        // «вд» терялось как слишком короткое, и поиск выдавал все РШС подряд
+        // (жалоба Евгении Матвеевой 06.10.2026, заказ 52845).
+        const { models, words } = catalogQueryParts('РШС-ВД');
+
+        expect(models).toContain('ршс-вд');
+        expect(words).not.toContain('ршс');
+    });
+
+    it('длинное тире в запросе читается как обычный дефис', () => {
+        // В каталоге название записано через «–» (U+2013), менеджер набирает «-».
+        expect(catalogQueryParts('РШС–ВД').models).toEqual(catalogQueryParts('РШС-ВД').models);
+    });
+
+    it('модель с цифрами разбирается как раньше', () => {
+        expect(catalogQueryParts('Шкаф сушильный РШС-3-6 ЗМК').models).toContain('ршс-3-6');
+    });
+});
+
+describe('образец поиска не замечает знаков препинания', () => {
+    it('на месте любого знака подойдёт что угодно', () => {
+        // Требование владельца 06.10.2026: одна модель пишется по-разному —
+        // «РШС–ВД», «РШС-ВД», «РШС ВД», «РШС.ВД».
+        expect(looseLike('РШС-ВД')).toBe('РШС%ВД');
+        expect(looseLike('РШС–ВД')).toBe('РШС%ВД');
+        expect(looseLike('РШС ВД')).toBe('РШС%ВД');
+        expect(looseLike('РШС.ВД')).toBe('РШС%ВД');
+    });
+
+    it('знаки самого образца экранируются', () => {
+        // Иначе введённый процент означал бы «найди что угодно».
+        expect(looseLike('100%')).toBe('100\\%');
+        expect(looseLike('a_b')).toBe('a%b');
+    });
+
+    it('буквы и цифры не трогает', () => {
+        expect(looseLike('ШСО4В')).toBe('ШСО4В');
     });
 });

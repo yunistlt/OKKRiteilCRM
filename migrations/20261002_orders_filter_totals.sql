@@ -42,6 +42,10 @@ AS $$
           OR (jsonb_array_length(COALESCE(p->'customerIds','[]'::jsonb)) > 0
               AND o.raw_payload->'customer'->>'id' IN (
                     SELECT jsonb_array_elements_text(p->'customerIds')))))
+       -- Наименование товара: названия позиций лежат строкой в orders.items_text
+       -- (просьба Евгении Матвеевой 06.10.2026 — искать дубли по изделию).
+       -- Знаки препинания приходят уже подстановками, как и в списке.
+       AND (COALESCE(p->>'itemName','') = '' OR COALESCE(o.items_text,'') ILIKE '%' || (p->>'itemName') || '%')
        -- Менеджеры
        AND (p->'managers' IS NULL OR jsonb_array_length(p->'managers') = 0
             OR o.manager_id::text IN (SELECT jsonb_array_elements_text(p->'managers')))

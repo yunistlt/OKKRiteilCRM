@@ -1,11 +1,22 @@
 import { supabase } from '@/utils/supabase';
 
 // ============================================================================
-// Роль (схема ЗП) менеджера = ГРУППА пользователя в RetailCRM напрямую:
-// код схемы (salary_scheme.code) = код группы RetailCRM (managers.raw_data.groups[].code).
-// Группа считается ролью, только если для неё заведена схема. Закон: роли из СРМ.
-//   0 групп-схем → не в реестре; 1 → авто; 2+ → выбор пользователя (из этих ролей).
-// Выбор для 2+ хранится в salary_manager_comp (используется только при конфликте).
+// Роль (схема ЗП) менеджера — из НАШЕГО реестра, а не из групп RetailCRM.
+//
+// Решение владельца 06.10.2026: «надо переключить на наш ОКК». Раньше схема
+// бралась только из группы пользователя в RetailCRM (код схемы = код группы).
+// В RetailCRM мы больше не работаем, и группы там разошлись с нашими схемами:
+// у Парфёновой, Матвеевой и Гордеевой группа стала «tes», схема называется
+// «menedzhery» — совпадения нет, и в расчёт не попадал НИКТО. Экран «Зарплата
+// ОП» за сентябрь писал «засчитанных заявок нет», хотя заявки есть: 47 за
+// месяц у троих менеджеров.
+//
+// Теперь порядок такой:
+//   1) запись в salary_manager_comp — наш реестр, он главный;
+//   2) если записи нет — группа RetailCRM, как раньше (для тех, кого к нам
+//      ещё не перенесли);
+//   3) ни того, ни другого → не в реестре ЗП.
+// При двух и более группах-кандидатах выбор по-прежнему за человеком.
 // ============================================================================
 
 export interface ManagerRole {
@@ -57,12 +68,15 @@ export async function resolveManagerRoles(asOf: string): Promise<ManagerRole[]> 
         const candidates = Array.from(new Set(groups.map((g) => g.code).filter((c) => schemeCodes.has(c))));
         let resolved: string | null = null;
         let needsChoice = false;
-        if (candidates.length === 1) {
+
+        // Наш реестр — первым: схема, назначенная в ОКК, перебивает группу CRM.
+        const own = choice.get(Number(m.id));
+        if (own && schemeCodes.has(own)) {
+            resolved = own;
+        } else if (candidates.length === 1) {
             resolved = candidates[0];
         } else if (candidates.length > 1) {
-            const c = choice.get(Number(m.id));
-            if (c && candidates.includes(c)) resolved = c;
-            else needsChoice = true;
+            needsChoice = true;
         }
         out.push({
             managerId: Number(m.id),

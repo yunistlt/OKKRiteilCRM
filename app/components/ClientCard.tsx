@@ -9,6 +9,7 @@ import { formatIntRu, formatRub } from '@/lib/format';
 import { isReseller } from '@/lib/own-crm/okved';
 import { sameCompany } from '@/lib/own-crm/same-company';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
+import CompanyGroupPanel from '@/components/clients/CompanyGroupPanel';
 
 type Requisites = {
     contragentType?: string | null;
@@ -690,6 +691,15 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                             Карточки не объединяются автоматически — решение за менеджером.
                         </div>
                     )}
+
+                    {/* Группа компаний: разные юрлица одного покупателя считаются
+                        одним клиентом (решение владельца 06.10.2026). Стоит сразу
+                        под найденными карточками — там и видно, что объединять. */}
+                    <CompanyGroupPanel
+                        clientId={clientId}
+                        clientName={client?.company_name || ''}
+                        onChanged={() => void load()}
+                    />
                 </div>
 
                 <div className="bg-white text-xs lg:col-span-1">

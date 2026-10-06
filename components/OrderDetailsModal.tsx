@@ -731,8 +731,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                 .then((r) => r.json())
                 .then((payload) => setSellerOptions(payload.sellers || []))
                 .catch(() => setSellerOptions([]));
-            setDraftClientComment(String(payload.customerComment ?? ''));
-            setDraftManagerComment(String(payload.managerComment ?? ''));
+            // Комментарии — из своих полей, а не из снимка (закон 06.10.2026).
+            setDraftClientComment(String(json?.order?.customerComment ?? ''));
+            setDraftManagerComment(String(json?.order?.managerComment ?? ''));
             setDirty(false);
             setSaveNote(null);
             // Проверка контрагента по ИНН — в фоне, не блокирует показ карточки заказа.
@@ -1033,25 +1034,32 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const logisticReceiver = pickValue(customFields.naimenovanie_gruzopoluchatelya);
         const dsDocument = pickValue(customFields.datacheta);
         const marginValue = pickValue(customFields.marzha);
-        const priorityNumber = pickValue(customFields.prioriry_number);
         const contractBasis = names.field('osnovanie_podpisi', pickValue(customFields.osnovanie_podpisi));
         const logisticAddress = pickValue(address.text, [address.region, address.city, address.street, address.house, address.building].filter(Boolean).join(', '));
         const logisticIndex = pickValue(address.index);
-        const logisticMetro = pickValue(address.metro);
         const logisticCity = pickValue(address.city);
         const logisticRegion = pickValue(address.region);
         const logisticCost = toNumber(pickValue(delivery.cost, order.delivery_cost));
-        const logisticSelfCost = toNumber(pickValue(delivery.selfCost, customFields.sebestoimost2));
         const logisticTime = pickValue(delivery.time, customFields.vremya_dostavki);
-        const operatorComment = pickValue(payload.managerComment);
-        const clientComment = pickValue(payload.customerComment);
+        const operatorComment = pickValue(order.managerComment);
+        const clientComment = pickValue(order.customerComment);
         const additionalEmail = pickValue(customFields.additional_email, customFields.dopolnitelnyi_email, payload.additionalEmail);
-        const totalSummValue = toNumber(pickValue(payload.totalSumm, order.totalsumm));
-        const orderStatusCode = pickValue(payload.status?.code, payload.status, order.status);
-        const countryValue = formatCountryName(pickValue(payload.countryIso, address.countryIso));
-        const createdDate = formatDateTime(pickValue(payload.createdAt, order.created_at));
+        const totalSummValue = toNumber(order.totalsumm);
+        /**
+         * Статус берём ТОЛЬКО из колонки заказа — она единственный источник
+         * правды (закон владельца 06.10.2026).
+         *
+         * Раньше читали сначала копию внутри raw_payload и лишь потом колонку.
+         * Копию обновляет перенос из RetailCRM, а колонку — наше приложение;
+         * перенос отключили, копия застыла, и карточка показывала старый
+         * статус. На этом же разъезде я 06.10.2026 затёр статусы 16 заказов:
+         * заказы, переданные в производство, вернулись в «Счёт на оплате».
+         */
+        const orderStatusCode = pickValue(order.status, payload.status?.code, payload.status);
+        const countryValue = formatCountryName(pickValue(order.countryIso, address.countryIso));
+        const createdDate = formatDateTime(order.created_at);
         const statusUpdated = formatDateTime(pickValue(payload.statusUpdatedAt, order.updated_at));
-        const privilegeType = pickValue(payload.privilegeType);
+        const privilegeType = pickValue(order.privilegeType);
         // Имя контакта: сначала то, что стоит в самом заказе — его правит
         // менеджер в этой карточке. `contact` приезжает из RetailCRM и держит
         // латиницу («Belyaeva Irina»), поэтому он только запасной вариант:
@@ -1080,7 +1088,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     <CardSection id="order-common" title="Основное">
                         <div className="grid gap-2 md:grid-cols-2">
                             <InfoField label="Страна" required value={countryValue} />
-                            <InfoField label="Тип заказа" value={names.resolve('orderType', payload.orderType) || 'Не указан'} />
+                            <InfoField label="Тип заказа" value={names.resolve('orderType', order.orderType) || 'Не указан'} />
                             {/* Менеджер меняется прямо здесь, с причиной: раньше
                                 менеджер писал владельцу в Telegram, а тот переводил
                                 руками (решение владельца 05.10.2026). */}
@@ -1636,7 +1644,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             // Итог, который знает RetailCRM: колонку обновляет синхронизация,
                             // а снимок состава (raw_payload) бывает старее её. Расхождение не
                             // прячем — иначе «скидка исчезла» выглядит как ошибка счёта.
-                            const crmTotal = Number(toNumber(pickValue(order.totalsumm, payload.totalSumm)) ?? 0);
+                            const crmTotal = Number(toNumber(order.totalsumm) ?? 0);
                             const stale = crmTotal > 0 && Math.abs(crmTotal - ourTotal) > 1;
 
                             return (
@@ -1669,7 +1677,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                         Сумма скидок по заказу: {discountTotal > 0 ? `−${formatCurrency(discountTotal)}` : formatCurrency(0)}
                                     </div>
                                     <div>Стоимость доставки: {formatCurrency(delivery)}</div>
-                                    <div>Себестоимость: {formatCurrency(logisticSelfCost)}</div>
                                     <div className="font-semibold text-gray-900">
                                         Итого: {formatCurrency(ourTotal)}
                                     </div>
@@ -1790,7 +1797,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             </div>
                         </div>
                         {/* Логисту пишут длинным текстом — поле в несколько строк,
-                            как комментарий оператору (решение владельца 06.10.2026). */}
+                            как комментарий оператору (решение владельца 06.10.2026).
+                            Сюда же слито «Примечание по отгрузке»: это было о том
+                            же самом, и менеджеры не знали, какое из двух полей
+                            заполнять. Заполненное перенесено, 15 заказов. */}
                         <div className="mt-2">
                             <EditField fieldKey="cf.komment_diveleri"
                                 label="Комментарий логисту"
@@ -1814,10 +1824,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             <EditField fieldKey="delivery.cost" label="Стоимость доставки" type="number" value={fieldValue('delivery.cost', logisticCost ?? 0)} onChange={(v) => setField('delivery.cost', v)} />
                             <EditField fieldKey="delivery.region" label="Регион" value={fieldValue('delivery.region', logisticRegion || '')} onChange={(v) => setField('delivery.region', v)} />
                             <EditField fieldKey="delivery.city" label="Город" value={fieldValue('delivery.city', logisticCity || '')} onChange={(v) => setField('delivery.city', v)} />
-                            <InfoField label="Метро" value={logisticMetro || '—'} />
                             <EditField fieldKey="delivery.index" label="Индекс" value={fieldValue('delivery.index', logisticIndex || '')} onChange={(v) => setField('delivery.index', v)} />
                             <EditField fieldKey="cf.consignee" label="Получатель" value={fieldValue('cf.consignee', customFields.consignee || logisticReceiver || '')} onChange={(v) => setField('cf.consignee', v)} />
-                            <InfoField label="Коммент клиента" value={delivery.comment || '—'} />
                         </div>
 
                         {/* Адрес одной строкой и разбор по частям — как в RetailCRM:
@@ -1874,17 +1882,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             </div>
                         </div>
 
-                        {/* Общее поле под габариты и состав: по шкафам его
-                            постоянно спрашивают при самовывозе. Поле заказа
-                            «Примечание по отгрузке» — не заводим новое. */}
-                        <div className="mt-3">
-                            <EditField
-                                fieldKey="cf.primecanie_po_otgruzke"
-                                label="Примечание по отгрузке (габариты, состав, что сказать заказчику)"
-                                value={fieldValue('cf.primecanie_po_otgruzke', customFields.primecanie_po_otgruzke || '')}
-                                onChange={(v) => setField('cf.primecanie_po_otgruzke', v)}
-                            />
-                        </div>
                     </CardSection>
 
                     <div className="bg-white border border-gray-200 p-4">
@@ -2151,10 +2148,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     <div className="bg-white border border-gray-200 p-4">
                         <h3 className="text-base font-semibold text-gray-900 mb-2">Оплата</h3>
                         <div className="grid md:grid-cols-3 gap-2">
-                            <InfoField label="Сумма заказа" value={formatCurrency(totalSummValue)} />
-                            <InfoField label="Предоплата" value={formatCurrency(toNumber(payload.prepaySum))} />
-                            <InfoField label="Ожидается" value={formatCurrency(toNumber(payload.purchaseSumm))} />
-                            <InfoField label="Приоритет" value={priorityNumber || '—'} />
+                            <InfoField label="Предоплата" value={formatCurrency(toNumber(order.prepaySum))} />
+                            <InfoField label="Ожидается" value={formatCurrency(toNumber(order.purchaseSumm))} />
                         </div>
                     </div>
 
@@ -2357,9 +2352,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const order = json?.order ?? {};
         const contact = payload.contact ?? {};
         const customer = payload.customer ?? {};
-        const createdDate = formatDateTime(pickValue(payload.createdAt, order.created_at));
+        const createdDate = formatDateTime(order.created_at);
         const statusUpdated = formatDateTime(pickValue(payload.statusUpdatedAt, order.updated_at));
-        const privilegeType = pickValue(payload.privilegeType);
+        const privilegeType = pickValue(order.privilegeType);
         const documentsViaEDO = formatBooleanYesNo(customFields.dokumentooborot_cherez_edo);
         const invoiceValidDays = pickValue(customFields.schiot_deistvitelen_v_techenie_dnei);
         const selfCost = toNumber(pickValue(payload.delivery?.selfCost, customFields.sebestoimost2));
@@ -2371,7 +2366,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         значения тянем из синканутого каталога. */}
                     <EditField fieldKey="orderMethod"
                         label="Способ оформления"
-                        value={fieldValue('orderMethod', payload.orderMethod || '')}
+                        value={fieldValue('orderMethod', order.orderMethod || '')}
                         options={names.enumOptions('orderMethod')}
                         onChange={(v) => setField('orderMethod', v)}
                     />
