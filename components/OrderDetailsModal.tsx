@@ -1221,45 +1221,31 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             <EditField fieldKey="cf.poshta" label="Доп. Email" value={fieldValue('cf.poshta', additionalEmail || '')} onChange={(v) => setField('cf.poshta', v)} />
                         </div>
 
-                        {/* Реквизиты — того же заказчика, поэтому здесь же.
-                            Хозяин их — карточка клиента, в заказ подтягиваются сами. */}
-                        <div className="mt-4 border-t border-gray-200 pt-3">
-                            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                                <h4 className="text-sm font-semibold text-gray-900">Реквизиты заказчика</h4>
+                        {/* Реквизиты заказчика из карточки заказа убраны по
+                            решению владельца 06.10.2026: «реквизиты компании тут
+                            не надо отображать, достаточно контактов и
+                            наименования». Хозяин реквизитов — карточка клиента,
+                            в счёт и КП они подставляются оттуда сами.
+
+                            Осталось одно предупреждение и только когда
+                            реквизитов нет НИГДЕ: без него счёт ушёл бы клиенту
+                            пустым, и менеджер узнал бы об этом только от него. */}
+                        {requisites
+                            && requisites.client?.source !== 'client'
+                            && requisites.client?.source !== 'order' && (
+                            <p className="mt-3 border-t border-gray-200 pt-3 text-xs text-amber-800">
+                                Реквизитов нет ни в карточке клиента, ни в заказе — счёт и договор
+                                напечатаются без них.
                                 {clientCardId && (
-                                    <a href={`/clients/${clientCardId}`} className="text-xs text-blue-700 hover:underline">
-                                        править в карточке клиента
-                                    </a>
+                                    <>
+                                        {' '}
+                                        <a href={`/clients/${clientCardId}`} className="text-blue-700 hover:underline">
+                                            Внести в карточке клиента
+                                        </a>
+                                    </>
                                 )}
-                            </div>
-
-                            <div className="grid md:grid-cols-2 gap-2">
-                                <InfoField label="Юридическое название" value={requisites?.client?.legalName || requisites?.inOrder?.legalName || '—'} />
-                                <InfoField label="ИНН" value={requisites?.client?.inn || requisites?.inOrder?.inn || '—'} />
-                                <InfoField label="КПП" value={requisites?.client?.kpp || requisites?.inOrder?.kpp || '—'} />
-                                <InfoField label="ОГРН / ОГРНИП" value={requisites?.client?.ogrn || requisites?.client?.ogrnip || requisites?.inOrder?.ogrn || requisites?.inOrder?.ogrnip || '—'} />
-                                {/* Подписант договора — из карточки клиента: в заказе
-                                    этих данных нет (просьба Лены Парфёновой 05.10.2026). */}
-                                <InfoField
-                                    label="Подписант договора"
-                                    value={[requisites?.client?.signerTitle, requisites?.client?.signerName].filter(Boolean).join(', ') || '—'}
-                                />
-                                <InfoField label="Действует на основании" value={requisites?.client?.signerBasis || '—'} />
-                                <InfoField label="Юридический адрес" value={requisites?.client?.legalAddress || requisites?.inOrder?.legalAddress || '—'} />
-                                <InfoField label="Банк" value={requisites?.client?.bank || requisites?.inOrder?.bank || '—'} />
-                                <InfoField label="Расчётный счёт" value={requisites?.client?.bankAccount || requisites?.inOrder?.bankAccount || '—'} />
-                                <InfoField label="БИК" value={requisites?.client?.bik || requisites?.inOrder?.bik || '—'} />
-                                <InfoField label="Корреспондентский счёт" value={requisites?.client?.corrAccount || requisites?.inOrder?.corrAccount || '—'} />
-                            </div>
-
-                            <p className="mt-2 text-xs text-gray-500">
-                                {requisites?.client?.source === 'client'
-                                    ? 'Из карточки клиента — в заказ подтягиваются сами, счёт и КП печатаются ими.'
-                                    : requisites?.client?.source === 'order'
-                                        ? `В карточке клиента реквизитов ещё нет — показаны из заказа №${requisites?.client?.fromOrderNumber ?? '—'}. Внесите их в карточку клиента, чтобы они подставлялись сами.`
-                                        : 'Реквизитов нет ни в карточке клиента, ни в заказе. Внесите их в карточке клиента.'}
                             </p>
-                        </div>
+                        )}
                     </CardSection>
 
                     <CardSection id="order-client-extra" title="Дополнительно о клиенте">
