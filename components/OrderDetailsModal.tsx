@@ -1022,7 +1022,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const marginValue = pickValue(customFields.marzha);
         const priorityNumber = pickValue(customFields.prioriry_number);
         const contractBasis = names.field('osnovanie_podpisi', pickValue(customFields.osnovanie_podpisi));
-        const changeManager = pickValue(customFields.change_name_manager);
         const logisticAddress = pickValue(address.text, [address.region, address.city, address.street, address.house, address.building].filter(Boolean).join(', '));
         const logisticIndex = pickValue(address.index);
         const logisticMetro = pickValue(address.metro);
@@ -1076,7 +1075,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             <ManagerTransfer
                                 orderKey={orderId}
                                 currentManagerId={order.manager_id}
-                                currentManagerName={order.manager_name || changeManager || null}
+                                currentManagerName={order.manager_name || null}
                                 onDone={() => void fetchDetails()}
                             />
                             {/* Юрлицо заказа: от него идут реквизиты продавца, расчётный
@@ -1307,7 +1306,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 onChange={(v) => setField('cf.prichiny_otmeny', v)}
                             />
                             <EditField fieldKey="cf.datacheta" label="Датасчёт" type="date" value={fieldValue('cf.datacheta', String(customFields.datacheta || '').slice(0, 10))} onChange={(v) => setField('cf.datacheta', v)} />
-                            <InfoField label="Изменение менеджера" value={changeManager || '—'} />
                         </div>
                     </CardSection>
                 </section>
