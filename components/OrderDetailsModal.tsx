@@ -1048,6 +1048,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const logisticAddress = pickValue(address.text, [address.region, address.city, address.street, address.house, address.building].filter(Boolean).join(', '));
         const logisticIndex = pickValue(address.index);
         const logisticCity = pickValue(address.city);
+        // «Город доставки (менеджерам ОП)» — отдельное поле RetailCRM, не адрес.
+        const deliveryCityManager = pickValue(customFields.gorod_dostavki_menedzheram_op);
         const logisticRegion = pickValue(address.region);
         const logisticCost = toNumber(pickValue(delivery.cost, order.delivery_cost));
         const logisticTime = pickValue(delivery.time, customFields.vremya_dostavki);
@@ -1834,6 +1836,16 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             <EditField fieldKey="delivery.cost" label="Стоимость доставки" type="number" value={fieldValue('delivery.cost', logisticCost ?? 0)} onChange={(v) => setField('delivery.cost', v)} />
                             <EditField fieldKey="delivery.region" label="Регион" value={fieldValue('delivery.region', logisticRegion || '')} onChange={(v) => setField('delivery.region', v)} />
                             <EditField fieldKey="delivery.city" label="Город" value={fieldValue('delivery.city', logisticCity || '')} onChange={(v) => setField('delivery.city', v)} />
+                            {/* Отдельное поле RetailCRM, его заполняет менеджер ОП:
+                                в заявке город известен раньше адреса доставки. В
+                                карточке ОКК его не было — просьба менеджеров
+                                07.10.2026. Подпись берём из каталога полей CRM. */}
+                            <EditField
+                                fieldKey="cf.gorod_dostavki_menedzheram_op"
+                                label={names.fieldLabel('gorod_dostavki_menedzheram_op', 'Город доставки (менеджерам ОП)')}
+                                value={fieldValue('cf.gorod_dostavki_menedzheram_op', deliveryCityManager || '')}
+                                onChange={(v) => setField('cf.gorod_dostavki_menedzheram_op', v)}
+                            />
                             <EditField fieldKey="delivery.index" label="Индекс" value={fieldValue('delivery.index', logisticIndex || '')} onChange={(v) => setField('delivery.index', v)} />
                             <EditField fieldKey="cf.consignee" label="Получатель" value={fieldValue('cf.consignee', customFields.consignee || logisticReceiver || '')} onChange={(v) => setField('cf.consignee', v)} />
                         </div>

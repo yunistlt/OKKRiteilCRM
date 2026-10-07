@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 
 type Item = { entity_type: string; dictionary_code: string | null; item_code: string; item_name: string };
 type Field = { entity: string; code: string; name: string; dictionary: string };
+type FieldName = { code: string; name: string };
 
 type Option = { value: string; label: string };
 
@@ -16,6 +17,8 @@ type Catalog = {
     names: Record<string, string>;
     /** код пользовательского поля → код справочника */
     fieldDictionary: Record<string, string>;
+    /** код пользовательского поля → его название в RetailCRM (подпись в карточке) */
+    fieldLabels: Record<string, string>;
     /**
      * Списки значений: ими заполняются выпадающие списки в карточке заказа.
      * Ключ тот же, что у названий, но без кода значения.
@@ -23,7 +26,7 @@ type Catalog = {
     lists: Record<string, Option[]>;
 };
 
-const EMPTY: Catalog = { names: {}, fieldDictionary: {}, lists: {} };
+const EMPTY: Catalog = { names: {}, fieldDictionary: {}, fieldLabels: {}, lists: {} };
 let cache: Catalog | null = null;
 let inflight: Promise<Catalog> | null = null;
 
@@ -34,7 +37,7 @@ async function loadCatalog(): Promise<Catalog> {
     if (inflight) return inflight;
     inflight = fetch('/api/dictionaries')
         .then((r) => (r.ok ? r.json() : { items: [], fields: [] }))
-        .then((data: { items: Item[]; fields: Field[] }) => {
+        .then((data: { items: Item[]; fields: Field[]; fieldNames?: FieldName[] }) => {
             const names: Record<string, string> = {};
             const lists: Record<string, Option[]> = {};
             for (const it of data.items ?? []) {
@@ -47,7 +50,9 @@ async function loadCatalog(): Promise<Catalog> {
             }
             const fieldDictionary: Record<string, string> = {};
             for (const f of data.fields ?? []) fieldDictionary[f.code] = f.dictionary;
-            cache = { names, fieldDictionary, lists };
+            const fieldLabels: Record<string, string> = {};
+            for (const f of data.fieldNames ?? []) if (f.name) fieldLabels[f.code] = f.name;
+            cache = { names, fieldDictionary, fieldLabels, lists };
             return cache;
         })
         .catch(() => EMPTY)
@@ -91,6 +96,8 @@ export type DictionaryResolver = {
     enumOptions: (entity: DictionaryEntity) => Option[];
     /** Список значений пользовательского поля по его коду. */
     fieldOptions: (fieldCode: string) => Option[];
+    /** Название поля заказа из RetailCRM: fieldLabel('gorod_dostavki_menedzheram_op') → 'Город доставки (менеджерам ОП)'. */
+    fieldLabel: (fieldCode: string, fallback?: string) => string;
     ready: boolean;
 };
 
@@ -141,5 +148,6 @@ export function useDictionaryNames(): DictionaryResolver {
             const dict = catalog.fieldDictionary[fieldCode];
             return dict ? (catalog.lists[`customField|${dict}`] ?? []) : [];
         },
+        fieldLabel: (fieldCode, fallback) => catalog.fieldLabels[fieldCode] || fallback || humanize(fieldCode),
     };
 }
