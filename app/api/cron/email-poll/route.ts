@@ -579,9 +579,16 @@ export async function GET(req: Request) {
 
                 let createdOrderId: number | null = null;
                 let createdOrderNumber: string | null = null;
+                // Заказ, к которому привязали ЭТО письмо (не созданный, а существующий).
+                let linkedOrder: { id: number; number: string } | null = null;
 
-                // Разрешаем существующий заказ для переписки
-                if (emailType === 'reply_thread') {
+                // Разрешаем существующий заказ: для переписки И для писем, которые уходят в отдел.
+                // Письмо по заказу обязано цепляться к заказу ВСЕГДА — пересылка в бухгалтерию/
+                // логистику/юриста это не отменяет, а дополняет.
+                // Инцидент 07.10.2026: четыре письма по заказу №900064 (11,26 млн — условия оплаты,
+                // спор о цене, КП и скриншот счёта) ИИ отнёс к бухгалтерии и переслал. Привязки не
+                // было — в карточке заказа ни писем, ни файлов, менеджер вёл сделку на 11 млн вслепую.
+                if (emailType === 'reply_thread' || isDepartmentRoute(emailType as any)) {
                     // 0. Заказ, найденный по почтовому треду (самый надёжный), затем — номер из темы
                     let orderNum: string | null = threadOrder?.number || subjectOrderNum;
 
@@ -627,20 +634,34 @@ export async function GET(req: Request) {
                     if (resolvedOrder) {
                         createdOrderId = resolvedOrder.id;
                         createdOrderNumber = resolvedOrder.number;
+                        linkedOrder = resolvedOrder;
                         reasoning = `${reasoning} | Привязано к заказу №${resolvedOrder.number}`;
                     }
                 }
 
-                // Письмо продолжает тред уже созданного заказа: сам заказ не плодим, но вложения
-                // (обычно там ТЗ/спецификация) прикрепляем к нему — иначе файлы потерялись бы.
-                if (createOrders && emailType === 'reply_thread' && threadOrder?.id
+                // Письмо относится к заказу → в отдел его НЕ пересылаем вообще. Переписку по сделке
+                // ведёт менеджер заказа; бухгалтерия/логистика/юрист получают только то, что к заказу
+                // не привязано. Иначе разговор о цене и условиях уходит людям, которые его не ведут,
+                // а менеджер узнаёт о нём последним (инцидент 07.10.2026, заказ №900064).
+                if (isDepartmentRoute(emailType as any) && linkedOrder) {
+                    const guessed = routes[emailType]?.label || emailType;
+                    classify[emailType as keyof typeof classify]--;
+                    emailType = 'reply_thread';
+                    classify.reply_thread++;
+                    reasoning = `${reasoning} | Письмо по заказу №${linkedOrder.number} — в «${guessed}» не пересылаем, ведёт менеджер заказа`;
+                }
+
+                // Вложения письма → в тот же заказ, к которому письмо привязали (переписка или
+                // письмо в отдел). Там КП, спецификации, скриншоты счётов — без них карточка заказа
+                // врёт о том, что происходило в сделке.
+                if (createOrders && linkedOrder?.id
                     && Array.isArray(e.attachments_meta) && e.attachments_meta.length > 0 && e.imap_uid != null) {
                     try {
                         const content = await fetchEmailContentByUid(Number(e.imap_uid), e.folder || FOLDER);
                         const files = content?.attachments || [];
                         if (files.length > 0) {
-                            const att = await attachEmailFilesToOrder(threadOrder.id, files);
-                            reasoning = `${reasoning} | Вложения в заказ №${threadOrder.number}: ${att.attached}/${att.total}` +
+                            const att = await attachEmailFilesToOrder(linkedOrder.id, files);
+                            reasoning = `${reasoning} | Вложения в заказ №${linkedOrder.number}: ${att.attached}/${att.total}` +
                                 (att.errors.length ? ` (ошибки: ${att.errors.slice(0, 2).join('; ')})` : '');
                         }
                     } catch (attErr: any) {
