@@ -1,7 +1,7 @@
 import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { parkQueue, releaseQueue, returnQueue } from '@/lib/sales-rop/queue';
-import { localToday } from '@/app/api/cron/rop-morning/route';
+import { localToday } from '@/lib/sales-rop/local-day';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;

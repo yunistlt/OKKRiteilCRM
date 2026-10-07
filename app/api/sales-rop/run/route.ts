@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { runMorning } from '@/lib/sales-rop/service';
-import { localToday } from '@/app/api/cron/rop-morning/route';
+import { localToday } from '@/lib/sales-rop/local-day';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
