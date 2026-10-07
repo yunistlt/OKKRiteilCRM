@@ -211,14 +211,21 @@ export function renderReview(
     const rub = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} ₽`;
     const parts: string[] = [];
 
-    parts.push(`== Коротко`);
-    parts.push(`- Балл дня: ${data.score} из 10`);
-    parts.push(`- ${facts.talks} разговоров, ${facts.minutes} минут в трубке`);
-    if (facts.firstTalk) parts.push(`- Первый разговор в ${facts.firstTalk}`);
-    if (facts.inboundNoOrder) parts.push(`- Входящих без заведённой заявки: ${facts.inboundNoOrder}`);
-    if (facts.withTranscript < facts.talks) {
-        parts.push(`- Не разобрано: нет расшифровки у ${facts.talks - facts.withTranscript} разговоров`);
-    }
+    /**
+     * «Коротко» — один блок: первый пункт пишется сразу после «== », остальные
+     * строками ниже. Если «== Коротко» стоит отдельным блоком, рендер считает
+     * слово «Коротко» первым пунктом и повторяет его дважды.
+     */
+    const short = [
+        `Балл дня: ${data.score} из 10`,
+        `${facts.talks} разговоров, ${facts.minutes} минут в трубке`,
+        facts.firstTalk ? `Первый разговор в ${facts.firstTalk}` : null,
+        facts.inboundNoOrder ? `Входящих без заведённой заявки: ${facts.inboundNoOrder}` : null,
+        facts.withTranscript < facts.talks
+            ? `Не разобрано: нет расшифровки у ${facts.talks - facts.withTranscript} разговоров`
+            : null,
+    ].filter(Boolean) as string[];
+    parts.push(`== ${short[0]}\n${short.slice(1).map((l) => `- ${l}`).join('\n')}`);
 
     const checkLines = checks ? renderChecks(checks) : [];
     if (checkLines.length) {

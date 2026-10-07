@@ -36,11 +36,28 @@ export async function GET(req: NextRequest) {
          */
         const backfill = await backfillTouches(date);
 
-        const { data: managers } = await supabase
-            .from('managers')
-            .select('id, first_name, last_name, active, telphin_extension')
-            .eq('active', true)
-            .not('telphin_extension', 'is', null);
+        /**
+         * Разбор получают УЧАСТНИКИ ОТДЕЛА ПРОДАЖ, а не все, у кого есть
+         * добавочный. Состав берём из реестра участников — того же, по
+         * которому считается зарплата: один источник правды, и отдел не
+         * расходится между двумя списками.
+         *
+         * Иначе в разбор попадают все, кто берёт трубку: секретарь, логист,
+         * владелец. В первом прогоне так и вышло — четыре разбора вместо трёх.
+         */
+        const { data: participants } = await supabase
+            .from('salary_participant')
+            .select('manager_id');
+        const ids = ((participants ?? []) as any[]).map((p) => Number(p.manager_id)).filter(Number.isFinite);
+
+        const { data: managers } = ids.length
+            ? await supabase
+                .from('managers')
+                .select('id, first_name, last_name, active, telphin_extension')
+                .in('id', ids)
+                .eq('active', true)
+                .not('telphin_extension', 'is', null)
+            : { data: [] as any[] };
 
         const list = ((managers ?? []) as any[]).filter((m) => !only || String(m.id) === only);
         const done: Array<{ manager: string; score?: number; reason?: string }> = [];
