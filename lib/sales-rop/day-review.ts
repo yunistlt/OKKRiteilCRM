@@ -360,7 +360,17 @@ export async function buildDayReview(managerId: number, managerName: string, dat
     if (!withT.length) return { ok: false, reason: 'Ни одного расшифрованного разговора' };
 
     const orderNumbers = Array.from(new Set(Array.from(orderOf.values())));
-    const known = await knownAboutOrders(orderNumbers);
+    const checks = await runDayChecks(managerId, date, calls, orderNumbers);
+
+    /**
+     * В шапку заказа нужны клиент и сумма — в том числе по заказам, которые
+     * всплыли из проверок плана, а не из разговоров: модель на них ссылается,
+     * а без шапки строка выглядит голым номером.
+     */
+    const known = await knownAboutOrders(Array.from(new Set([
+        ...orderNumbers,
+        ...(checks.plan?.missed ?? []).map((m) => m.number),
+    ])));
 
     const dialogs = withT.map((c) => {
         const num = orderOf.get(String(c.started_at)) ?? null;
@@ -373,8 +383,6 @@ export async function buildDayReview(managerId: number, managerName: string, dat
             расшифровка: String(c.transcript).slice(0, 4000),
         };
     });
-
-    const checks = await runDayChecks(managerId, date, calls, orderNumbers);
 
     const prompt = `Ты — руководитель отдела продаж завода металлоконструкций. Разбираешь вчерашний день менеджера по расшифровкам разговоров. Обращение на «вы», по-русски, без жаргона.
 
