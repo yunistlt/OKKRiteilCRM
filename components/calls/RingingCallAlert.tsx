@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { getSupabaseBrowser } from '@/utils/supabase-browser';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import CallOrderPicker from '@/components/orders/CallOrderPicker';
 import CallSummary from '@/components/calls/CallSummary';
@@ -34,83 +33,67 @@ type Ringing = {
     is_queue: boolean | null;
 };
 
+/** Как часто спрашиваем о звонках. Звонок звонит 20–30 секунд. */
+const POLL_MS = 2_000;
+
 export default function RingingCallAlert() {
     const [calls, setCalls] = useState<Ringing[]>([]);
+    /**
+     * Звонки, которые человек закрыл крестиком. Иначе следующий заход показал
+     * бы окно снова: звонок-то ещё идёт.
+     */
+    const [hidden, setHidden] = useState<string[]>([]);
+
+    const drop = useCallback((callId: string) => {
+        setHidden((current) => (current.includes(callId) ? current : [...current, callId]));
+        setCalls((current) => current.filter((row) => row.telphin_call_id !== callId));
+    }, []);
     /**
      * Чей это телефон. Окно всплывает у хозяина добавочного; руководитель и ОКК
      * видят все звонки, звонок на очередь — тоже все (решение владельца
      * 05.10.2026).
      */
-    const [me, setMe] = useState<{ extension: string | null; seeAll: boolean } | null>(null);
-
+    /**
+     * Звонки спрашиваем у своего маршрута каждые две секунды.
+     *
+     * Раньше окно слушало изменения таблицы напрямую из браузера. Но браузер
+     * подключается к базе АНОНИМНО — вход в ОКК свой, в Supabase Auth мы не
+     * логинимся, — а читать таблицу звонков разрешено только авторизованным.
+     * Поэтому до экрана не доходило НИ ОДНО событие, и работал только опрос
+     * раз в минуту по уже завершённым звонкам: оповещение приходило после
+     * разговора (жалоба Евгении Матвеевой 07.10.2026).
+     *
+     * Две секунды — звонок звонит 20–30 секунд, окно успевает появиться почти
+     * сразу. Кому показывать звонок, решает сервер: там наша сессия.
+     */
     useEffect(() => {
         let cancelled = false;
-        void fetch('/api/calls/my-extension')
-            .then((res) => (res.ok ? res.json() : null))
-            .then((data) => { if (!cancelled && data) setMe({ extension: data.extension ?? null, seeAll: !!data.seeAll }); })
-            .catch(() => undefined);
-        return () => { cancelled = true; };
-    }, []);
+        let timer: ReturnType<typeof setTimeout> | null = null;
 
-    const forMe = useCallback((call: Ringing): boolean => {
-        if (!me) return false;              // Пока не знаем, чей телефон, — молчим.
-        if (me.seeAll) return true;
-        if (call.is_queue) return true;     // Очередь звонит у всех сразу.
-
-        // Перевод по внутреннему: показываем и тому, кому звонили, и тому, на
-        // кого перевели (решение владельца 05.10.2026).
-        const taking = call.extensions?.length ? call.extensions : (call.extension_number ? [call.extension_number] : []);
-        if (!taking.length) return true;    // Добавочный не пришёл — лучше показать.
-        return !!me.extension && taking.includes(me.extension);
-    }, [me]);
-
-    const drop = useCallback((callId: string) => {
-        setCalls((current) => current.filter((row) => row.telphin_call_id !== callId));
-    }, []);
-
-    useEffect(() => {
-        const supabase = getSupabaseBrowser();
-        if (!supabase || !me) return;
-
-        // Звонок мог начаться за секунду до того, как человек открыл вкладку.
-        let cancelled = false;
-        void supabase
-            .from('active_calls')
-            .select('telphin_call_id, direction, from_number, client_name, order_number, status, started_at, extension_number, extensions, is_queue')
-            .in('status', ['ringing', 'answered'])
-            .gte('started_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
-            .then(({ data }) => {
-                if (!cancelled && data) setCalls((data as Ringing[]).filter(forMe));
-            });
-
-        const channel = supabase
-            .channel('active-calls')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'active_calls' }, (payload: any) => {
-                const row = (payload.new ?? payload.old) as Ringing | undefined;
-                if (!row?.telphin_call_id) return;
-
-                // Звонок кончился — окно убираем. Трубку подняли — окно
-                // остаётся: разговор идёт, и в нём показывается сводка по сделке
-                // (просьба владельца 05.10.2026).
-                if (payload.eventType === 'DELETE' || row.status === 'ended') {
-                    drop(row.telphin_call_id);
-                    return;
+        const check = async () => {
+            try {
+                const res = await fetch('/api/calls/active');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!cancelled) {
+                        // Завершённые звонки сервер уже не отдаёт — окно гаснет само.
+                        setCalls((data.calls ?? [])
+                            .filter((c: Ringing) => c.status !== 'ended' && !hidden.includes(c.telphin_call_id))
+                            .slice(0, 3));
+                    }
                 }
+            } catch {
+                // Связь моргнула — попробуем на следующем заходе.
+            }
+            if (!cancelled) timer = setTimeout(() => void check(), POLL_MS);
+        };
 
-                if (!forMe(row)) return; // Звонок не на этот телефон.
-
-                setCalls((current) => {
-                    const rest = current.filter((item) => item.telphin_call_id !== row.telphin_call_id);
-                    return [row, ...rest].slice(0, 3);
-                });
-            })
-            .subscribe();
-
+        void check();
         return () => {
             cancelled = true;
-            void supabase.removeChannel(channel);
+            if (timer) clearTimeout(timer);
         };
-    }, [drop, me, forMe]);
+    }, [hidden]);
 
     if (!calls.length) return null;
 
