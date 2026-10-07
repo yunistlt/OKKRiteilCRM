@@ -1,6 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { AiAgent, recordAiUsage } from '@/lib/ai-usage';
+import { runDayChecks, renderChecks, type DayChecks } from '@/lib/sales-rop/day-checks';
 
 // ============================================================================
 // Разбор вчерашнего дня менеджера: документ, который он читает до начала работы.
@@ -185,7 +186,18 @@ const RULES = `ПРАВИЛА РАЗБОРА
 обобщения без цитаты; выдуманные суммы; советы вида «проведите квалификацию»
 вместо готовой фразы; перекладывание работы на клиента («уточните, пожалуйста,
 детали») — предлагай решение сам и задавай один конкретный вопрос.
-Обязательно отметь, что сделано хорошо: разбор без единого плюса перестают читать.`;
+Обязательно отметь, что сделано хорошо: разбор без единого плюса перестают читать.
+
+ГЛАВНОЕ ПРАВИЛО. Нельзя сказать «так делать нельзя» и на этом остановиться.
+У каждого замечания обязана быть готовая фраза в поле say — слово в слово, как
+менеджер произнесёт её клиенту. Не «уточните детали доставки» (это перекладывает
+работу на клиента), а «Руслан, отправляем в картоне и гофроплёнке, доставка
+транспортной компанией за наш счёт до терминала в вашем городе. Какой терминал
+вам удобнее?» — сначала решение, потом один конкретный вопрос.
+Замечание без такой фразы бесполезно, человек не узнает, что ему делать.
+
+НЕ ПИШИ ЧИСЛА И СУММЫ. Их уже посчитал и показал код, а ты портишь формат
+(«8,025,804.59 рублей»). Ссылайся на заказ по номеру: «по заказу 54566».`;
 
 /** Разбор дня в разметке статей справки — её рисует шлюз чтения. */
 export function renderReview(
@@ -194,6 +206,7 @@ export function renderReview(
     managerName: string,
     date: string,
     known?: Map<string, any>,
+    checks?: DayChecks,
 ): string {
     const rub = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} ₽`;
     const parts: string[] = [];
@@ -205,6 +218,12 @@ export function renderReview(
     if (facts.inboundNoOrder) parts.push(`- Входящих без заведённой заявки: ${facts.inboundNoOrder}`);
     if (facts.withTranscript < facts.talks) {
         parts.push(`- Не разобрано: нет расшифровки у ${facts.talks - facts.withTranscript} разговоров`);
+    }
+
+    const checkLines = checks ? renderChecks(checks) : [];
+    if (checkLines.length) {
+        parts.push(`## Проверено системой`);
+        parts.push(...checkLines);
     }
 
     parts.push(`## Главное за день`);
@@ -268,6 +287,65 @@ export function renderReview(
 
 export type ReviewResult = { ok: boolean; reason?: string; score?: number; body?: string };
 
+/**
+ * Замечание без готовой фразы — брак.
+ *
+ * Требование владельца 07.10.2026: «мы обязательно должны говорить менеджеру,
+ * как правильно сказать, а не только что так нельзя». Поэтому сначала просим
+ * модель дописать недостающие фразы, а если и со второго раза их нет — такое
+ * замечание из разбора убираем. Голая критика хуже молчания: человек уходит
+ * виноватым и без инструкции.
+ */
+async function fillMissingPhrases(data: any, client: any): Promise<{ data: any; dropped: number }> {
+    const holes: Array<{ kind: 'order' | 'lead'; key: string; bad: string[] }> = [];
+    for (const o of (Array.isArray(data.orders) ? data.orders : [])) {
+        if (!String(o.say ?? '').trim() && (o.bad ?? []).length) {
+            holes.push({ kind: 'order', key: String(o.number ?? ''), bad: o.bad });
+        }
+    }
+    for (const l of (Array.isArray(data.lost_leads) ? data.lost_leads : [])) {
+        if (!String(l.say ?? '').trim()) {
+            holes.push({ kind: 'lead', key: String(l.time ?? ''), bad: l.missed ?? [] });
+        }
+    }
+    if (!holes.length) return { data, dropped: 0 };
+
+    try {
+        const res = await client.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [{
+                role: 'user',
+                content: `Для каждого замечания напиши готовую фразу, которую менеджер произнесёт клиенту слово в слово. Сначала решение от себя, потом ОДИН конкретный вопрос. Не перекладывай работу на клиента («уточните детали» запрещено). Верни JSON {"phrases":[{"key":"","say":""}]}.\n\n${JSON.stringify(holes)}`,
+            }],
+            response_format: { type: 'json_object' },
+            temperature: 0.3,
+        });
+        const got = JSON.parse(res.choices[0]?.message?.content ?? '{}');
+        const byKey = new Map<string, string>(
+            (got.phrases ?? []).map((p: any) => [String(p.key), String(p.say ?? '')]),
+        );
+        for (const o of (data.orders ?? [])) {
+            if (!String(o.say ?? '').trim()) o.say = byKey.get(String(o.number ?? '')) ?? '';
+        }
+        for (const l of (data.lost_leads ?? [])) {
+            if (!String(l.say ?? '').trim()) l.say = byKey.get(String(l.time ?? '')) ?? '';
+        }
+    } catch {
+        // Не дописалось — ниже такие замечания просто не попадут в разбор.
+    }
+
+    let dropped = 0;
+    for (const o of (data.orders ?? [])) {
+        if (!String(o.say ?? '').trim() && (o.bad ?? []).length) { dropped += o.bad.length; o.bad = []; o.consequence = null; }
+    }
+    data.lost_leads = (data.lost_leads ?? []).filter((l: any) => {
+        if (String(l.say ?? '').trim()) return true;
+        dropped += 1;
+        return false;
+    });
+    return { data, dropped };
+}
+
 export async function buildDayReview(managerId: number, managerName: string, date: string): Promise<ReviewResult> {
     if (!isOpenAIConfigured()) return { ok: false, reason: 'Модель не настроена' };
 
@@ -296,11 +374,20 @@ export async function buildDayReview(managerId: number, managerName: string, dat
         };
     });
 
+    const checks = await runDayChecks(managerId, date, calls, orderNumbers);
+
     const prompt = `Ты — руководитель отдела продаж завода металлоконструкций. Разбираешь вчерашний день менеджера по расшифровкам разговоров. Обращение на «вы», по-русски, без жаргона.
 
 ${RULES}
 
 ФАКТЫ ДНЯ (посчитаны кодом, не меняй их): ${JSON.stringify(facts)}
+
+ПРОВЕРКИ СИСТЕМЫ (это уже установленные факты, проверять их не надо — объясни,
+чем они грозят, и дай фразу): ${JSON.stringify(checks)}
+
+Про дату следующего контакта: то, что она стоит в карточке, НЕ значит, что она
+прозвучала в разговоре. Балл за «следующий шаг» ставь по тому, услышал ли
+клиент конкретную договорённость вслух.
 
 РАЗГОВОРЫ (разбери каждый, где есть что сказать): ${JSON.stringify(dialogs)}
 
@@ -334,7 +421,8 @@ ${RULES}
         return { ok: false, reason: 'Модель вернула не JSON' };
     }
 
-    const body = renderReview(data, facts, managerName, date, known);
+    const filled = await fillMissingPhrases(data, client);
+    const body = renderReview(filled.data, facts, managerName, date, known, checks);
     const { error } = await supabase
         .from('sales_rop_day_review')
         .upsert({
