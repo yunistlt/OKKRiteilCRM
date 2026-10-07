@@ -22,3 +22,8 @@ CREATE TABLE IF NOT EXISTS public.sales_rop_day_review (
 
 COMMENT ON TABLE public.sales_rop_day_review IS
     'Разбор дня менеджера как документ: его показывает шлюз чтения перед началом работы.';
+
+-- Разбор может жить своей страницей: карточки заказов в две колонки, цветные
+-- плашки и таблица баллов рендером справки не рисуются. Тогда шлюз ведёт на
+-- неё, а страница подключает компонент ReadGateBar (таймер и подтверждение).
+ALTER TABLE public.sales_rop_day_review ADD COLUMN IF NOT EXISTS url text;

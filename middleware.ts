@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { getDefaultPathForRole, isReadOnlyRole } from '@/lib/rbac';
 import { canAccessPathServer } from '@/lib/rbac-server';
-import { shouldRedirectToGate } from '@/lib/read-gate/guard';
+import { gateRedirectTarget } from '@/lib/read-gate/guard';
 
 function applyNoStoreHeaders(response: NextResponse) {
     response.headers.set('Cache-Control', 'private, no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
@@ -78,8 +78,9 @@ export async function middleware(request: NextRequest) {
          * Проверка идёт ПОСЛЕ авторизации и только для страниц — API нужен самой
          * странице документа, чтобы отчитаться о времени и подтвердить прочтение.
          */
-        if (await shouldRedirectToGate(request, session)) {
-            return applyNoStoreHeaders(NextResponse.redirect(new URL('/read-gate', request.url)));
+        const gateTarget = await gateRedirectTarget(request, session);
+        if (gateTarget) {
+            return applyNoStoreHeaders(NextResponse.redirect(new URL(gateTarget, request.url)));
         }
 
         if (!(await canAccessPathServer(session.user.role, pathname))) {

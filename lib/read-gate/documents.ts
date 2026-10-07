@@ -16,6 +16,18 @@ export type GateDocument = {
     dateLabel?: string;
     /** Тело в Markdown — страница рисует его тем же рендером, что и справку. */
     body: string;
+    /**
+     * Своя страница документа, если тело не вытягивает вёрстку.
+     *
+     * Разбор дня — это карточки заказов в две колонки, цветные плашки и таблица
+     * баллов; рендером справки такое не нарисовать. Поэтому поставщик может
+     * отдать адрес своей страницы: шлюз уведёт человека туда, а учёт времени и
+     * кнопку подтверждения страница подключает компонентом ReadGateBar.
+     *
+     * `body` остаётся обязательным и коротким: из него собирается анонс в
+     * Telegram, и он же показывается, если страница не открылась.
+     */
+    url?: string | null;
 };
 
 export type DocumentProvider = {
@@ -42,7 +54,7 @@ const callReview: DocumentProvider = {
 
         const { data } = await supabase
             .from('sales_rop_day_review')
-            .select('id, review_date, title, body')
+            .select('id, review_date, title, body, url')
             .eq('manager_id', managerId)
             .order('review_date', { ascending: false })
             .limit(1)
@@ -57,6 +69,7 @@ const callReview: DocumentProvider = {
             title: data.title || 'Разбор вчерашнего дня',
             dateLabel: data.review_date ? new Date(data.review_date).toLocaleDateString('ru-RU') : undefined,
             body: String(data.body),
+            url: (data as any).url ?? null,
         };
     },
 };

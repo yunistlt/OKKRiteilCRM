@@ -15,11 +15,20 @@ export function isFreePath(pathname: string): boolean {
     return FREE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`)) || pathname.includes('.');
 }
 
-export async function shouldRedirectToGate(request: NextRequest, session: AppSession): Promise<boolean> {
-    if (request.method !== 'GET') return false;
-    if (isFreePath(request.nextUrl.pathname)) return false;
+/** Куда вести человека: null — не трогаем, строка — адрес документа. */
+export async function gateRedirectTarget(request: NextRequest, session: AppSession): Promise<string | null> {
+    if (request.method !== 'GET') return null;
+
+    const pathname = request.nextUrl.pathname;
+    if (isFreePath(pathname)) return null;
 
     const user = session.user;
     const state = await gateState(user.id, user.role, user.retail_crm_manager_id ?? null);
-    return state.blocked;
+    if (!state.blocked) return null;
+
+    // У документа может быть своя страница — тогда ведём на неё, а не на
+    // общий экран шлюза. Уже стоим на ней — не зацикливаем редирект.
+    const own = state.document.url?.trim();
+    if (own) return pathname === own ? null : own;
+    return '/read-gate';
 }
