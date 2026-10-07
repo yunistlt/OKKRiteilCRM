@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { standardTerm } from '@/lib/legal/contract-terms';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { createOrderContract, CONTRACT_STATUS_LABELS } from '@/lib/legal/order-contract';
@@ -38,6 +39,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 const CreateSchema = z.object({
     /** Условия словами: «70 предоплата, 30 перед отгрузкой». */
     terms: z.string().trim().min(1, 'Напишите условия договора'),
+    /**
+     * Код стандартных условий из списка. Такой договор составляется сразу, без
+     * юриста: это согласованная редакция (решение владельца 07.10.2026).
+     */
+    termCode: z.string().trim().optional().nullable(),
     /** Юрлицо-продавец, если менеджер выбрал его в карточке. */
     seller: z.string().trim().optional().nullable(),
     orderId: z.number().int().positive(),
@@ -56,12 +62,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Проверьте условия' }, { status: 400 });
     }
 
+    // Выбран пункт из списка — условия берём из справочника, не из текста.
+    const standard = standardTerm(parsed.data.termCode);
+
     const result = await createOrderContract({
         orderId: parsed.data.orderId,
         orderNumber,
-        termsText: parsed.data.terms,
+        termsText: standard ? standard.text : parsed.data.terms,
         sellerCode: parsed.data.seller ?? null,
         author: session.user.email || session.user.role,
+        toLawyer: standard ? false : true,
+        // Стандартный текст согласован — ИИ его не переписывает.
+        termsAsIs: Boolean(standard),
     });
 
     if (!result.ok) {
@@ -71,8 +83,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({
         ok: true,
         id: result.id,
-        note: result.byAi
-            ? 'Договор составлен и отправлен юристу на согласование. Условия оплаты сформулировал ИИ — юрист проверит.'
-            : 'Договор составлен и отправлен юристу на согласование.',
+        note: standard
+            ? 'Договор составлен по стандартным условиям — можно отправлять клиенту.'
+            : result.byAi
+                ? 'Договор составлен и отправлен юристу на согласование. Условия оплаты сформулировал ИИ — юрист проверит.'
+                : 'Договор составлен и отправлен юристу на согласование.',
     });
 }

@@ -12,6 +12,7 @@ import AttachmentList from './orders/AttachmentList';
 import { prependComment } from '@/lib/own-crm/comment-entries';
 import { clientTime } from '@/lib/own-crm/phone-timezone';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { STANDARD_CONTRACT_TERMS } from '@/lib/legal/contract-terms';
 import { priceSourceLabel } from '@/lib/format';
 import { itemTotalWithDiscount, orderTotals } from '@/lib/own-crm/discount';
 import { uniquePhones } from '@/lib/own-crm/phones';
@@ -311,6 +312,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     // Договор по заказу: окно с условиями, которые менеджер пишет словами.
     const [contractOpen, setContractOpen] = useState(false);
     const [contractTerms, setContractTerms] = useState('');
+    /** Выбранный стандартный шаблон условий. Пусто — менеджер пишет свои. */
+    const [contractTermCode, setContractTermCode] = useState('');
     const [contractSaving, setContractSaving] = useState(false);
     const [contractNote, setContractNote] = useState<string | null>(null);
     // Карточка заказа редактируемая сразу: режима «только просмотр» у нас нет.
@@ -1947,21 +1950,46 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                             ×
                                         </button>
                                     </div>
+                                    {/* Стандартные условия списком: те же, по которым
+                                        отдел продаж работал в RetailCRM. Такой договор
+                                        юристу не нужен — это согласованная редакция
+                                        (решение владельца 07.10.2026). */}
                                     <p className="mb-2 text-sm text-gray-600">
-                                        Напишите условия своими словами — например «70 предоплата, 30 перед отгрузкой».
-                                        Остальное подставится из заказа: реквизиты, предмет, сроки изготовления.
-                                        Готовый договор уйдёт юристу на согласование.
+                                        Выберите условия оплаты — договор составится сразу, без юриста.
+                                        Реквизиты, предмет и сроки изготовления подставятся из заказа.
                                     </p>
-                                    <textarea
-                                        value={contractTerms}
-                                        onChange={(e) => setContractTerms(e.target.value)}
-                                        rows={5}
-                                        placeholder="70 предоплата в течение 5 банковских дней, 30 перед отгрузкой"
-                                        className="w-full border border-gray-200 px-3 py-2 text-sm"
-                                    />
+                                    <select
+                                        value={contractTermCode}
+                                        onChange={(e) => {
+                                            setContractTermCode(e.target.value);
+                                            if (e.target.value) setContractTerms('');
+                                        }}
+                                        className="mb-3 w-full border border-gray-300 px-2 py-2 text-sm"
+                                    >
+                                        <option value="">Свои условия — напишу сам</option>
+                                        {STANDARD_CONTRACT_TERMS.map((term) => (
+                                            <option key={term.code} value={term.code}>{term.label}</option>
+                                        ))}
+                                    </select>
+
+                                    {!contractTermCode && (
+                                        <>
+                                            <p className="mb-2 text-sm text-gray-600">
+                                                Напишите условия своими словами — например «70 предоплата, 30 перед
+                                                отгрузкой». Такой договор уйдёт юристу на согласование.
+                                            </p>
+                                            <textarea
+                                                value={contractTerms}
+                                                onChange={(e) => setContractTerms(e.target.value)}
+                                                rows={5}
+                                                placeholder="70 предоплата в течение 5 банковских дней, 30 перед отгрузкой"
+                                                className="w-full border border-gray-200 px-3 py-2 text-sm"
+                                            />
+                                        </>
+                                    )}
                                     <div className="mt-3 flex flex-wrap items-center gap-2">
                                         <button
-                                            disabled={contractSaving || !contractTerms.trim()}
+                                            disabled={contractSaving || (!contractTermCode && !contractTerms.trim())}
                                             onClick={async () => {
                                                 setContractSaving(true);
                                                 setContractNote(null);
@@ -1970,7 +1998,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                         method: 'POST',
                                                         headers: { 'Content-Type': 'application/json' },
                                                         body: JSON.stringify({
-                                                            terms: contractTerms.trim(),
+                                                            terms: contractTerms.trim() || 'стандартные условия',
+                                                            termCode: contractTermCode || null,
                                                             seller: sellerCode || null,
                                                             orderId: Number(orderId),
                                                         }),
@@ -1987,8 +2016,44 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                             }}
                                             className="bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                                         >
-                                            {contractSaving ? 'Составляю…' : 'Составить и отправить юристу'}
+                                            {contractSaving
+                                                ? 'Составляю…'
+                                                : contractTermCode ? 'Составить договор' : 'Составить и отправить юристу'}
                                         </button>
+                                        {/* Стандартный договор обычно юристу не нужен, но
+                                            иногда клиент просит проверить — тогда этой
+                                            кнопкой (решение владельца 07.10.2026). */}
+                                        {contractTermCode && (
+                                            <button
+                                                disabled={contractSaving}
+                                                onClick={async () => {
+                                                    setContractSaving(true);
+                                                    setContractNote(null);
+                                                    try {
+                                                        const term = STANDARD_CONTRACT_TERMS.find((t) => t.code === contractTermCode);
+                                                        const res = await fetch(`/api/orders/${encodeURIComponent(String(data.order?.number ?? orderId))}/contract`, {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify({
+                                                                terms: term?.text || 'стандартные условия',
+                                                                seller: sellerCode || null,
+                                                                orderId: Number(orderId),
+                                                            }),
+                                                        });
+                                                        const payload = await res.json();
+                                                        if (!res.ok) throw new Error(payload.error || 'Договор не составился');
+                                                        setContractNote(payload.note || 'Договор отправлен юристу.');
+                                                    } catch (e: any) {
+                                                        setContractNote(e.message);
+                                                    } finally {
+                                                        setContractSaving(false);
+                                                    }
+                                                }}
+                                                className="border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-100 disabled:opacity-50"
+                                            >
+                                                Отправить на согласование юристу
+                                            </button>
+                                        )}
                                         {contractNote && <span className="text-sm text-gray-700">{contractNote}</span>}
                                     </div>
                                 </div>

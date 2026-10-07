@@ -39,9 +39,18 @@ export type ContractRow = {
  * формулирует — иначе каждый договор получится своим, и юристу придётся
  * вычитывать всё заново.
  */
-export async function renderPaymentTerms(termsText: string): Promise<{ text: string; byAi: boolean }> {
+export async function renderPaymentTerms(
+    termsText: string,
+    /**
+     * Текст уже готов и согласован — переписывать его нечем и незачем.
+     * Так приходят стандартные условия, выбранные из списка (решение владельца
+     * 07.10.2026): это редакция, по которой отдел продаж работал в RetailCRM.
+     */
+    asIs = false,
+): Promise<{ text: string; byAi: boolean }> {
     const raw = (termsText || '').trim();
     if (!raw) return { text: DEFAULT_PAYMENT_TERMS, byAi: false };
+    if (asIs) return { text: raw, byAi: false };
     if (!isOpenAIConfigured()) return { text: raw, byAi: false };
 
     try {
@@ -77,11 +86,13 @@ export async function buildOrderContract(params: {
     orderNumber: string;
     termsText: string;
     sellerCode?: string | null;
+    /** Текст условий готов и согласован — вставляем как есть, без ИИ. */
+    termsAsIs?: boolean;
 }): Promise<{ text: string; byAi: boolean; sellerName: string } | null> {
     const data = await orderDocumentData(params.orderId, params.sellerCode ?? null);
     if (!data?.seller) return null;
 
-    const payment = await renderPaymentTerms(params.termsText);
+    const payment = await renderPaymentTerms(params.termsText, params.termsAsIs === true);
     const now = new Date();
     const fill: ContractFill = {
         number: params.orderNumber,
@@ -119,13 +130,24 @@ export async function buildOrderContract(params: {
     return { text: buildContractText(fill), byAi: payment.byAi, sellerName: data.seller.name };
 }
 
-/** Заводит договор и сразу кладёт его юристу на согласование. */
+/**
+ * Заводит договор по заказу.
+ *
+ * `toLawyer` решает, идёт ли он юристу. Стандартные условия (выбранные из
+ * списка) юристу не нужны — это согласованная редакция, и ждать 1–2 дня из-за
+ * неё нельзя (требование владельца 07.10.2026 по жалобе Евгении Матвеевой).
+ * Свои формулировки по-прежнему уходят на согласование.
+ */
 export async function createOrderContract(params: {
     orderId: number;
     orderNumber: string;
     termsText: string;
     sellerCode?: string | null;
     author: string;
+    /** Отправить юристу. По умолчанию да — так было раньше. */
+    toLawyer?: boolean;
+    /** Текст условий готов и согласован — вставляем как есть, без ИИ. */
+    termsAsIs?: boolean;
 }): Promise<{ ok: true; id: number; byAi: boolean } | { ok: false; reason: string }> {
     const built = await buildOrderContract(params);
     if (!built) {
@@ -144,8 +166,14 @@ export async function createOrderContract(params: {
             title,
             terms_text: params.termsText,
             body_text: built.text,
-            status: 'on_review',
-            submitted_at: new Date().toISOString(),
+            // Стандартный договор готов к отправке клиенту сразу; свои условия
+            // ждут юриста.
+            status: params.toLawyer === false ? 'approved' : 'on_review',
+            submitted_at: params.toLawyer === false ? null : new Date().toISOString(),
+            reviewed_at: params.toLawyer === false ? new Date().toISOString() : null,
+            review_comment: params.toLawyer === false
+                ? 'Стандартные условия из списка — согласование юриста не требуется.'
+                : null,
             created_by: params.author,
         })
         .select('id')
