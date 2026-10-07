@@ -58,10 +58,12 @@ async function dealCounts(ids: number[]): Promise<Map<number, number>> {
 
     const { data } = await supabase
         .from('orders')
-        .select('raw_payload->customer->>id')
+        // Карточку берём из `customer->>id`: на это выражение есть индекс,
+        // чтение снимка разбирает JSON во всей таблице (см. orders-filter.ts).
+        .select('customer->>id')
         .in('status', DEAL_STATUSES)
         .is('crm_deleted_at', null)
-        .in('raw_payload->customer->>id', ids.map(String));
+        .in('customer->>id', ids.map(String));
 
     for (const row of ((data ?? []) as any[])) {
         const id = Number(Object.values(row)[0]);

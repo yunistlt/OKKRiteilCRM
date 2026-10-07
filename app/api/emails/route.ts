@@ -193,11 +193,37 @@ export async function GET(req: Request) {
         }
     }
 
-    // Менеджер клиента, а если у карточки его нет — тот, на кого легло письмо.
-    const managerIds = Array.from(new Set([
-        ...Array.from(clientByEmail.values()).map((c) => c.managerId),
-        ...page.map((row: any) => row.assignedManagerId),
-    ].filter(Boolean))) as number[];
+    /**
+     * Менеджер ЗАКАЗА, указанного в письме, — главный ответ на вопрос «кто
+     * писал». Жалоба Евгении Матвеевой 07.10.2026: «у одной и той же
+     * организации несколько заказов (дубли), нужно видеть, кто написал письмо,
+     * а то приходится открывать и просматривать».
+     *
+     * У исходящих автора в ящике нет вовсе: они читаются из папки
+     * «Отправленные» общего ящика rop@zmktlt.ru, отправитель там один на всех.
+     * Поэтому письмо связывает с человеком заказ, а не адрес.
+     */
+    const orderNumbers = Array.from(new Set(page.map((r) => String(r.orderNumber || '').trim()).filter(Boolean)));
+    const managerByOrder = new Map<string, number>();
+    if (orderNumbers.length) {
+        const { data: orders } = await supabase
+            .from('orders')
+            .select('number, manager_id')
+            .in('number', orderNumbers);
+        for (const order of ((orders ?? []) as any[])) {
+            if (order.manager_id) managerByOrder.set(String(order.number), Number(order.manager_id));
+        }
+    }
+
+    // Порядок: менеджер заказа → менеджер карточки клиента → тот, на кого
+    // автоприём положил входящее письмо.
+    const managerOf = (row: any): number | null =>
+        managerByOrder.get(String(row.orderNumber || '')) ??
+        clientByEmail.get(String(row.partyEmail || '').trim().toLowerCase())?.managerId ??
+        row.assignedManagerId ??
+        null;
+
+    const managerIds = Array.from(new Set(page.map(managerOf).filter(Boolean))) as number[];
     const managerNames = new Map<number, string>();
     if (managerIds.length) {
         const { data: managers } = await supabase
@@ -214,7 +240,7 @@ export async function GET(req: Request) {
 
     const withClients = page.map((row) => {
         const client = clientByEmail.get(String(row.partyEmail || '').trim().toLowerCase()) || null;
-        const managerId = client?.managerId || (row as any).assignedManagerId || null;
+        const managerId = managerOf(row);
         return {
             ...row,
             clientId: client?.id ?? null,

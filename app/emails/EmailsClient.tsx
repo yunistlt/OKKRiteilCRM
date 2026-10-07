@@ -168,7 +168,7 @@ export default function EmailsClient() {
                             <th className="px-3 py-2 font-semibold whitespace-nowrap">Дата</th>
                             <th className="px-3 py-2 font-semibold">Клиент</th>
                             <th className="px-3 py-2 font-semibold">Тип</th>
-                            <th className="px-3 py-2 font-semibold">Менеджер клиента</th>
+                            <th className="px-3 py-2 font-semibold">Менеджер</th>
                             <th className="px-3 py-2 font-semibold">Отправитель</th>
                         </tr>
                     </thead>

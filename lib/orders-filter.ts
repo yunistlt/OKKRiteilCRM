@@ -217,7 +217,17 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
          * («Лачинов Вугар» против контакта «Александр Дубровский»).
          */
         if (filter.customerIds?.length) {
-            conditions.push(`raw_payload->customer->>id.in.(${filter.customerIds.join(',')})`);
+            /**
+             * По номеру карточки ищем через `customer->>id` — на это выражение
+             * есть индекс (idx_orders_customer_id). Чтение снимка
+             * (`raw_payload->customer->>id`) индекса не имеет: Postgres
+             * разбирает JSON в каждой из 31 000 строк, запрос не укладывается в
+             * таймаут, и менеджер видит «под этот фильтр заказов нет» вместо
+             * найденных заказов. Жалоба Ксении 07.10.2026 («настройте поиск
+             * клиента по почте, не найти») — это была ровно она: замер того же
+             * запроса — таймаут против 245–390 мс после правки.
+             */
+            conditions.push(`customer->>id.in.(${filter.customerIds.join(',')})`);
         }
 
         /**
