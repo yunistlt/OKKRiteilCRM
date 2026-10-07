@@ -122,8 +122,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
               ].join('\n')
             : null;
 
+        /**
+         * «Кому» — почта клиента из заказа, а не адрес, с которого пришло
+         * последнее письмо.
+         *
+         * Жалоба Ирины Гордеевой 06.10.2026 по заказу 54113: в «Кому» встал
+         * noreply@webasyst.biz — адрес формы сайта, с которой пришла заявка.
+         * Письмо ушло бы роботу, и заметить это трудно.
+         *
+         * Служебные адреса (no-reply и подобные) не подставляем ни из заказа,
+         * ни из переписки: писать на них нельзя. Нет почты клиента — поле
+         * остаётся пустым, менеджер впишет сам.
+         */
+        const lastSender = isNoReplySender(last?.from_email) ? null : last?.from_email;
+
         return NextResponse.json({
-            to: last?.from_email || orderEmail || null,
+            to: orderEmail || lastSender || null,
             signature,
             toName: last?.from_name || null,
             subjectText: stripOrderThreadTag(last?.subject || '') || `По заказу №${orderNumber}`,

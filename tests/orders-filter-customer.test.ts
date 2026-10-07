@@ -31,13 +31,16 @@ describe('фильтр «Покупатель»', () => {
         expect(where).toContain('3904431157');
     });
 
-    it('смотрит телефон и внутри заказа, не только в колонке', () => {
+    it('ищет по полям заказа, а не по снимку', () => {
         const q = applyOrdersFilter(fakeQuery(), { ...EMPTY_FILTER, customer: '79581001285' });
         const where = q.conditions.join('|');
 
-        // Колонку заполняет перенос из RetailCRM, свои заказы её не знали.
-        expect(where).toContain('raw_payload->>phone');
+        // Снимок в условие не попадает: разбор JSON по 30 тысячам строк без
+        // индексов не укладывался в таймаут, и поиск отвечал «заказов нет»
+        // (жалоба Ксении 07.10.2026).
+        expect(where).not.toContain('raw_payload');
         expect(where).toContain('phone.ilike');
+        expect(where).toContain('additionalPhone.ilike');
     });
 
     it('ищет по найденным карточкам клиентов, а не только по контакту заказа', () => {
@@ -53,7 +56,8 @@ describe('фильтр «Покупатель»', () => {
         const q = applyOrdersFilter(fakeQuery(), { ...EMPTY_FILTER, customer: 'Иванов' });
         const where = q.conditions.join('|');
 
-        expect(where).toContain('raw_payload->>lastName');
+        expect(where).toContain('lastName.ilike');
+        expect(where).toContain('customer_name.ilike');
         expect(where).not.toContain('raw_payload->customer->>id.in');
     });
 });

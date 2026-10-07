@@ -193,17 +193,25 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
 
     if (filter.customer) {
         const v = safe(filter.customer);
+        /**
+         * Ищем ТОЛЬКО по полям заказа, не по снимку.
+         *
+         * Жалоба Ксении 07.10.2026: «фильтр работает отвратительно, по 10–15
+         * раз нажимать приходится, сильно лагает». Это была моя регрессия: я
+         * добавил в условие чтение снимка (`raw_payload->>…`) — разбор JSON в
+         * каждой из 30 тысяч строк без индексов, запрос не укладывался в
+         * таймаут. Менеджер видел «заказов нет» вместо найденного заказа.
+         *
+         * У каждого поля здесь есть индекс для поиска по куску слова
+         * (migrations/20261007_orders_search_indexes.sql).
+         */
         const conditions = [
-            `raw_payload->>firstName.ilike.%${v}%`,
-            `raw_payload->>lastName.ilike.%${v}%`,
-            `raw_payload->>patronymic.ilike.%${v}%`,
-            `raw_payload->>email.ilike.%${v}%`,
-            `raw_payload->customer->>nickName.ilike.%${v}%`,
-            `raw_payload->contragent->>legalName.ilike.%${v}%`,
+            `customer_name.ilike.%${v}%`,
+            `contragent_name.ilike.%${v}%`,
+            `firstName.ilike.%${v}%`,
+            `lastName.ilike.%${v}%`,
+            `email.ilike.%${v}%`,
             `phone.ilike.%${v}%`,
-            // Телефон своего заказа живёт внутри payload: колонку заполняет
-            // перенос из RetailCRM, а свои заказы её не знали.
-            `raw_payload->>phone.ilike.%${v}%`,
             `additionalPhone.ilike.%${v}%`,
         ];
 
@@ -223,10 +231,7 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
          * Парфёнова 05.10.2026).
          */
         const digits = phoneTail(v);
-        if (digits) {
-            conditions.push(`phone.ilike.%${digits}%`);
-            conditions.push(`raw_payload->>phone.ilike.%${digits}%`);
-        }
+        if (digits) conditions.push(`phone.ilike.%${digits}%`);
 
         q = q.or(conditions.join(','));
     }

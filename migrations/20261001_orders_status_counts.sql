@@ -26,14 +26,13 @@ AS $$
        -- Карточки подбирает код (clientIdsByText) и присылает списком: клиент
        -- может называться не так, как записан контакт заказа.
        AND (COALESCE(p->>'customer','') = '' OR (
-             COALESCE(o.raw_payload->>'firstName','')  ILIKE '%' || (p->>'customer') || '%'
-          OR COALESCE(o.raw_payload->>'lastName','')   ILIKE '%' || (p->>'customer') || '%'
-          OR COALESCE(o.raw_payload->>'patronymic','') ILIKE '%' || (p->>'customer') || '%'
-          OR COALESCE(o.raw_payload->>'email','')      ILIKE '%' || (p->>'customer') || '%'
-          OR COALESCE(o.raw_payload->'customer'->>'nickName','')   ILIKE '%' || (p->>'customer') || '%'
-          OR COALESCE(o.raw_payload->'contragent'->>'legalName','') ILIKE '%' || (p->>'customer') || '%'
-          OR COALESCE(o.phone,'')                      ILIKE '%' || (p->>'customer') || '%'
-          OR COALESCE(o.raw_payload->>'phone','')      ILIKE '%' || (p->>'customer') || '%'
+             COALESCE(o.customer_name,'')    ILIKE '%' || (p->>'customer') || '%'
+          OR COALESCE(o.contragent_name,'')  ILIKE '%' || (p->>'customer') || '%'
+          OR COALESCE(o."firstName",'')      ILIKE '%' || (p->>'customer') || '%'
+          OR COALESCE(o."lastName",'')       ILIKE '%' || (p->>'customer') || '%'
+          OR COALESCE(o.email,'')            ILIKE '%' || (p->>'customer') || '%'
+          OR COALESCE(o.phone,'')            ILIKE '%' || (p->>'customer') || '%'
+          OR COALESCE(o."additionalPhone",'') ILIKE '%' || (p->>'customer') || '%'
           -- Телефон сверяем и по последним десяти цифрам: записывают его
           -- по-разному, а поиск молча не находил ничего.
           OR (length(regexp_replace(p->>'customer', '\D', '', 'g')) >= 10 AND EXISTS (
