@@ -136,6 +136,7 @@ describe('содержание базы знаний', () => {
         // стратегии и замолчит там, где начинается ежедневная работа.
         const slugs = new Set(SHTAB_KB_SEED.map((r) => r.slug));
         for (const step of [
+            'btr-chto-eto',
             'btr-administrator-produkta',
             'btr-produkt',
             'btr-formulirovka-zadaniya',
@@ -163,6 +164,19 @@ describe('содержание базы знаний', () => {
         ]) {
             expect(slugs, step).toContain(step);
         }
+    });
+
+    it('сокращение «БТР» есть в тексте статей, а не только в тегах', () => {
+        // Тамару спросили «что ты знаешь про БТР», и она честно ответила, что не
+        // знает: сокращение лежало только в тегах, и поиск по смыслу не дотянул
+        // до порога. Название должно встречаться там, где его читает модель.
+        const withAbbr = SHTAB_KB_SEED.filter(
+            (r) => r.slug.startsWith('btr-') && /БТР/.test(`${r.title}\n${r.content}`),
+        );
+        expect(withAbbr.length).toBeGreaterThan(2);
+        const index = SHTAB_KB_SEED.find((r) => r.slug === 'btr-chto-eto');
+        expect(index?.title).toMatch(/БТР/);
+        expect(index?.content).toMatch(/Базовый тренинг руководителя/);
     });
 
     it('статья про стратегию не ведёт сразу к проектам', () => {
