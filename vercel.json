@@ -1,217 +1,221 @@
 {
-    "framework": "nextjs",
-    "crons": [
-        {
-            "path": "/api/cron/tseh-schema-kb",
-            "schedule": "40 1 * * *"
-        },
-        {
-            "path": "/api/cron/tseh-push",
-            "schedule": "*/5 * * * *"
-        },
-        {
-            "path": "/api/cron/rop-bind",
-            "schedule": "*/10 4-15 * * 1-5"
-        },
-        {
-            "path": "/api/cron/rop-queue?mode=park",
-            "schedule": "10 5 * * 1-5"
-        },
-        {
-            "path": "/api/cron/rop-queue?mode=release",
-            "schedule": "*/15 5-14 * * 1-5"
-        },
-        {
-            "path": "/api/cron/rop-queue?mode=return",
-            "schedule": "0 14 * * 1-5"
-        },
-        {
-            "path": "/api/cron/rop-enrich",
-            "schedule": "0 */2 * * *"
-        },
-        {
-            "path": "/api/cron/rop-relations",
-            "schedule": "40 4 * * 1-5"
-        },
-        {
-            "path": "/api/cron/crm-reconcile-deleted",
-            "schedule": "25 * * * *"
-        },
-        {
-            "path": "/api/cron/rop-morning",
-            "schedule": "0 5 * * 1-5"
-        },
-        {
-            "path": "/api/cron/shtab-daily-report",
-            "schedule": "0 5 * * *"
-        },
-        {
-            "path": "/api/cron/tamara-outfit",
-            "schedule": "30 1 * * *"
-        },
-        {
-            "path": "/api/cron/rop-load-review",
-            "schedule": "0 5 * * 1"
-        },
-        {
-            "path": "/api/cron/rop-evening",
-            "schedule": "0 16 * * 1-5"
-        },
-        {
-            "path": "/api/sync/telphin",
-            "schedule": "*/2 * * * *"
-        },
-        {
-            "path": "/api/sync/telphin/recovery",
-            "schedule": "*/1 * * * *"
-        },
-        {
-            "path": "/api/sync/retailcrm/calls",
-            "schedule": "*/2 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/call-match",
-            "schedule": "*/1 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/telphin-callback",
-            "schedule": "*/1 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/point-payment-ingest",
-            "schedule": "*/15 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/tbank-statement-poll",
-            "schedule": "*/15 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/order-context-refresh",
-            "schedule": "*/1 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/transcription",
-            "schedule": "*/1 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/transcription-poll",
-            "schedule": "*/1 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/call-semantic-rules",
-            "schedule": "*/1 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/manager-aggregate-refresh",
-            "schedule": "*/1 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/order-insight-refresh",
-            "schedule": "*/2 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/salary-estimate-classify",
-            "schedule": "*/15 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/score-refresh",
-            "schedule": "*/1 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/watchdog",
-            "schedule": "*/5 * * * *"
-        },
-        {
-            "path": "/api/cron/stt-watchdog",
-            "schedule": "*/5 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/rule-engine",
-            "schedule": "*/5 * * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/nightly-reconciliation",
-            "schedule": "30 3 * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/grade-eval",
-            "schedule": "0 5 * * *"
-        },
-        {
-            "path": "/api/sync/managers",
-            "schedule": "0 * * * *"
-        },
-        {
-            "path": "/api/sync/retailcrm/clients",
-            "schedule": "0 4 * * *"
-        },
-        {
-            "path": "/api/sync/dictionaries",
-            "schedule": "30 4 * * *"
-        },
-        {
-            "path": "/api/cron/system-audit",
-            "schedule": "0 */4 * * *"
-        },
-        {
-            "path": "/api/cron/telegram-notify",
-            "schedule": "*/10 * * * *"
-        },
-        {
-            "path": "/api/okk/run-all",
-            "schedule": "15 4 * * *"
-        },
-        {
-            "path": "/api/cron/lead-catcher",
-            "schedule": "*/1 * * * *"
-        },
-        {
-            "path": "/api/cron/rop-outreach",
-            "schedule": "*/2 * * * *"
-        },
-        {
-            "path": "/api/cron/lead-reminders",
-            "schedule": "0 * * * *"
-        },
-        {
-            "path": "/api/cron/email-poll",
-            "schedule": "*/5 * * * *"
-        },
-        {
-            "path": "/api/cron/email-sent-poll",
-            "schedule": "*/10 * * * *"
-        },
-        {
-            "path": "/api/cron/ai-balance-watch",
-            "schedule": "0 * * * *"
-        },
-        {
-            "path": "/api/cron/ai-health",
-            "schedule": "5 14 * * 1-5"
-        },
-        {
-            "path": "/api/cron/shtab-briefing",
-            "schedule": "0 6 * * 1"
-        },
-        {
-            "path": "/api/cron/shtab-rhythm",
-            "schedule": "20 6 * * 1"
-        },
-        {
-            "path": "/api/cron/salary-client-canon",
-            "schedule": "20 2 * * *"
-        },
-        {
-            "path": "/api/cron/system-jobs/legal-enforcement-parse",
-            "schedule": "*/5 * * * *"
-        },
-        {
-            "path": "/api/cron/sync-customers",
-            "schedule": "17 * * * *"
-        },
-        {
-            "path": "/api/cron/error-digest",
-            "schedule": "35 * * * *"
-        }
-    ]
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cron/tseh-schema-kb",
+      "schedule": "40 1 * * *"
+    },
+    {
+      "path": "/api/cron/tseh-push",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/rop-bind",
+      "schedule": "*/10 4-15 * * 1-5"
+    },
+    {
+      "path": "/api/cron/rop-queue?mode=park",
+      "schedule": "10 5 * * 1-5"
+    },
+    {
+      "path": "/api/cron/rop-queue?mode=release",
+      "schedule": "*/15 5-14 * * 1-5"
+    },
+    {
+      "path": "/api/cron/rop-queue?mode=return",
+      "schedule": "0 14 * * 1-5"
+    },
+    {
+      "path": "/api/cron/rop-enrich",
+      "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/cron/rop-relations",
+      "schedule": "40 4 * * 1-5"
+    },
+    {
+      "path": "/api/cron/crm-reconcile-deleted",
+      "schedule": "25 * * * *"
+    },
+    {
+      "path": "/api/cron/rop-morning",
+      "schedule": "0 5 * * 1-5"
+    },
+    {
+      "path": "/api/cron/shtab-daily-report",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/tamara-outfit",
+      "schedule": "30 1 * * *"
+    },
+    {
+      "path": "/api/cron/rop-load-review",
+      "schedule": "0 5 * * 1"
+    },
+    {
+      "path": "/api/cron/rop-evening",
+      "schedule": "0 16 * * 1-5"
+    },
+    {
+      "path": "/api/sync/telphin",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/sync/telphin/recovery",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/sync/retailcrm/calls",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/call-match",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/telphin-callback",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/point-payment-ingest",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/tbank-statement-poll",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/order-context-refresh",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/transcription",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/transcription-poll",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/call-semantic-rules",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/manager-aggregate-refresh",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/order-insight-refresh",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/salary-estimate-classify",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/score-refresh",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/watchdog",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/stt-watchdog",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/rule-engine",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/nightly-reconciliation",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/grade-eval",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/sync/managers",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/sync/retailcrm/clients",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/sync/dictionaries",
+      "schedule": "30 4 * * *"
+    },
+    {
+      "path": "/api/cron/system-audit",
+      "schedule": "0 */4 * * *"
+    },
+    {
+      "path": "/api/cron/telegram-notify",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/okk/run-all",
+      "schedule": "15 4 * * *"
+    },
+    {
+      "path": "/api/cron/lead-catcher",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/rop-outreach",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/lead-reminders",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/email-poll",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/email-sent-poll",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/ai-balance-watch",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/ai-health",
+      "schedule": "5 14 * * 1-5"
+    },
+    {
+      "path": "/api/cron/shtab-briefing",
+      "schedule": "0 6 * * 1"
+    },
+    {
+      "path": "/api/cron/shtab-rhythm",
+      "schedule": "20 6 * * 1"
+    },
+    {
+      "path": "/api/cron/salary-client-canon",
+      "schedule": "20 2 * * *"
+    },
+    {
+      "path": "/api/cron/system-jobs/legal-enforcement-parse",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-customers",
+      "schedule": "17 * * * *"
+    },
+    {
+      "path": "/api/cron/error-digest",
+      "schedule": "35 * * * *"
+    },
+    {
+      "path": "/api/cron/salary-period",
+      "schedule": "10 0 * * *"
+    }
+  ]
 }

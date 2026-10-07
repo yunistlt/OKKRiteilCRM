@@ -74,6 +74,57 @@ const EMPTY_NONE: PeriodView = {
  * Потребители, которым инженеры не нужны («Моя ЗП», AI-консультант), передают false,
  * чтобы не гонять лишний department-wide проход на «горячем» роуте.
  */
+/**
+ * Завести период месяца, если его ещё нет.
+ *
+ * Период — это строка месяца в `salary_period`, к ней привязан расчёт. Раньше
+ * она появлялась только при первом нажатии «Пересчитать», и первого числа
+ * экран «Зарплата ОП» встречал словами «Расчёта за этот период нет» — хотя
+ * заказы за месяц уже были (жалоба владельца 07.10.2026 по октябрю: четыре
+ * заказа ушли в производство 1–2 октября, а ведомость пустая).
+ *
+ * Заводим ТОЛЬКО текущий месяц. Будущие — нельзя: в справочнике появятся
+ * пустые месяцы, которые кто-нибудь закроет. Прошедшие — тоже: если периода за
+ * апрель нет, значит, тогда зарплату так и не считали, и заводить его задним
+ * числом, просто потому что кто-то листал месяцы, незачем. Для прошлого
+ * остаётся кнопка «Пересчитать».
+ *
+ * Идемпотентно — повторный вызов ничего не меняет. Расчёт не трогаем: открытый
+ * период считается на лету.
+ */
+export async function ensurePeriodForMonth(year: number, month: number): Promise<number | null> {
+    // «Сейчас» по Москве: в ночь на первое число по UTC в Тольятти уже новый
+    // месяц, и ведомость должна открыться по местному календарю, а не по UTC.
+    const msk = new Date(Date.now() + 3 * 60 * 60 * 1000);
+    const isCurrent = year === msk.getUTCFullYear() && month === msk.getUTCMonth() + 1;
+    if (!isCurrent) return null;
+
+    const { data: existing } = await supabase
+        .from('salary_period')
+        .select('id')
+        .eq('year', year)
+        .eq('month', month)
+        .maybeSingle();
+    if (existing) return Number(existing.id);
+
+    const { data: created, error } = await supabase
+        .from('salary_period')
+        .insert({ year, month, status: 'open' })
+        .select('id')
+        .single();
+    // Гонка двух одновременных заходов: период уже создан соседом — не беда.
+    if (error) {
+        const { data: again } = await supabase
+            .from('salary_period')
+            .select('id')
+            .eq('year', year)
+            .eq('month', month)
+            .maybeSingle();
+        return again ? Number(again.id) : null;
+    }
+    return Number(created.id);
+}
+
 export async function loadPeriodView(
     year: number,
     month: number,

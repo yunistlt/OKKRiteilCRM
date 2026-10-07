@@ -5,7 +5,7 @@ import { supabase } from '@/utils/supabase';
 import { buildTeamOrders, buildIncomingByManager } from '@/lib/salary/report-details';
 import { getRecalcState } from '@/lib/salary/recalc-state';
 import { buildMyDashboard } from '@/lib/salary/my-dashboard';
-import { loadPeriodView } from '@/lib/salary/period-view';
+import { ensurePeriodForMonth, loadPeriodView } from '@/lib/salary/period-view';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // открытый период считается на лету
@@ -35,6 +35,14 @@ export async function GET(req: Request) {
             // Аккаунт не привязан к менеджеру RetailCRM — личного расчёта нет.
             return NextResponse.json({ period: { year, month, status: 'none' }, rows: [], total: 0, isManagerOnly: true });
         }
+
+        /**
+         * Начавшийся месяц открываем сами: период заводит ежедневный крон
+         * (/api/cron/salary-period), а здесь — подстраховка на случай, если
+         * человек открыл ведомость раньше прогона. Иначе первого числа экран
+         * пустой, хотя заказы за месяц уже есть.
+         */
+        await ensurePeriodForMonth(year, month);
 
         const view = await loadPeriodView(year, month, { includeEngineers: false });
         if (view.status === 'none') {
