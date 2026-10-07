@@ -39,8 +39,11 @@ describe('фильтр «Покупатель»', () => {
         // индексов не укладывался в таймаут, и поиск отвечал «заказов нет»
         // (жалоба Ксении 07.10.2026).
         expect(where).not.toContain('raw_payload');
-        expect(where).toContain('phone.ilike');
-        expect(where).toContain('additionalPhone.ilike');
+        // Всё, по чему ищут покупателя, сложено в одно поле: по одному полю
+        // поиск 121 мс, через ИЛИ по семи — 2 061 мс (замер 07.10.2026).
+        expect(where).toContain('search_text.ilike.%79581001285%');
+        // И по последним цифрам: номер набирают по-разному.
+        expect(where).toContain('search_text.ilike.%9581001285%');
     });
 
     it('ищет по найденным карточкам клиентов, а не только по контакту заказа', () => {
@@ -56,8 +59,7 @@ describe('фильтр «Покупатель»', () => {
         const q = applyOrdersFilter(fakeQuery(), { ...EMPTY_FILTER, customer: 'Иванов' });
         const where = q.conditions.join('|');
 
-        expect(where).toContain('lastName.ilike');
-        expect(where).toContain('customer_name.ilike');
+        expect(where).toContain('search_text.ilike.%иванов%');
         expect(where).not.toContain('raw_payload->customer->>id.in');
     });
 });
