@@ -83,6 +83,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({
         ok: true,
         id: result.id,
+        // Замечания ИИ-юрисконсульта показываем сразу, в том же окне.
+        review: result.review,
         note: standard
             ? 'Договор составлен по стандартным условиям — можно отправлять клиенту.'
             : result.byAi

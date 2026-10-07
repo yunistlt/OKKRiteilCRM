@@ -8,6 +8,7 @@
  * штатную схему 70/30 и помечаем это юристу.
  */
 import { supabase } from '@/utils/supabase';
+import { reviewContract, type ContractReview } from '@/lib/legal/contract-review';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { orderDocumentData } from '@/lib/own-crm/documents';
 import { buildContractText, DEFAULT_PAYMENT_TERMS, type ContractFill } from './contract-template';
@@ -148,7 +149,7 @@ export async function createOrderContract(params: {
     toLawyer?: boolean;
     /** Текст условий готов и согласован — вставляем как есть, без ИИ. */
     termsAsIs?: boolean;
-}): Promise<{ ok: true; id: number; byAi: boolean } | { ok: false; reason: string }> {
+}): Promise<{ ok: true; id: number; byAi: boolean; review: ContractReview } | { ok: false; reason: string }> {
     const built = await buildOrderContract(params);
     if (!built) {
         return {
@@ -156,6 +157,13 @@ export async function createOrderContract(params: {
             reason: 'Не выбрано наше юрлицо — выберите его в списке «Юрлицо заказа» рядом с кнопками документов.',
         };
     }
+
+    /**
+     * Замечания ИИ-юрисконсульта — к каждому договору (требование владельца
+     * 07.10.2026). Это подсказка менеджеру, а не запрет: договор сохраняется
+     * в любом случае, даже если проверка не удалась.
+     */
+    const review = await reviewContract(built.text);
 
     const title = `Договор купли-продажи № ${params.orderNumber} — ${built.sellerName}`;
     const { data, error } = await supabase
@@ -175,6 +183,8 @@ export async function createOrderContract(params: {
                 ? 'Стандартные условия из списка — согласование юриста не требуется.'
                 : null,
             created_by: params.author,
+            ai_review: review,
+            ai_review_at: new Date().toISOString(),
         })
         .select('id')
         .single();
@@ -192,7 +202,7 @@ export async function createOrderContract(params: {
         author: params.author,
     });
 
-    return { ok: true, id: data.id, byAi: built.byAi };
+    return { ok: true, id: data.id, byAi: built.byAi, review };
 }
 
 /** Решение юриста по договору: согласовать или вернуть на доработку. */

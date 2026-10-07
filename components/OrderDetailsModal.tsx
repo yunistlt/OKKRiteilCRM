@@ -314,6 +314,13 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     const [contractTerms, setContractTerms] = useState('');
     /** Выбранный стандартный шаблон условий. Пусто — менеджер пишет свои. */
     const [contractTermCode, setContractTermCode] = useState('');
+    /** Замечания ИИ-юрисконсульта к составленному договору. */
+    const [contractReview, setContractReview] = useState<{
+        level: 'ok' | 'attention' | 'risk';
+        summary: string;
+        notes: string[];
+        byAi: boolean;
+    } | null>(null);
     const [contractSaving, setContractSaving] = useState(false);
     const [contractNote, setContractNote] = useState<string | null>(null);
     // Карточка заказа редактируемая сразу: режима «только просмотр» у нас нет.
@@ -2007,6 +2014,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                     const payload = await res.json();
                                                     if (!res.ok) throw new Error(payload.error || 'Договор не составился');
                                                     setContractNote(payload.note || 'Договор отправлен юристу.');
+                                                    setContractReview(payload.review ?? null);
                                                     setContractTerms('');
                                                 } catch (e: any) {
                                                     setContractNote(e.message);
@@ -2043,6 +2051,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                         const payload = await res.json();
                                                         if (!res.ok) throw new Error(payload.error || 'Договор не составился');
                                                         setContractNote(payload.note || 'Договор отправлен юристу.');
+                                                        setContractReview(payload.review ?? null);
                                                     } catch (e: any) {
                                                         setContractNote(e.message);
                                                     } finally {
@@ -2056,6 +2065,48 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                         )}
                                         {contractNote && <span className="text-sm text-gray-700">{contractNote}</span>}
                                     </div>
+
+                                    {/* Замечания ИИ-юрисконсульта (Лев) — к каждому
+                                        договору (требование владельца 07.10.2026).
+                                        Это подсказка, а не запрет: договор уже
+                                        составлен, решение за менеджером. */}
+                                    {contractReview && (
+                                        <div
+                                            className={`mt-3 border p-3 text-sm ${
+                                                contractReview.level === 'risk'
+                                                    ? 'border-red-300 bg-red-50'
+                                                    : contractReview.level === 'ok'
+                                                        ? 'border-green-300 bg-green-50'
+                                                        : 'border-amber-300 bg-amber-50'
+                                            }`}
+                                        >
+                                            <div className="mb-1 flex items-baseline justify-between gap-2">
+                                                <span className="font-semibold text-gray-900">
+                                                    Комментарий ИИ-юриста
+                                                </span>
+                                                <span className="text-[11px] uppercase tracking-wide text-gray-500">
+                                                    {contractReview.level === 'risk'
+                                                        ? 'лучше показать юристу'
+                                                        : contractReview.level === 'ok'
+                                                            ? 'можно отправлять'
+                                                            : 'стоит глянуть'}
+                                                </span>
+                                            </div>
+                                            <p className="text-gray-800">{contractReview.summary}</p>
+                                            {contractReview.notes.length > 0 && (
+                                                <ul className="mt-2 list-disc space-y-1 pl-5 text-gray-800">
+                                                    {contractReview.notes.map((note, i) => (
+                                                        <li key={i}>{note}</li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                            {!contractReview.byAi && (
+                                                <p className="mt-2 text-[11px] text-gray-500">
+                                                    Договор не проверен — ИИ-юрисконсульт был недоступен.
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
