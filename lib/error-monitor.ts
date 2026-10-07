@@ -48,8 +48,34 @@ async function writeLog(
     }
 }
 
+/**
+ * Человеческий текст из чего угодно, что прилетело в catch.
+ *
+ * Ошибка Supabase — не Error, а обычный объект { message, code, details, hint }.
+ * `String(err)` превращал его в «[object Object]», и в журнале оставалась
+ * пустышка: 07.10.2026 закрытие периода падало, запись в журнале была, а
+ * причины в ней не было. Собираем всё, что объект о себе рассказывает.
+ */
+export function describeError(err: unknown): string {
+    if (err instanceof Error) return err.message;
+    if (err && typeof err === 'object') {
+        const o = err as Record<string, unknown>;
+        const parts = [o.message, o.details, o.hint]
+            .filter((v) => typeof v === 'string' && v.trim())
+            .map((v) => String(v).trim());
+        if (o.code) parts.push(`код ${o.code}`);
+        if (parts.length) return parts.join(' · ');
+        try {
+            return JSON.stringify(err).slice(0, 500);
+        } catch {
+            return '[нечитаемая ошибка]';
+        }
+    }
+    return String(err);
+}
+
 export function logError(source: string, err: unknown, context?: ErrorContext): void {
-    const e = err instanceof Error ? err : new Error(String(err));
+    const e = err instanceof Error ? err : new Error(describeError(err));
     // Параллельно: в консоль (Vercel logs) + в Supabase
     console.error(`[${source}]`, e.message, context || '');
     void writeLog(source, 'error', e.message, e.stack, context);

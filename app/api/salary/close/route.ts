@@ -4,7 +4,7 @@ import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { recalcAndPersist } from '@/lib/salary/engine';
 import { sendPayrollToAccounting } from '@/lib/salary/notify-accounting';
-import { logError } from '@/lib/error-monitor';
+import { describeError, logError } from '@/lib/error-monitor';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -70,6 +70,8 @@ export async function POST(req: Request) {
          * и в ежечасную сводку ошибок.
          */
         logError('salary/close', e, { year: body?.year ?? null, month: body?.month ?? null });
-        return NextResponse.json({ error: e.message }, { status: 400 });
+        // Ошибка Supabase — не Error: без разбора в интерфейс уезжало пустое
+        // «Ошибка закрытия», и человек не знал, что сломалось.
+        return NextResponse.json({ error: describeError(e) }, { status: 400 });
     }
 }
