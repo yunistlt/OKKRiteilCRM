@@ -22,9 +22,17 @@
 /** Статусы, означающие «расшифровать нечего» — их ставит этот модуль. */
 export const NO_ANSWER_STATUS = 'no_answer';
 export const NO_RECORDING_STATUS = 'no_recording';
+/** Статус «запись появилась, можно расшифровывать» — его ждёт крон расшифровки. */
+export const READY_STATUS = 'ready_for_transcription';
 
 /** Статусы, которые можно переписать: работа по ним ещё не начиналась. */
-const REWRITABLE_STATUSES = new Set([null, '', 'pending', 'ready_for_transcription']);
+const REWRITABLE_STATUSES = new Set([null, '', 'pending', READY_STATUS]);
+
+/**
+ * Приговоры этого модуля. Их можно отменить, когда запись всё-таки появилась:
+ * вебхук об окончании звонка часто приходит раньше, чем Телфин выкладывает запись.
+ */
+const REVERSIBLE_VERDICTS = new Set([NO_ANSWER_STATUS, NO_RECORDING_STATUS]);
 
 type CallLeg = {
     result?: string | null;
@@ -56,18 +64,32 @@ export function hasRecording(rawPayload: unknown, recordingUrl?: string | null):
  * Какой статус расшифровки честен для этого звонка.
  *
  * Возвращает `null`, когда трогать нечего: расшифровка уже идёт или сделана, либо запись
- * есть и звонок законно ждёт своей очереди. Ничего не «чинит» задним числом — только
- * заменяет вечное `pending` на причину, по которой расшифровки не будет.
+ * есть и звонок законно ждёт своей очереди.
+ *
+ * Приговор «нечего расшифровывать» обратим. Вебхук об окончании звонка приходит раньше,
+ * чем Телфин выкладывает запись: в этот момент записи ещё нет, и состоявшийся разговор
+ * получает `no_answer`. Запись появляется через минуты, но крон расшифровки берёт только
+ * `pending` и `ready_for_transcription` — и разговор выпадает навсегда. Так 6 и 7 октября
+ * 2026 потерялось 43 разговора: у всех есть и отвеченная нога, и запись, а статус —
+ * «не дозвонились». Поэтому: появилась запись у звонка с нашим приговором — возвращаем его
+ * в очередь.
  */
 export function resolveTranscriptionStatus(params: {
     rawPayload: unknown;
     recordingUrl?: string | null;
     currentStatus?: string | null;
     hasTranscript?: boolean;
-}): typeof NO_ANSWER_STATUS | typeof NO_RECORDING_STATUS | null {
+}): typeof NO_ANSWER_STATUS | typeof NO_RECORDING_STATUS | typeof READY_STATUS | null {
     if (params.hasTranscript) return null;
-    if (!REWRITABLE_STATUSES.has(params.currentStatus ?? null)) return null;
-    if (hasRecording(params.rawPayload, params.recordingUrl)) return null;
+
+    const current = params.currentStatus ?? null;
+    const recorded = hasRecording(params.rawPayload, params.recordingUrl);
+
+    // Запись появилась у звонка, который мы раньше посчитали безнадёжным — вернуть в очередь.
+    if (recorded && current && REVERSIBLE_VERDICTS.has(current)) return READY_STATUS;
+
+    if (!REWRITABLE_STATUSES.has(current)) return null;
+    if (recorded) return null;
 
     return didConnect(params.rawPayload) ? NO_RECORDING_STATUS : NO_ANSWER_STATUS;
 }
