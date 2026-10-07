@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { planAllowedForManager } from '@/lib/read-gate/service';
 import { PRESALE_STATUSES, buildPlan, purchases } from '@/lib/sales-rop/rules';
 import { adviseTask, clientKeyForOrder } from '@/lib/sales-rop/task-advisor';
 import { computeTaskResults } from '@/lib/sales-rop/task-result';
@@ -951,7 +952,26 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
             const dm = bucket.managerId !== null ? direct.get(bucket.managerId) : undefined;
             // Нет личного чата — план всё равно уходит в общий: человек не должен
             // остаться без работы из-за того, что не написал боту.
-            if (text) {
+            /**
+             * Разбор идёт перед планом: пока менеджер не подтвердил прочтение,
+             * личный план не отправляем. Добивка (крон раз в десять минут)
+             * дошлёт его, как только разбор подтверждён. Нечего читать или
+             * действует отсрочка — план уходит сразу, как раньше.
+             */
+            const planAllowed = await planAllowedForManager(bucket.managerId ?? null);
+            if (text && !planAllowed && bucket.managerId !== null) {
+                // Придерживаем план, а не выбрасываем: иначе человек останется
+                // без работы на весь день из-за непрочитанного разбора.
+                await supabase.from('sales_rop_pending_plan').upsert({
+                    manager_id: bucket.managerId,
+                    plan_date: today,
+                    recipient_name: bucket.name,
+                    text,
+                    manager_chat_id: dm ?? null,
+                    sent_at: null,
+                }, { onConflict: 'manager_id,plan_date' });
+            }
+            if (text && planAllowed) {
                 await sendTypedSafe('sales.plan_daily_dm', text, bucket.name, failures, {
                     // Менеджер назван — план ляжет в его чат с Семёном в CRM;
                     // Telegram останется запасным путём.

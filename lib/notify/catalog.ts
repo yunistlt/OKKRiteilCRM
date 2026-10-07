@@ -206,6 +206,14 @@ export const NOTIFY_TYPES: NotifyTypeDef[] = [
     target: 'owner_dm',
   },
   {
+    code: 'sales.read_gate_deferred',
+    name: 'Разбор отложен менеджером',
+    description: 'Менеджер нажал «срочное дело, прочитаю позже»: работа открыта на час, разбор не прочитан.',
+    group: 'sales',
+    bot: 'payments',
+    target: 'group_sales',
+  },
+  {
     code: 'sales.orphan_orders',
     name: 'Заказы без менеджера',
     description: 'Заказы, у которых не определён ответственный — их никто не ведёт.',
