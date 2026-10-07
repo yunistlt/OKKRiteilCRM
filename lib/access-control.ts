@@ -15,7 +15,7 @@ export type RoleCapabilityProfile = {
     canRunBulkOperations: boolean;
 };
 
-export const ROLE_DISPLAY_ORDER: AppRole[] = ['admin', 'manager', 'okk', 'rop', 'logistics', 'logistics_view', 'jurist', 'demo'];
+export const ROLE_DISPLAY_ORDER: AppRole[] = ['admin', 'manager', 'okk', 'rop', 'logistics', 'logistics_view', 'jurist', 'buhgalter', 'demo'];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
     admin: 'Админ',
@@ -25,6 +25,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
     logistics: 'Логистика и закупки',
     logistics_view: 'Логистика: только просмотр',
     jurist: 'Юрист',
+    buhgalter: 'Бухгалтер',
     demo: 'ДЕМО',
 };
 

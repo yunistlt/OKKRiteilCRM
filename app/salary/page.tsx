@@ -217,28 +217,38 @@ export default function SalaryDashboard() {
                     <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-9 border border-input bg-background px-2 text-sm">
                         {[year - 1, year, year + 1].map((y) => <option key={y} value={y}>{y}</option>)}
                     </select>
-                    <Button variant="outline" size="sm" onClick={() => setDutyOpen(true)}>
-                        <CalendarClock className="mr-2 h-4 w-4" /> Табель
-                    </Button>
-                    <Link href="/salary/settings">
-                        <Button variant="outline" size="sm"><Settings className="mr-2 h-4 w-4" /> Настройки мотивации</Button>
-                    </Link>
+                    {canRecalc && (
+                        <Button variant="outline" size="sm" onClick={() => setDutyOpen(true)}>
+                            <CalendarClock className="mr-2 h-4 w-4" /> Табель
+                        </Button>
+                    )}
+                    {canRecalc && (
+                        <Link href="/salary/settings">
+                            <Button variant="outline" size="sm"><Settings className="mr-2 h-4 w-4" /> Настройки мотивации</Button>
+                        </Link>
+                    )}
                     {rows.length > 0 && (
                         <a href={`/api/salary/export?period=${period}`}>
                             <Button variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> Excel</Button>
                         </a>
                     )}
-                    <Button size="sm" onClick={recalc} disabled={recalculating || closed}>
-                        {recalculating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                        Пересчитать
-                    </Button>
-                    {rows.length > 0 && !closed && (
+                    {/* Пересчёт, закрытие периода и отправка ведомости меняют людям
+                        деньги — они только у админа и РОПа. Бухгалтер видит ведомость
+                        и выгрузку, но кнопок, которые сервер ему всё равно не даст,
+                        не показываем: неработающая кнопка — обман. */}
+                    {canRecalc && (
+                        <Button size="sm" onClick={recalc} disabled={recalculating || closed}>
+                            {recalculating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                            Пересчитать
+                        </Button>
+                    )}
+                    {canRecalc && rows.length > 0 && !closed && (
                         <Button variant="destructive" size="sm" onClick={closePeriod} disabled={closing}>
                             {closing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />}
                             Закрыть период
                         </Button>
                     )}
-                    {closed && (
+                    {canRecalc && closed && (
                         <Button variant="outline" size="sm" onClick={sendToAccounting} disabled={sending}>
                             {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                             В бухгалтерию
