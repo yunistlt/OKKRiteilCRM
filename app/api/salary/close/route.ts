@@ -4,6 +4,7 @@ import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { recalcAndPersist } from '@/lib/salary/engine';
 import { sendPayrollToAccounting } from '@/lib/salary/notify-accounting';
+import { logError } from '@/lib/error-monitor';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -12,12 +13,14 @@ export const maxDuration = 300;
 // Финально пересчитывает период (снимок) и блокирует его: salary_calc неизменяем,
 // дальнейшие правки — только через корректировки. Аудитируется.
 export async function POST(req: Request) {
+    let body: any = null;
     try {
         const session = await getSession();
         if (!hasAnyRole(session, ['admin', 'rop'])) {
             return NextResponse.json({ error: 'Доступ запрещен' }, { status: 403 });
         }
-        const { year, month } = await req.json();
+        body = await req.json();
+        const { year, month } = body;
         if (!year || !month) {
             return NextResponse.json({ error: 'Нужны year и month' }, { status: 400 });
         }
@@ -57,6 +60,16 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ ok: true, status: 'closed', closed_at: closedAt, delivery, canonWarning: calc.canonWarning });
     } catch (e: any) {
+        /**
+         * Причину провала записываем, а не только показываем тостом.
+         *
+         * 07.10.2026: владелец нажал «Закрыть период», сентябрь остался
+         * открытым, и в журнале не осталось НИЧЕГО — ни записи о закрытии, ни
+         * ошибки. Восстановить причину было не по чему: сообщение в интерфейсе
+         * живёт несколько секунд. Теперь провал закрытия попадает в error_logs
+         * и в ежечасную сводку ошибок.
+         */
+        logError('salary/close', e, { year: body?.year ?? null, month: body?.month ?? null });
         return NextResponse.json({ error: e.message }, { status: 400 });
     }
 }
