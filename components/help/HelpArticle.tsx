@@ -7,13 +7,20 @@
  * выделением важного, как сделано в ЦУ». Простыня текста не читается — человек
  * ищет глазами шаг, на котором остановился.
  *
- * Разметка простая, её пишут люди прямо в тексте инструкции:
+ * Стандарт статей — golds/GOLD_HELP_ARTICLES.md. Разметка пишется прямо в
+ * тексте инструкции, каждый блок отделяется ПУСТОЙ СТРОКОЙ:
  *   ## Заголовок раздела
+ *   == Коротко — суть в двух-трёх пунктах, для тех, кто уже делал
  *   1. Шаг — строка, начинающаяся с цифры и точки
  *   !! Важно: текст — янтарная плашка
  *   ?? Подсказка: текст — синяя плашка
+ *   [скрин: путь.png | подпись] — снимок экрана с подписью
  *   - пункт списка
  *   **жирным** внутри строки
+ *
+ * Без пустой строки «!!» и «??» считаются обычным текстом, плашка не
+ * рисуется, и статья выглядит простынёй — так и вышло со статьями от
+ * 06–07.10.2026, что заметил владелец.
  */
 import { Fragment, ReactNode } from 'react';
 
@@ -34,9 +41,51 @@ export default function HelpArticle({ content }: { content: string }) {
                 const text = block.trim();
                 if (!text) return null;
 
+                /**
+                 * «Коротко» — суть статьи в начале. Тот, кто уже делал это
+                 * раньше, читает только её и закрывает (по образцу справки
+                 * ЦехУспеха).
+                 */
+                if (text.startsWith('== ')) {
+                    const lines = text.slice(3).split('\n').map((l) => l.replace(/^[-•]\s*/, '').trim()).filter(Boolean);
+                    return (
+                        <div key={index} className="border-l-4 border-green-600 bg-green-50 p-4">
+                            <div className="mb-2 flex items-center gap-2 text-sm font-bold text-green-900">
+                                <span>✓</span> Коротко
+                            </div>
+                            <ul className="space-y-1.5">
+                                {lines.map((line, i) => (
+                                    <li key={i} className="flex gap-2 text-sm leading-relaxed text-green-950">
+                                        <span className="text-green-600">•</span>
+                                        <span>{inline(line)}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    );
+                }
+
+                /** Снимок экрана: человек сверяет глазами, то ли он видит. */
+                const shot = /^\[скрин:\s*([^|\]]+?)\s*(?:\|\s*([^\]]+?))?\s*\]$/.exec(text);
+                if (shot) {
+                    const [, src, caption] = shot;
+                    return (
+                        <figure key={index} className="my-2">
+                            <img
+                                src={src.startsWith('/') ? src : `/help/${src}`}
+                                alt={caption || 'Снимок экрана'}
+                                className="w-full border border-gray-300"
+                            />
+                            {caption && (
+                                <figcaption className="mt-1 text-xs italic text-gray-500">{caption}</figcaption>
+                            )}
+                        </figure>
+                    );
+                }
+
                 if (text.startsWith('## ')) {
                     return (
-                        <h2 key={index} className="pt-3 text-base font-bold text-gray-900">
+                        <h2 key={index} className="border-b border-gray-200 pb-1 pt-5 text-lg font-bold text-gray-900">
                             {text.slice(3)}
                         </h2>
                     );
