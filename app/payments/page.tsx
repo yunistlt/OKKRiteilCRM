@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import StatementUpload from '@/components/payments/StatementUpload';
 import {
   PAYMENT_PROJECT_LABELS,
   PAYMENT_SOURCE_LABELS,
@@ -412,6 +413,10 @@ export default function PaymentsPage() {
             Банковские платежи (Точка) и их разнос по заказам. Неоднозначные — на ручной разбор.
           </p>
         </div>
+
+        {/* Выписка файлом: для банков без обмена, например счёт ЗМК в ВТБ
+            (решение владельца 07.10.2026). */}
+        <StatementUpload />
 
         {/* Точка — счета и выписка (сворачивается) */}
         <div className="border-t border-gray-200">

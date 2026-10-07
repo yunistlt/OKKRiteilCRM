@@ -38,6 +38,7 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/clients/create', label: 'API создания клиента', description: 'Заведение нового клиента вручную.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/clients/requisites-lookup', label: 'API реквизитов по ИНН', description: 'Государственные данные компании по ИНН для карточки клиента.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics'] },
     { prefix: '/api/clients/requisites-from-file', label: 'API реквизитов из файла', description: 'Разбор присланной карточки предприятия.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics'] },
+    { prefix: '/api/payments/upload-statement', label: 'API загрузки выписки', description: 'Загрузка банковской выписки файлом, когда обмена с банком нет.', category: 'Платежи', allowed: ['admin', 'rop', 'okk'] },
     { prefix: '/api/calls/active', label: 'API звонков, идущих сейчас', description: 'Всплывающее окно о звонке: кто звонит и по какому заказу.', category: 'Звонки', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics'] },
     { prefix: '/api/company-groups', label: 'API групп компаний', description: 'Поиск групп компаний для объединения карточек одного покупателя.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/clients', label: 'API клиентов', description: 'Данные реестра и карточки клиента.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
