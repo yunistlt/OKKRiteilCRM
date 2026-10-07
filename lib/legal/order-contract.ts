@@ -89,7 +89,7 @@ export async function buildOrderContract(params: {
     sellerCode?: string | null;
     /** Текст условий готов и согласован — вставляем как есть, без ИИ. */
     termsAsIs?: boolean;
-}): Promise<{ text: string; byAi: boolean; sellerName: string } | null> {
+}): Promise<{ text: string; byAi: boolean; sellerName: string; buyerReady: boolean } | null> {
     const data = await orderDocumentData(params.orderId, params.sellerCode ?? null);
     if (!data?.seller) return null;
 
@@ -128,7 +128,12 @@ export async function buildOrderContract(params: {
         productionTerm: data.productionTerm,
     };
 
-    return { text: buildContractText(fill), byAi: payment.byAi, sellerName: data.seller.name };
+    // Без названия и ИНН покупателя договор подписывать не с кем.
+    const buyerReady = Boolean(
+        (data.payerFullName || data.payerCompany) && String(data.payerInn ?? '').trim(),
+    );
+
+    return { text: buildContractText(fill), byAi: payment.byAi, sellerName: data.seller.name, buyerReady };
 }
 
 /**
@@ -155,6 +160,20 @@ export async function createOrderContract(params: {
         return {
             ok: false,
             reason: 'Не выбрано наше юрлицо — выберите его в списке «Юрлицо заказа» рядом с кнопками документов.',
+        };
+    }
+
+    /**
+     * Без реквизитов заказчика договор юридически пустой: в нём вместо стороны
+     * стоит слово «Покупатель», нет ИНН и адреса. Нашёл при проверке
+     * 07.10.2026 — на заказе без реквизитов договор молча собирался.
+     * Реквизитов нет у 19 179 заказов, так что случай обычный.
+     */
+    if (!built.buyerReady) {
+        return {
+            ok: false,
+            reason: 'У заказчика не заполнены реквизиты — без них в договоре не будет ни названия, '
+                + 'ни ИНН. Внесите их в карточке клиента и составьте договор заново.',
         };
     }
 
