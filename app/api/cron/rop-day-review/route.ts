@@ -2,6 +2,7 @@ import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { buildDayReview } from '@/lib/sales-rop/day-review';
+import { backfillTouches } from '@/lib/sales-rop/service';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -28,6 +29,13 @@ export async function GET(req: NextRequest) {
             || new Date(Date.now() + 3 * 3600e3 - 24 * 3600e3).toISOString().slice(0, 10);
         const only = url.searchParams.get('manager');
 
+        /**
+         * Сначала досверяем вчерашний день: если вечерний прогон не записал
+         * касания, разбор прочитает пустоту как «не сделано ни одной задачи».
+         * Так и вышло 6 октября.
+         */
+        const backfill = await backfillTouches(date);
+
         const { data: managers } = await supabase
             .from('managers')
             .select('id, first_name, last_name, active, telphin_extension')
@@ -47,7 +55,7 @@ export async function GET(req: NextRequest) {
             }
         }
 
-        return NextResponse.json({ ok: true, date, managers: done });
+        return NextResponse.json({ ok: true, date, backfill, managers: done });
     } catch (e: any) {
         return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
     }

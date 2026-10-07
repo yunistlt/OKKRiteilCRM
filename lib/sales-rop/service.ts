@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { logError } from '@/lib/error-monitor';
 import { planAllowedForManager } from '@/lib/read-gate/service';
 import { PRESALE_STATUSES, buildPlan, purchases } from '@/lib/sales-rop/rules';
 import { adviseTask, clientKeyForOrder } from '@/lib/sales-rop/task-advisor';
@@ -1168,8 +1169,54 @@ async function soft<T>(label: string, fallback: T, degraded: string[], fn: () =>
         return await fn();
     } catch (e: any) {
         degraded.push(`${label}: ${String(e?.message ?? e).slice(0, 120)}`);
+        // Иначе провал виден только в телеграме и теряется через день: 6 октября
+        // так пропала сверка касаний, и узнали мы о ней через сутки, по
+        // ложному обвинению в разборе.
+        logError('sales-rop/evening', e, { step: label });
         return fallback;
     }
+}
+
+/**
+ * Досверить касания за день, если вечерний прогон их не записал.
+ *
+ * 6 октября сверка не прошла: `detectTouches` упала (разово — на тех же данных
+ * сегодня отрабатывает за полторы секунды), `soft()` проглотила ошибку, отчёт
+ * ушёл, а у всех сорока задач дня осталось пусто в `checked_at`. Наружу это не
+ * вылезло никак: ни строки в журнале ошибок, ни повторной попытки. Утренний
+ * разбор прочитал пустоту как «не сделано ни одной задачи» и чуть не обвинил
+ * человека.
+ *
+ * Поэтому перед разбором день досверяется. Вызов идемпотентный: трогает только
+ * строки без отметки о проверке.
+ */
+export async function backfillTouches(date: string): Promise<{ filled: number; reason?: string }> {
+    const { data: tasks } = await supabase
+        .from('sales_rop_task')
+        .select('order_id')
+        .eq('plan_date', date)
+        .is('checked_at', null);
+
+    const pending = (tasks ?? []) as Array<{ order_id: number }>;
+    if (!pending.length) return { filled: 0 };
+
+    let touches: Map<number, string>;
+    try {
+        touches = await detectTouches(date);
+    } catch (e: any) {
+        return { filled: 0, reason: e?.message || 'сверка касаний не отработала' };
+    }
+
+    const stamp = new Date().toISOString();
+    for (const t of pending) {
+        const kind = touches.get(Number(t.order_id)) ?? null;
+        await supabase
+            .from('sales_rop_task')
+            .update({ touched: Boolean(kind), touch_kind: kind, checked_at: stamp })
+            .eq('plan_date', date)
+            .eq('order_id', t.order_id);
+    }
+    return { filled: pending.length };
 }
 
 export async function runEvening(today: string, opts: { dryRun?: boolean } = {}): Promise<EveningResult> {
