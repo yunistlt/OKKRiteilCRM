@@ -4,6 +4,22 @@ import { canAccessPathWithRules, DEFAULT_ROUTE_RULES, normalizeAllowedRoles, Rou
 let cachedRules: RouteRule[] | null = null;
 let cachedAt = 0;
 
+/**
+ * Сколько держим правила доступа в памяти процесса.
+ *
+ * Кэш был заведён, но не читался: таблица правил спрашивалась по сети на
+ * КАЖДЫЙ переход каждого человека — а это проверка в middleware, то есть и на
+ * страницы, и на все запросы к API. Когда Supabase отвечал медленно, страница
+ * открывалась рывком, а при ошибке запрос падал в запасные правила и человека
+ * уводило на домашнюю страницу роли (жалобы менеджеров 08.10.2026: «появляется
+ * заказ и тут же сбивается весь поиск с переходом на главную»).
+ *
+ * Минута — компромисс: правки прав в админке подхватываются почти сразу
+ * (и там же вызывается `clearRouteRulesCache`), а в обычной работе база не
+ * дёргается вовсе.
+ */
+const RULES_TTL_MS = 60_000;
+
 function getSupabaseRestConfig() {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -24,6 +40,10 @@ function isMissingTableError(error: any) {
 }
 
 export async function getEffectiveRouteRules(): Promise<RouteRule[]> {
+    if (cachedRules && Date.now() - cachedAt < RULES_TTL_MS) {
+        return cachedRules;
+    }
+
     try {
         const { url, key } = getSupabaseRestConfig();
         const response = await fetch(
@@ -77,8 +97,12 @@ export async function getEffectiveRouteRules(): Promise<RouteRule[]> {
         return cachedRules;
     } catch (error) {
         console.error('[RBAC] Failed to load route rules:', error);
-        cachedRules = DEFAULT_ROUTE_RULES;
-        cachedAt = Date.now();
+        /**
+         * Сбой чтения не должен менять права под человеком. Если правила уже
+         * были прочитаны — работаем по ним, пока база не ответит; и только на
+         * холодном старте падаем в запасные правила из кода.
+         */
+        if (cachedRules) return cachedRules;
         return DEFAULT_ROUTE_RULES;
     }
 }

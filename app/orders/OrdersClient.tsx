@@ -360,7 +360,15 @@ export default function OrdersClient() {
                     </span>
                 );
             case 'number':
-                return <OrderNumberLink number={order.number} className="font-bold text-blue-700 hover:underline" />;
+                return (
+                    <OrderNumberLink
+                        number={order.number}
+                        className="font-bold text-blue-700 hover:underline"
+                        // В своём же списке карточку открываем на месте: переход
+                        // по ссылке стирал фильтры (Ирина 08.10.2026).
+                        onOpen={(value) => { setOpenOrderNumber(value); setOpenOrderId(order.orderId ?? null); }}
+                    />
+                );
             case 'customer':
                 return order.customerName || '—';
             case 'contragent':

@@ -11,6 +11,7 @@ import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 
 // @ts-nocheck
 import { NextResponse } from 'next/server';
+import { findOrderByOurReply } from '@/lib/order-mail/link';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
@@ -379,6 +380,13 @@ export async function GET(req: Request) {
                 let v: any = null;
                 let subjectOrderNum: string | null = null; // номер заказа клиента, найденный в теме «Re:»
                 let threadOrder: { number: string; id: number | null } | null = null; // заказ из того же почтового треда
+                /**
+                 * Заказ по НАШЕМУ письму, на которое отвечают (ТЗ §3.1).
+                 * Самая надёжная линия: `In-Reply-To` переживает и снесённую
+                 * тему, и потерянный тег. Раньше такой ответ опознавался как
+                 * переписка, но к заказу не привязывался — «номера в теме нет».
+                 */
+                let ourReplyOrder: { number: string; id: number | null; reason: string } | null = null;
 
                 // Для «роботов-лидов» (webasyst и т.п.) или пересылаемых писем (Fwd) реальный контакт клиента — в теле письма,
                 // а не в From. Тянем email/телефон/имя для карточки и назначения.
@@ -506,13 +514,22 @@ export async function GET(req: Request) {
                     // ветки сработали бы и тег, и repliesToOurThread (в теле цитата нашего письма).
                     // Тред-дедуп проверяем ПЕРВЫМ: если по этой же переписке заказ уже заведён,
                     // разбирать письмо как новую заявку незачем — какими бы ни были тег и «Re:».
+                    // Ответ на наше письмо — проверяем раньше всего: он даёт точный
+                    // номер заказа, а не признак «это переписка».
+                    ourReplyOrder = await findOrderByOurReply({ in_reply_to: e.in_reply_to, email_refs: e.email_refs });
+
                     threadOrder = aiRoute === 'new_request'
                         ? await findOrderByEmailThread(e, threadDedupDays)
                         : null;
                     const staleTag = !threadOrder && crmTag && aiRoute === 'new_request'
                         ? await findStaleTaggedOrder(e.subject, crmTagStaleDays)
                         : null;
-                    if (threadOrder) {
+                    if (ourReplyOrder) {
+                        // Клиент ответил на наше письмо по заказу — это переписка,
+                        // и заказ известен точно. Новую заявку не заводим.
+                        emailType = 'reply_thread';
+                        reasoning = `${ourReplyOrder.reason} №${ourReplyOrder.number} — ${noteFor(aiRoute)} | ${v.reasoning}`;
+                    } else if (threadOrder) {
                         emailType = 'reply_thread';
                         reasoning = `Продолжение переписки, по которой заказ №${threadOrder.number} уже создан — дубль не заводим | ${v.reasoning}`;
                     } else if (staleTag) {
@@ -590,7 +607,7 @@ export async function GET(req: Request) {
                 // было — в карточке заказа ни писем, ни файлов, менеджер вёл сделку на 11 млн вслепую.
                 if (emailType === 'reply_thread' || isDepartmentRoute(emailType as any)) {
                     // 0. Заказ, найденный по почтовому треду (самый надёжный), затем — номер из темы
-                    let orderNum: string | null = threadOrder?.number || subjectOrderNum;
+                    let orderNum: string | null = ourReplyOrder?.number || threadOrder?.number || subjectOrderNum;
 
                     // 1. Проверяем тему на наличие CRM-тега [#N/NNNNN]
                     if (!orderNum && e.subject) {
