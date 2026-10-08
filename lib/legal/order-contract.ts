@@ -183,7 +183,11 @@ export async function createOrderContract(params: {
      * 07.10.2026). Это подсказка менеджеру, а не запрет: договор сохраняется
      * в любом случае, даже если проверка не удалась.
      */
-    const review = await reviewContract(built.text);
+    const review = await reviewContract(built.text, {
+        // Стандартные условия юрист уже утвердил — обсуждать их заново не нужно.
+        standardTerms: Boolean(params.termsAsIs),
+        sellerName: built.sellerName,
+    });
 
     const title = `Договор купли-продажи № ${params.orderNumber} — ${built.sellerName}`;
     const { data, error } = await supabase
