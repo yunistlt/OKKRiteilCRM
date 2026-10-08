@@ -11,6 +11,35 @@
  */
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { cutForAi } from '@/lib/email/classify';
+import { supabase } from '@/utils/supabase';
+
+/**
+ * Правила юротдела: что для нас норма, что повод насторожиться, что
+ * подписывать нельзя. Выведены из наших же договоров и протоколов
+ * разногласий; правятся в базе, а не в коде.
+ */
+async function legalRules(): Promise<string> {
+    const { data } = await supabase
+        .from('legal_knowledge')
+        .select('topic, rule, severity, evidence')
+        .eq('is_active', true)
+        .order('topic');
+
+    const rows = (data ?? []) as any[];
+    if (!rows.length) return '';
+
+    const label: Record<string, string> = {
+        red: 'КРАСНАЯ ЛИНИЯ',
+        watch: 'повод насторожиться',
+        norm: 'наша норма',
+    };
+
+    return [
+        'ПРАВИЛА НАШЕГО ЮРОТДЕЛА. Сверяй договор с ними; это важнее общих рассуждений.',
+        ...rows.map((r) => `— [${r.topic}, ${label[r.severity] ?? r.severity}] ${r.rule}`),
+        'Если договор нарушает красную линию — level «risk» и прямо скажи, какой пункт и чем грозит.',
+    ].join('\n');
+}
 
 export interface ContractReview {
     /** Короткий вывод одной строкой: на что смотреть. */
@@ -71,13 +100,14 @@ export async function reviewContract(
     }
 
     try {
+        const rules = await legalRules().catch(() => '');
         const client = getOpenAIClient();
         const res = await client.chat.completions.create({
             model: 'gpt-4o-mini',
             temperature: 0.2,
             response_format: { type: 'json_object' },
             messages: [
-                { role: 'system', content: PROMPT },
+                { role: 'system', content: rules ? `${PROMPT}\n\n${rules}` : PROMPT },
                 {
                     role: 'user',
                     content: [
