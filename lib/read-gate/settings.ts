@@ -12,6 +12,14 @@ export type ReadGateSettings = {
     minSeconds: number;
     /** Скорость чтения, знаков в секунду: по ней считается минимум для длинных документов. */
     charsPerSecond: number;
+    /**
+     * Потолок времени, секунд. 0 — без потолка.
+     *
+     * Решение владельца 08.10.2026: держать человека дольше минуты незачем.
+     * Длинный разбор по объёму текста требовал 190 секунд — три минуты на
+     * пороге рабочего дня это много, и человек начинает искать обход.
+     */
+    maxSeconds: number;
     /** На сколько минут отсрочка открывает работу. */
     deferMinutes: number;
     /** Сколько отсрочек в сутки. */
@@ -26,6 +34,7 @@ export const READ_GATE_DEFAULTS: ReadGateSettings = {
     charsPerSecond: 15,
     deferMinutes: 60,
     deferPerDay: 1,
+    maxSeconds: 60,
     roles: ['manager'],
 };
 
@@ -51,6 +60,10 @@ export async function loadReadGateSettings(): Promise<ReadGateSettings> {
         charsPerSecond: num('read_gate_chars_per_second', READ_GATE_DEFAULTS.charsPerSecond),
         deferMinutes: num('read_gate_defer_minutes', READ_GATE_DEFAULTS.deferMinutes),
         deferPerDay: num('read_gate_defer_per_day', READ_GATE_DEFAULTS.deferPerDay),
+        // Потолок можно снять, поставив 0 — тогда время считается только по объёму.
+        maxSeconds: Number.isFinite(Number(map.get('read_gate_max_seconds')))
+            ? Number(map.get('read_gate_max_seconds'))
+            : READ_GATE_DEFAULTS.maxSeconds,
         roles: roles.length ? roles : READ_GATE_DEFAULTS.roles,
     };
 }
@@ -64,5 +77,8 @@ export async function loadReadGateSettings(): Promise<ReadGateSettings> {
  */
 export function requiredSeconds(textLength: number, settings: ReadGateSettings): number {
     const byLength = Math.ceil(textLength / Math.max(1, settings.charsPerSecond));
-    return Math.max(settings.minSeconds, byLength);
+    const atLeast = Math.max(settings.minSeconds, byLength);
+    // Потолок сильнее объёма, но минимум сильнее потолка: пустой документ не
+    // должен открываться мгновенно, даже если потолок занизили.
+    return settings.maxSeconds > 0 ? Math.max(settings.minSeconds, Math.min(atLeast, settings.maxSeconds)) : atLeast;
 }

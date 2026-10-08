@@ -37,13 +37,18 @@ describe('шлюз чтения: сколько времени требоват�
     expect(requiredSeconds(0, READ_GATE_DEFAULTS)).toBe(45)
   })
 
-  it('длинный документ — по объёму текста', () => {
-    // 3000 знаков при 15 знаках в секунду — 200 секунд.
-    expect(requiredSeconds(3000, READ_GATE_DEFAULTS)).toBe(200)
+  it('длинный документ — по объёму текста, но не дольше потолка', () => {
+    // 3000 знаков при 15 знаках в секунду — 200 секунд, потолок 60.
+    expect(requiredSeconds(3000, READ_GATE_DEFAULTS)).toBe(60)
+    expect(requiredSeconds(3000, { ...READ_GATE_DEFAULTS, maxSeconds: 0 })).toBe(200)
+  })
+
+  it('потолок ниже минимума не опускает планку ниже минимума', () => {
+    expect(requiredSeconds(3000, { ...READ_GATE_DEFAULTS, maxSeconds: 10 })).toBe(45)
   })
 
   it('порог из настроек, а не из кода', () => {
-    const settings = { ...READ_GATE_DEFAULTS, minSeconds: 90, charsPerSecond: 30 }
+    const settings = { ...READ_GATE_DEFAULTS, minSeconds: 90, charsPerSecond: 30, maxSeconds: 0 }
     expect(requiredSeconds(100, settings)).toBe(90)
     expect(requiredSeconds(6000, settings)).toBe(200)
   })
