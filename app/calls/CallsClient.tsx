@@ -3,6 +3,7 @@
 // Все звонки компании: кто звонил, кому, по какому заказу, с записью и расшифровкой.
 import { useCallback, useEffect, useState } from 'react';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 type Call = {
     id: number;
@@ -15,6 +16,11 @@ type Call = {
     callId?: string | null;
     /** Разбор разговора нашёл в тексте номер заказа; привязкой станет после подтверждения. */
     suggestedOrder?: { orderId: number; number: string } | null;
+    /**
+     * Номер есть в карточке клиента — только по таким звоним из реестра
+     * (решение владельца 08.10.2026). null — кнопки не будет.
+     */
+    knownClientId?: number | null;
     missed: boolean;
     durationSec: number;
     recordingUrl: string | null;
@@ -33,7 +39,11 @@ const formatDuration = (sec: number) => {
 };
 
 export default function CallsClient() {
+    const { user } = useAuth();
     const [calls, setCalls] = useState<Call[]>([]);
+    // Кому сейчас звоним: по номеру телефона, чтобы не дать нажать дважды.
+    const [dialing, setDialing] = useState<string | null>(null);
+    const [dialNote, setDialNote] = useState<string | null>(null);
     const [direction, setDirection] = useState('all');
     const [missed, setMissed] = useState(false);
     const [search, setSearch] = useState('');
@@ -49,6 +59,38 @@ export default function CallsClient() {
     // Подтверждение подсказанного заказа: после него звонок привязан к заказу
     // способом «указал менеджер».
     const [bindingId, setBindingId] = useState<string | null>(null);
+    /**
+     * Позвонить по номеру из реестра.
+     *
+     * Набирает софтфон менеджера через Телфин — тот же путь, что и кнопка
+     * «Звонок» в карточке клиента. Если у человека не привязан добавочный,
+     * звонить нечем, и мы честно это говорим, а не делаем вид, что набрали.
+     */
+    const dial = async (phone: string) => {
+        if (!user?.retail_crm_manager_id) {
+            setDialNote('Ваша учётка не связана с менеджером — звонить нечем. Скажите администратору.');
+            return;
+        }
+        setDialing(phone);
+        setDialNote(null);
+        try {
+            const res = await fetch('/api/calls/initiate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phoneNumber: phone, managerId: user.retail_crm_manager_id }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Звонок не пошёл');
+            setDialNote(payload.mock
+                ? 'Демо-режим: звонок не совершён, ключи телефонии не заданы.'
+                : `Звоним на ${phone} — поднимите трубку софтфона.`);
+        } catch (e: any) {
+            setDialNote(e.message);
+        } finally {
+            setDialing(null);
+        }
+    };
+
     const confirmOrder = async (callId: string, orderId: number) => {
         setBindingId(callId);
         try {
@@ -163,6 +205,7 @@ export default function CallsClient() {
             </div>
 
             {error && <p className="mb-3 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+            {dialNote && <p className="mb-3 border-l-[3px] border-l-blue-600 bg-blue-50 px-3 py-2 text-sm text-blue-900">{dialNote}</p>}
             {loading && <p className="text-sm text-gray-500">Загружаю…</p>}
             {!loading && calls.length === 0 && <p className="bg-white px-4 py-6 text-sm text-gray-500">Звонков не найдено.</p>}
 
@@ -190,7 +233,22 @@ export default function CallsClient() {
                                         </span>
                                         {call.missed && <span className="ml-2 text-red-700">без ответа</span>}
                                     </td>
-                                    <td className="whitespace-nowrap px-3 py-2 text-gray-800">{call.phone || '—'}</td>
+                                    <td className="whitespace-nowrap px-3 py-2 text-gray-800">
+                                        {call.phone || '—'}
+                                        {/* Кнопка только у номеров из карточки клиента.
+                                            В реестре полно автоответчиков, переадресаций
+                                            и чужих номеров — набирать их нельзя. */}
+                                        {call.phone && call.knownClientId && (
+                                            <button
+                                                type="button"
+                                                disabled={dialing === call.phone}
+                                                onClick={() => void dial(call.phone!)}
+                                                className="ml-2 border border-gray-900 px-2 py-0.5 text-[11px] font-semibold text-gray-900 hover:bg-gray-900 hover:text-white disabled:border-gray-300 disabled:text-gray-400"
+                                            >
+                                                {dialing === call.phone ? 'Звоню…' : 'Позвонить'}
+                                            </button>
+                                        )}
+                                    </td>
                                     <td className="px-3 py-2 text-gray-700">{call.managerName || '—'}</td>
                                     <td className="px-3 py-2">
                                         {call.orderNumber ? (

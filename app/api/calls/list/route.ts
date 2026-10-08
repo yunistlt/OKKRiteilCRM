@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { knownClientPhones, phoneKey } from '@/lib/calls/known-numbers';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { clientCallKeys } from '@/lib/calls-client-search';
@@ -120,6 +121,13 @@ export async function GET(req: Request) {
         }
     }
 
+    /**
+     * Можно ли звонить по номеру из реестра. Звоним ТОЛЬКО на номера из
+     * карточек клиентов (решение владельца 08.10.2026): в реестре полно
+     * автоответчиков, переадресаций и чужих номеров.
+     */
+    const known = await knownClientPhones(rows.map((r: any) => r.phone)).catch(() => new Map<string, number>());
+
     return NextResponse.json({
         calls: rows.map((row) => {
             const extra = row.external_id ? extras.get(String(row.external_id)) : undefined;
@@ -137,6 +145,8 @@ export async function GET(req: Request) {
                 transcript: extra?.transcript ?? null,
                 callId: extra?.callId ?? null,
                 suggestedOrder: extra?.callId ? (suggested.get(extra.callId) ?? null) : null,
+                // Номер есть в карточке клиента — значит, кнопка «позвонить».
+                knownClientId: known.get(phoneKey(row.phone) ?? '') ?? null,
             };
         }),
     });
