@@ -4,6 +4,7 @@
 // и все его заказы. Реквизиты в RetailCRM лежат на заказе, поэтому под ними
 // подписано, из какого заказа они взяты — число должно раскладываться.
 import { useCallback, useEffect, useRef, useState } from 'react';
+import ClientFiles from '@/app/components/ClientFiles';
 import { useRouter } from 'next/navigation';
 import { formatIntRu, formatRub } from '@/lib/format';
 import { isReseller } from '@/lib/own-crm/okved';
@@ -596,6 +597,11 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                             {requisites.updatedBy ? ` · ${requisites.updatedBy}` : ''}
                         </div>
                     )}
+
+                    {/* Файлы компании и признак «наше юрлицо» — здесь же, в
+                        карточке: отдельный раздел владельцу не нужен
+                        (решение 08.10.2026). */}
+                    <ClientFiles clientId={String(clientId)} />
 
                     {/* Телефоны компании: их несколько, и менеджер добавляет
                         столько, сколько нужно (просьба 08.10.2026). Номер в
