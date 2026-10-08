@@ -1831,9 +1831,13 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 options={names.enumOptions('deliveryType')}
                                 onChange={(v) => setField('delivery.code', v)}
                             />
-                            <EditField fieldKey="delivery.date" label="Дата доставки" type="date" value={fieldValue('delivery.date', String(delivery.date || expectedDelivery || '').slice(0, 10))} onChange={(v) => setField('delivery.date', v)} />
-                            <EditField fieldKey="delivery.time" label="Время доставки" value={fieldValue('delivery.time', logisticTime || '')} onChange={(v) => setField('delivery.time', v)} />
-                            <EditField fieldKey="delivery.cost" label="Стоимость доставки" type="number" value={fieldValue('delivery.cost', logisticCost ?? 0)} onChange={(v) => setField('delivery.cost', v)} />
+                            {/* Дата, время и стоимость доставки убраны из карточки
+                                08.10.2026 по просьбе менеджеров: их никто не
+                                заполняет. Замер на боевой базе — дата стоит у 3
+                                заказов из 30 207, стоимость у 24, время ни у
+                                одного; за последние 90 дней — ни одного по всем
+                                трём. Данные в базе не трогали: если поле снова
+                                понадобится, вернуть его — одна строка. */}
                             <EditField fieldKey="delivery.region" label="Регион" value={fieldValue('delivery.region', logisticRegion || '')} onChange={(v) => setField('delivery.region', v)} />
                             <EditField fieldKey="delivery.city" label="Город" value={fieldValue('delivery.city', logisticCity || '')} onChange={(v) => setField('delivery.city', v)} />
                             {/* Отдельное поле RetailCRM, его заполняет менеджер ОП:

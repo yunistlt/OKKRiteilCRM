@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { managerSignature } from '@/lib/templates/signature';
 import { supabase } from '@/utils/supabase';
 import { stripOrderThreadTag } from '@/lib/email';
 import { isNoReplySender } from '@/lib/email/classify';
@@ -99,28 +100,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         // подставить адрес, на который нельзя писать.
         const orderEmail = isNoReplySender(orderEmailRaw) ? null : orderEmailRaw;
 
-        // Подпись менеджера — та же, что в RetailCRM: имя из справочника менеджеров,
-        // добавочный — из его настроек Телфина (там, где он уже заполнен).
-        const { data: manager } = (order as any)?.manager_id
-            ? await supabase
-                  .from('managers')
-                  .select('first_name, last_name, telphin_extension')
-                  .eq('id', (order as any).manager_id)
-                  .maybeSingle()
-            : { data: null };
-
-        const managerName = [manager?.last_name, manager?.first_name].filter(Boolean).join(' ').trim();
-        const extension = manager?.telphin_extension ? String(manager.telphin_extension).trim() : '';
-        const signature = managerName
-            ? [
-                  'С уважением,',
-                  managerName,
-                  'Менеджер по продажам',
-                  'Завод Металлических Конструкций',
-                  `+7(499)350-44-90${extension ? `, ${extension}` : ''}`,
-                  'https://zmktlt.ru/',
-              ].join('\n')
-            : null;
+        // Подпись — из общего места: она одинакова в ответе, шаблоне и рассылке.
+        const sig = await managerSignature((order as any)?.manager_id ?? null);
+        const signature = sig?.text ?? null;
 
         /**
          * «Кому» — почта клиента из заказа, а не адрес, с которого пришло
