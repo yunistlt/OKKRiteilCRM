@@ -8,6 +8,7 @@
  * штатную схему 70/30 и помечаем это юристу.
  */
 import { supabase } from '@/utils/supabase';
+import { saveContractFile } from '@/lib/legal/contract-file';
 import { reviewContract, type ContractReview } from '@/lib/legal/contract-review';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { orderDocumentData } from '@/lib/own-crm/documents';
@@ -154,7 +155,7 @@ export async function createOrderContract(params: {
     toLawyer?: boolean;
     /** Текст условий готов и согласован — вставляем как есть, без ИИ. */
     termsAsIs?: boolean;
-}): Promise<{ ok: true; id: number; byAi: boolean; review: ContractReview } | { ok: false; reason: string }> {
+}): Promise<{ ok: true; id: number; byAi: boolean; review: ContractReview; file?: string | null } | { ok: false; reason: string }> {
     const built = await buildOrderContract(params);
     if (!built) {
         return {
@@ -221,7 +222,22 @@ export async function createOrderContract(params: {
         author: params.author,
     });
 
-    return { ok: true, id: data.id, byAi: built.byAi, review };
+    /**
+     * Договор кладём файлом — в «Файлы» заказа и в реестр юротдела
+     * (требование владельца 08.10.2026: «он должен храниться в файлах в
+     * карточке заказа, а также в реестре договоров в юротделе»). Провал файла
+     * не отменяет договор: текст уже сохранён, файл пересоберётся.
+     */
+    const file = await saveContractFile({
+        contractId: String(data.id),
+        orderNumber: params.orderNumber,
+        orderId: params.orderId,
+        title,
+        bodyText: built.text,
+        author: params.author,
+    });
+
+    return { ok: true, id: data.id, byAi: built.byAi, review, file: file.ok ? file.fileName : null };
 }
 
 /** Решение юриста по договору: согласовать или вернуть на доработку. */
@@ -281,6 +297,25 @@ export async function reviseOrderContract(params: {
         change_note: params.note,
         author: params.author,
     });
+
+    // Файл пересобираем под новую версию: иначе в заказе лежит старый договор,
+    // а правка юриста видна только в базе.
+    const { data: head } = await supabase
+        .from('order_contracts')
+        .select('order_number, order_id, title')
+        .eq('id', params.contractId)
+        .maybeSingle();
+    if (head) {
+        await saveContractFile({
+            contractId: String(params.contractId),
+            orderNumber: String((head as any).order_number),
+            orderId: (head as any).order_id ?? null,
+            title: String((head as any).title),
+            bodyText: params.bodyText,
+            version: nextVersion,
+            author: params.author,
+        });
+    }
 
     return { ok: true, version: nextVersion };
 }

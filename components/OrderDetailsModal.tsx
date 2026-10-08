@@ -323,6 +323,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     } | null>(null);
     const [contractSaving, setContractSaving] = useState(false);
     const [contractNote, setContractNote] = useState<string | null>(null);
+    // Номер созданного договора — по нему даём ссылку на сам файл.
+    const [contractId, setContractId] = useState<number | null>(null);
     // Карточка заказа редактируемая сразу: режима «только просмотр» у нас нет.
     // Правка копится в состоянии и уходит в CRM одной кнопкой сверху.
     // Разовая скидка на заказ — рублями и процентом, как в RetailCRM.
@@ -2031,6 +2033,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                     if (!res.ok) throw new Error(payload.error || 'Договор не составился');
                                                     setContractNote(payload.note || 'Договор отправлен юристу.');
                                                     setContractReview(payload.review ?? null);
+                                                    setContractId(payload.id ?? null);
                                                     setContractTerms('');
                                                 } catch (e: any) {
                                                     setContractNote(e.message);
@@ -2080,6 +2083,20 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                             </button>
                                         )}
                                         {contractNote && <span className="text-sm text-gray-700">{contractNote}</span>}
+                                        {/* Сам документ: без ссылки менеджер видел только
+                                            замечания ИИ и спрашивал, где взять файл
+                                            (08.10.2026). Файл с подписью и печатью лежит
+                                            и во вкладке «Файлы» этого заказа. */}
+                                        {contractId && (
+                                            <a
+                                                href={`/api/orders/${encodeURIComponent(String(data.order?.number ?? orderId))}/contract/file?id=${contractId}`}
+                                                target="_blank"
+                                                rel="noopener"
+                                                className="text-sm font-semibold text-blue-700 hover:underline"
+                                            >
+                                                Открыть договор (PDF)
+                                            </a>
+                                        )}
                                     </div>
 
                                     {/* Замечания ИИ-юрисконсульта (Лев) — к каждому
