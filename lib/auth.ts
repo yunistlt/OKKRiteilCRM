@@ -47,7 +47,7 @@ type RequestLike = {
 };
 
 function normalizeRole(rawRole: unknown): AppRole | null {
-    if (rawRole === 'admin' || rawRole === 'okk' || rawRole === 'rop' || rawRole === 'manager' || rawRole === 'jurist' || rawRole === 'demo' || rawRole === 'logistics' || rawRole === 'logistics_view') {
+    if (rawRole === 'admin' || rawRole === 'okk' || rawRole === 'rop' || rawRole === 'manager' || rawRole === 'jurist' || rawRole === 'demo' || rawRole === 'logistics' || rawRole === 'logistics_view' || rawRole === 'buhgalter') {
         return rawRole;
     }
     return null;

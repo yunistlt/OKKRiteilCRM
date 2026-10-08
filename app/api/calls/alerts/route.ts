@@ -104,6 +104,9 @@ export async function GET(req: Request) {
         }
 
         const payload = order?.raw_payload ?? {};
+        // Номер карточки — чтобы имя клиента в оповещении вело в саму карточку.
+        const fromOrder = payload.customer?.id;
+        let clientId: number | null = /^\d+$/.test(String(fromOrder ?? '')) ? Number(fromOrder) : null;
         let clientName: string | null = order
             ? (payload.customer?.nickName
                 || payload.contragent?.legalName
@@ -120,6 +123,7 @@ export async function GET(req: Request) {
         if (!clientName) {
             const who = await clientByPhone(call.from_number_normalized || call.from_number || '');
             clientName = who?.name ?? null;
+            clientId = who?.clientId ?? null;
         }
 
         result.push({
@@ -129,6 +133,7 @@ export async function GET(req: Request) {
             phone: call.from_number,
             orderNumber: order?.number ?? null,
             clientName,
+            clientId,
             // Номер знаком, но заказа у звонка нет — так и пишем.
             knownClient: Boolean(clientName),
             managerName,

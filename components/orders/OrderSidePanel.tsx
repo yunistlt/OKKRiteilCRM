@@ -296,6 +296,11 @@ function TasksList({ orderNumber, onChanged }: { orderNumber: string; onChanged?
     const [due, setDue] = useState('');
     const [dueTime, setDueTime] = useState('');
     const [saving, setSaving] = useState(false);
+    /** Какую задачу правим и что в её полях. */
+    const [editing, setEditing] = useState<string | null>(null);
+    const [editTitle, setEditTitle] = useState('');
+    const [editDue, setEditDue] = useState('');
+    const [editTime, setEditTime] = useState('');
 
     const load = useCallback(async () => {
         const res = await fetch(`/api/orders/${orderNumber}/tasks`);
@@ -331,6 +336,40 @@ function TasksList({ orderNumber, onChanged }: { orderNumber: string; onChanged?
             body: JSON.stringify({ id: task.id, done: !task.done }),
         });
         await load();
+    };
+
+    /**
+     * Правка задачи на месте.
+     *
+     * Елена Парфёнова 08.10.2026: забыла поставить время, задача сохранилась,
+     * а поправить нельзя — только удалить и завести заново.
+     */
+    const startEdit = (task: any) => {
+        setEditing(task.id);
+        setEditTitle(task.title || '');
+        setEditDue(task.due_date ? String(task.due_date).slice(0, 10) : '');
+        setEditTime(task.due_time ? String(task.due_time).slice(0, 5) : '');
+    };
+
+    const saveEdit = async () => {
+        if (!editing || !editTitle.trim() || saving) return;
+        setSaving(true);
+        try {
+            await fetch(`/api/orders/${orderNumber}/tasks`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: editing,
+                    title: editTitle.trim(),
+                    dueDate: editDue || null,
+                    dueTime: editDue ? (editTime || null) : null,
+                }),
+            });
+            setEditing(null);
+            await load();
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -384,15 +423,65 @@ function TasksList({ orderNumber, onChanged }: { orderNumber: string; onChanged?
                                 onChange={() => toggle(t)}
                                 className="mt-1"
                             />
-                            <div className="min-w-0 flex-1">
-                                <p className={`text-sm ${t.done ? 'text-gray-400 line-through' : 'font-medium text-gray-900'}`}>{t.title}</p>
-                                <p className="text-[11px] text-gray-500">
-                                    {t.due_date
-                                        ? `Срок: ${new Date(t.due_date).toLocaleDateString('ru-RU')}${t.due_time ? ` в ${String(t.due_time).slice(0, 5)}` : ''}`
-                                        : 'Без срока'}
-                                    {t.created_by ? ` · поставил ${t.created_by}` : ''}
-                                </p>
-                            </div>
+                            {editing === t.id ? (
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap gap-2">
+                                        <input
+                                            value={editTitle}
+                                            onChange={(e) => setEditTitle(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') saveEdit();
+                                                if (e.key === 'Escape') setEditing(null);
+                                            }}
+                                            autoFocus
+                                            className="min-w-[10rem] flex-1 border border-gray-300 px-2 py-1 text-sm focus:border-blue-600 focus:outline-none"
+                                        />
+                                        <input
+                                            type="date"
+                                            value={editDue}
+                                            onChange={(e) => setEditDue(e.target.value)}
+                                            className="border border-gray-300 px-2 py-1 text-sm focus:border-blue-600 focus:outline-none"
+                                        />
+                                        <input
+                                            type="time"
+                                            value={editTime}
+                                            onChange={(e) => setEditTime(e.target.value)}
+                                            disabled={!editDue}
+                                            title={editDue ? 'Во сколько' : 'Сначала выберите дату'}
+                                            className="border border-gray-300 px-2 py-1 text-sm focus:border-blue-600 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                                        />
+                                    </div>
+                                    <div className="mt-1 flex gap-3">
+                                        <button
+                                            onClick={saveEdit}
+                                            disabled={!editTitle.trim() || saving}
+                                            className="text-[11px] font-semibold text-blue-700 hover:underline disabled:text-gray-300"
+                                        >
+                                            Сохранить
+                                        </button>
+                                        <button
+                                            onClick={() => setEditing(null)}
+                                            className="text-[11px] font-semibold text-gray-500 hover:underline"
+                                        >
+                                            Отмена
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="min-w-0 flex-1">
+                                    <p className={`text-sm ${t.done ? 'text-gray-400 line-through' : 'font-medium text-gray-900'}`}>{t.title}</p>
+                                    <p className="text-[11px] text-gray-500">
+                                        {t.due_date
+                                            ? `Срок: ${new Date(t.due_date).toLocaleDateString('ru-RU')}${t.due_time ? ` в ${String(t.due_time).slice(0, 5)}` : ''}`
+                                            : 'Без срока'}
+                                        {t.created_by ? ` · поставил ${t.created_by}` : ''}
+                                        {' · '}
+                                        <button onClick={() => startEdit(t)} className="font-semibold text-blue-700 hover:underline">
+                                            изменить
+                                        </button>
+                                    </p>
+                                </div>
+                            )}
                         </li>
                     ))}
                 </ul>

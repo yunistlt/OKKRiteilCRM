@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { clientsByOrderNumbers } from '@/lib/orders/order-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,12 +61,17 @@ export async function GET(req: Request) {
         allowed = new Set(((orders || []) as any[]).map((row) => String(row.number)));
     }
 
+    // Чей это заказ: в оповещении имя клиента ведёт в его карточку.
+    const clients = await clientsByOrderNumbers(Array.from(allowed));
+
     return NextResponse.json({
         letters: rows
             .filter((row) => allowed.has(String(row.created_crm_order_number)))
             .map((row) => ({
                 id: row.id,
                 orderNumber: String(row.created_crm_order_number),
+                clientId: clients.get(String(row.created_crm_order_number))?.clientId ?? null,
+                clientName: clients.get(String(row.created_crm_order_number))?.clientName ?? null,
                 subject: row.subject || 'Без темы',
                 from: row.from_name || row.from_email || 'Неизвестный отправитель',
                 receivedAt: row.received_at,

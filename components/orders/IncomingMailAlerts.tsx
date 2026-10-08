@@ -33,6 +33,9 @@ type Alert = {
     text: string;
     /** От кого письмо или кто поставил задачу и на когда. */
     note: string;
+    /** Клиент заказа: имя и карточка. Имя кликабельно — просьба владельца 08.10.2026. */
+    clientName?: string | null;
+    clientId?: number | null;
 };
 
 /** Как часто спрашиваем о новых письмах. Почта приезжает кроном раз в 5 минут. */
@@ -68,6 +71,8 @@ export default function IncomingMailAlerts() {
                         orderNumber: letter.orderNumber,
                         text: letter.subject,
                         note: letter.from,
+                        clientName: letter.clientName ?? null,
+                        clientId: letter.clientId ?? null,
                     });
                 }
             }
@@ -84,6 +89,8 @@ export default function IncomingMailAlerts() {
                         text: task.title,
                         note: [task.due ? `срок ${task.due}` : null, task.author ? `поставил ${task.author}` : null]
                             .filter(Boolean).join(' · '),
+                        clientName: task.clientName ?? null,
+                        clientId: task.clientId ?? null,
                     });
                 }
             }
@@ -102,6 +109,11 @@ export default function IncomingMailAlerts() {
                         text: call.clientName || call.phone || 'Неизвестный номер',
                         note: [call.phone, call.managerName ? `менеджер ${call.managerName}` : null]
                             .filter(Boolean).join(' · '),
+                        // У звонка имя клиента — это сам заголовок оповещения,
+                        // поэтому отдельной строкой его не повторяем: нужен
+                        // только номер карточки, чтобы заголовок вёл в неё.
+                        clientName: call.orderNumber ? (call.clientName ?? null) : null,
+                        clientId: call.clientId ?? null,
                     });
                 }
             }
@@ -176,7 +188,34 @@ export default function IncomingMailAlerts() {
                                 )}
                             </div>
                         )}
-                        <div className="mt-1 text-sm text-gray-800" title={alert.text}>{alert.text}</div>
+                        {/* Клиент заказа — ссылка на карточку: из оповещения
+                            сразу видно, кто это, и можно открыть его целиком
+                            (просьба владельца 08.10.2026). У звонка клиент сам
+                            является заголовком, и ссылкой становится он. */}
+                        {alert.kind === 'call' ? (
+                            <div className="mt-1 text-sm text-gray-800" title={alert.text}>
+                                {alert.clientId ? (
+                                    <a href={`/clients/${alert.clientId}`} className="font-semibold text-blue-700 hover:underline">
+                                        {alert.text}
+                                    </a>
+                                ) : alert.text}
+                            </div>
+                        ) : (
+                            <>
+                                {alert.clientName && (
+                                    <div className="mt-0.5 truncate text-xs" title={alert.clientName}>
+                                        {alert.clientId ? (
+                                            <a href={`/clients/${alert.clientId}`} className="font-semibold text-blue-700 hover:underline">
+                                                {alert.clientName}
+                                            </a>
+                                        ) : (
+                                            <span className="text-gray-500">{alert.clientName}</span>
+                                        )}
+                                    </div>
+                                )}
+                                <div className="mt-1 text-sm text-gray-800" title={alert.text}>{alert.text}</div>
+                            </>
+                        )}
                         <div className="mt-0.5 truncate text-xs text-gray-500">{alert.note}</div>
                     </div>
                 </div>

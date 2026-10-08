@@ -14,6 +14,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { clientsByOrderNumbers } from '@/lib/orders/order-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,12 +82,17 @@ export async function GET(req: Request) {
         allowed = new Set(((orders || []) as any[]).map((row) => String(row.number)));
     }
 
+    // Чей это заказ: в оповещении имя клиента ведёт в его карточку.
+    const clients = await clientsByOrderNumbers(Array.from(allowed));
+
     return NextResponse.json({
         tasks: rows
             .filter((row) => allowed.has(String(row.order_number)))
             .map((row) => ({
                 id: `task-${row.id}`,
                 orderNumber: String(row.order_number),
+                clientId: clients.get(String(row.order_number))?.clientId ?? null,
+                clientName: clients.get(String(row.order_number))?.clientName ?? null,
                 title: String(row.title ?? ''),
                 due: row.due_date
                     ? `${new Date(row.due_date).toLocaleDateString('ru-RU')}${row.due_time ? ` в ${String(row.due_time).slice(0, 5)}` : ''}`
