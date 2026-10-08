@@ -16,7 +16,11 @@ export function phoneKey(value: unknown): string | null {
     return digits.length >= 10 ? digits.slice(-10) : null;
 }
 
-export type KnownPhone = { clientId: number; name: string | null };
+export type KnownPhone = {
+    /** Карточка клиента. null — номер знаем из заказа, а карточки нет. */
+    clientId: number | null;
+    name: string | null;
+};
 
 /**
  * Какие из переданных номеров есть в карточках клиентов.
@@ -37,7 +41,12 @@ export async function knownClientPhones(phones: Array<string | null | undefined>
 
     for (const row of ((data ?? []) as any[])) {
         const tail = String(row.tail);
-        if (!found.has(tail)) found.set(tail, { clientId: Number(row.client_id), name: null });
+        const clientId = row.client_id == null ? null : Number(row.client_id);
+        const current = found.get(tail);
+        // Карточка важнее заказа: если номер нашёлся и там, и там, ведём в карточку.
+        if (!current || (current.clientId == null && clientId != null)) {
+            found.set(tail, { clientId, name: null });
+        }
     }
 
     /**
@@ -45,7 +54,7 @@ export async function knownClientPhones(phones: Array<string | null | undefined>
      * разных таблицах с общими номерами, поэтому спрашиваем обе: что нашлось
      * первым, то и показываем.
      */
-    const ids = Array.from(new Set(Array.from(found.values()).map((v) => v.clientId)));
+    const ids = Array.from(new Set(Array.from(found.values()).map((v) => v.clientId).filter((v): v is number => v != null)));
     if (ids.length) {
         const [companies, people] = await Promise.all([
             supabase.from('clients').select('id, company_name, "legalName", contact_name').in('id', ids),
@@ -63,7 +72,7 @@ export async function knownClientPhones(phones: Array<string | null | undefined>
         }
 
         for (const [tail, value] of Array.from(found.entries())) {
-            found.set(tail, { ...value, name: names.get(value.clientId) ?? null });
+            found.set(tail, { ...value, name: value.clientId == null ? null : names.get(value.clientId) ?? null });
         }
     }
 

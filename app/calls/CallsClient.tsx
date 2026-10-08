@@ -23,6 +23,8 @@ type Call = {
     knownClientId?: number | null;
     /** Название клиента из карточки — колонка «Клиент», ссылка на карточку. */
     clientName?: string | null;
+    /** Номер известен системе: есть в карточке или вписан в заказ. */
+    knownPhone?: boolean;
     missed: boolean;
     durationSec: number;
     recordingUrl: string | null;
@@ -241,7 +243,7 @@ export default function CallsClient() {
                                         {/* Кнопка только у номеров из карточки клиента.
                                             В реестре полно автоответчиков, переадресаций
                                             и чужих номеров — набирать их нельзя. */}
-                                        {call.phone && call.knownClientId && (
+                                        {call.phone && call.knownPhone && (
                                             <button
                                                 type="button"
                                                 disabled={dialing === call.phone}
@@ -263,6 +265,9 @@ export default function CallsClient() {
                                             >
                                                 {call.clientName || `Карточка №${call.knownClientId}`}
                                             </a>
+                                        ) : call.knownPhone ? (
+                                            // Номер взят из заказа, карточки у него нет.
+                                            <span className="text-gray-500">номер из заказа</span>
                                         ) : (
                                             <span className="text-gray-400">—</span>
                                         )}

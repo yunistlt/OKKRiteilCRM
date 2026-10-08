@@ -149,6 +149,8 @@ export async function GET(req: Request) {
                 // и ссылка на саму карточку.
                 knownClientId: known.get(phoneKey(row.phone) ?? '')?.clientId ?? null,
                 clientName: known.get(phoneKey(row.phone) ?? '')?.name ?? null,
+                // Номер известен системе (карточка или заказ) — можно звонить.
+                knownPhone: known.has(phoneKey(row.phone) ?? ''),
             };
         }),
     });
