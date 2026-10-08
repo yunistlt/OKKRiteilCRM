@@ -41,8 +41,36 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
      * непонятной ошибкой (Ирина 02.10.2026).
      */
     const [documents, setDocuments] = useState<Array<'proposal' | 'invoice'>>([]);
-    /** Файлы заказа, уже лежащие у нас: их письму достаточно назвать по номеру. */
-    const [attachedFileIds] = useState<number[]>([]);
+    /**
+     * Файлы заказа, выбранные руками.
+     *
+     * Ирина Гордеева 08.10.2026: «нет кнопки отправить договор, приходится
+     * пересохранять его на комп». Договор, чертёж, паспорт — всё это уже лежит
+     * в заказе, и письму достаточно назвать их по номеру.
+     *
+     * Выбор именно руками, а не «приложить всё»: по заказу бывает несколько
+     * договоров и версий КП, и отправить клиенту не тот — дороже, чем выбрать
+     * из списка (требование владельца 08.10.2026).
+     */
+    const [attachedFileIds, setAttachedFileIds] = useState<number[]>([]);
+    const [orderFiles, setOrderFiles] = useState<Array<{ id: number; name: string; size: number | null; note: string | null }> | null>(null);
+    const [filesPicker, setFilesPicker] = useState(false);
+
+    const loadOrderFiles = async () => {
+        setFilesPicker((open) => !open);
+        if (orderFiles !== null) return;
+        try {
+            const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files`);
+            const payload = await res.json();
+            // Отправить письмом можно только то, что лежит у нас файлом:
+            // у почтовых вложений своего номера в заказе нет.
+            setOrderFiles(((payload.files || []) as any[])
+                .filter((f) => f.fileId)
+                .map((f) => ({ id: Number(f.fileId), name: String(f.filename), size: f.size ?? null, note: f.note ?? null })));
+        } catch {
+            setOrderFiles([]);
+        }
+    };
 
     /** Отметить, что к письму нужно приложить КП или счёт по этому заказу. */
     const attachOrderDocument = (kind: 'proposal' | 'invoice') => {
@@ -401,6 +429,17 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                 >
                     {documents.includes('invoice') ? 'Счёт приложен ✓' : 'Приложить счёт'}
                 </button>
+                {/* Файлы заказа: договор, чертежи, паспорта — выбираем галочками. */}
+                <button
+                    onClick={loadOrderFiles}
+                    className={`border px-3 py-2 text-sm font-bold ${
+                        attachedFileIds.length
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                    }`}
+                >
+                    {attachedFileIds.length ? `Файлы заказа: ${attachedFileIds.length} ✓` : 'Файлы заказа'}
+                </button>
                 <label className="cursor-pointer border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100">
                     Файл с компьютера
                     <input
@@ -438,7 +477,37 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                 <span className="text-[11px] text-gray-500">Уйдёт с общего ящика компании rop@zmktlt.ru</span>
             </div>
 
-            {(files.length > 0 || documents.length > 0) && (
+            {filesPicker && (
+                <div className="mt-2 border border-gray-300 bg-white p-2">
+                    <p className="mb-1 text-[10px] font-black uppercase text-gray-400">Что приложить из заказа</p>
+                    {orderFiles === null && <p className="text-xs text-gray-500">Смотрим файлы заказа…</p>}
+                    {orderFiles !== null && !orderFiles.length && (
+                        <p className="text-xs text-gray-500">В заказе нет файлов — приложите с компьютера.</p>
+                    )}
+                    <ul className="max-h-48 space-y-1 overflow-y-auto">
+                        {(orderFiles ?? []).map((file) => (
+                            <li key={file.id}>
+                                <label className="flex cursor-pointer items-baseline gap-2 text-[13px]">
+                                    <input
+                                        type="checkbox"
+                                        checked={attachedFileIds.includes(file.id)}
+                                        onChange={() => setAttachedFileIds((prev) => (
+                                            prev.includes(file.id) ? prev.filter((id) => id !== file.id) : [...prev, file.id]
+                                        ))}
+                                    />
+                                    <span className="min-w-0 flex-1 truncate" title={file.name}>{file.name}</span>
+                                    {file.note && <span className="shrink-0 text-[11px] text-gray-400">{file.note}</span>}
+                                    <span className="shrink-0 text-[11px] text-gray-400">
+                                        {file.size ? `${Math.round(file.size / 1024)} КБ` : ''}
+                                    </span>
+                                </label>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+
+            {(files.length > 0 || documents.length > 0 || attachedFileIds.length > 0) && (
                 <div className="mt-2 border border-gray-200 bg-white p-2">
                     <p className="mb-1 text-[10px] font-black uppercase text-gray-400">Вложения</p>
                     <ul className="space-y-1">

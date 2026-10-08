@@ -3,6 +3,7 @@
 // Карточки наших юрлиц. Название, ИНН и банковские реквизиты ведутся в
 // RetailCRM — здесь только то, чего там нет: ставка НДС и подписанты.
 import { useCallback, useEffect, useState } from 'react';
+import LegalEntityDocs from '@/app/components/LegalEntityDocs';
 
 type Entity = {
     id: number;
@@ -307,6 +308,9 @@ export default function LegalEntitiesClient() {
                                     : 'Идёт по нижней дуге печати. Из ЕГРЮЛ приходит заготовка, поправьте, если на вашей печати написано иначе.'}
                             </span>
                         </label>
+
+                        {/* Уставные документы: вместо ссылки на чужой Яндекс.Диск. */}
+                        <LegalEntityDocs entityId={entity.id} />
                     </div>
                 ))}
             </div>

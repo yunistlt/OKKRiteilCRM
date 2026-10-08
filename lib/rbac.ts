@@ -42,6 +42,14 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/calls/active', label: 'API звонков, идущих сейчас', description: 'Всплывающее окно о звонке: кто звонит и по какому заказу.', category: 'Звонки', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics'] },
     { prefix: '/api/company-groups', label: 'API групп компаний', description: 'Поиск групп компаний для объединения карточек одного покупателя.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/clients', label: 'API клиентов', description: 'Данные реестра и карточки клиента.', category: 'ОКК', allowed: ['admin', 'buhgalter', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
+    /**
+     * Уставные документы компании для клиента. Маршрут публичный — его
+     * пропускает middleware, сессии у клиента нет. Правило нужно, чтобы
+     * маршрут не падал в корневое «admin/okk/rop»: иначе наш же интерфейс,
+     * открывший ссылку под менеджером, получит 403 (грабля расхождения
+     * страница/API).
+     */
+    { prefix: '/api/public/docs', label: 'API уставных документов', description: 'Отдаёт клиенту документы нашей компании по публичной ссылке /docs/<код>.', category: 'Публичное', allowed: ['admin', 'buhgalter', 'okk', 'rop', 'manager', 'jurist', 'logistics', 'logistics_view', 'demo'] },
     { prefix: '/orders', label: 'Заказы', description: 'Рабочий список заказов с панелью фильтров и статусами, карточка заказа, правка состава и комментариев.', category: 'ОКК', allowed: ['admin', 'buhgalter', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/agents', label: 'Каталог ИИ-агентов', description: 'Справочная страница со всеми агентами, их ролями, связями и prompt contract.', category: 'Управление', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/settings/ai/training-examples', label: 'Примеры обучения', description: 'Управление обучающими примерами и датасетом.', category: 'Система', allowed: ['admin'] },

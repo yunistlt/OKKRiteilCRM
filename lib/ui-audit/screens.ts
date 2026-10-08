@@ -64,6 +64,7 @@ export const UI_AUDIT_SCREENS: UiAuditScreen[] = [
     },
     { key: 'statuses-board', title: 'Статусы и переходы', section: 'Управление', path: '/settings/statuses/board', route: '/settings/statuses/board' },
     { key: 'legal-knowledge', title: 'Правила юротдела', section: 'Юридический отдел', path: '/legal/knowledge', route: '/legal/knowledge' },
+    { key: 'public-docs', title: 'Документы компании (для клиента)', section: 'Публичное', path: '/docs/zmk', route: '/docs/[slug]' },
     { key: 'read-gate', title: 'Обязательное прочтение', section: 'Управление', path: '/read-gate', route: '/read-gate' },
     { key: 'read-gate-report', title: 'Чтение разборов', section: 'Управление', path: '/sales-rop/read-gate', route: '/sales-rop/read-gate' },
     { key: 'okk', title: 'Контроль качества', section: 'Управление', path: '/okk', route: '/okk' },

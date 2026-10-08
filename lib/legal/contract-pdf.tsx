@@ -61,7 +61,7 @@ const styles = StyleSheet.create({
      * именно сюда. Постраничный парафный блок внизу листа подписью договора
      * для человека не выглядит: подпись должна стоять на строке продавца.
      */
-    signOnLineImage: { position: 'absolute', width: 92, height: 26, objectFit: 'contain' },
+    signOnLineImage: { position: 'absolute', width: 130, height: 38, objectFit: 'contain' },
     signOnLineSeal: { position: 'absolute', width: 84, height: 84, objectFit: 'contain', opacity: 0.8 },
 });
 
@@ -142,9 +142,9 @@ export async function buildContractPdf(params: {
                                     высокая печать утягивала подпись вниз, на
                                     соседнюю строку. */}
                                 {signing?.sealImage ? (
-                                    <Image src={signing.sealImage} style={[styles.signOnLineSeal, { left: signLeft(text) + 46, top: -24 }]} />
+                                    <Image src={signing.sealImage} style={[styles.signOnLineSeal, { left: signLeft(text) + 118, top: -20 }]} />
                                 ) : null}
-                                <Image src={signing!.signatureImage!} style={[styles.signOnLineImage, { left: signLeft(text), top: -14 }]} />
+                                <Image src={signing!.signatureImage!} style={[styles.signOnLineImage, { left: signLeft(text), top: -18 }]} />
                             </View>
                         );
                     }
@@ -172,7 +172,7 @@ export async function buildContractPdf(params: {
                             <View style={styles.pageSignCol}>
                                 <Text style={styles.pageSignLabel}>Продавец</Text>
                                 {signing?.signatureImage ? (
-                                    <Image src={signing.signatureImage} style={{ width: 54, height: 16, objectFit: 'contain' }} />
+                                    <Image src={signing.signatureImage} style={{ width: 76, height: 22, objectFit: 'contain' }} />
                                 ) : null}
                                 <View style={styles.pageSignLine} />
 
@@ -218,7 +218,7 @@ async function countPages(lines: string[], title: string, signing: ContractSigni
                     <View style={styles.pageSignCol}>
                         <Text style={styles.pageSignLabel}>Продавец</Text>
                         {signing?.signatureImage ? (
-                            <Image src={signing.signatureImage} style={{ width: 54, height: 16, objectFit: 'contain' }} />
+                            <Image src={signing.signatureImage} style={{ width: 76, height: 22, objectFit: 'contain' }} />
                         ) : null}
                         <View style={styles.pageSignLine} />
                     </View>
