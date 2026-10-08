@@ -54,6 +54,16 @@ const styles = StyleSheet.create({
     pageSignLabel: { fontSize: 8, color: '#555' },
     pageSignLine: { flexGrow: 1, borderBottomWidth: 0.7, borderBottomColor: '#555', height: 12 },
     seal: { position: 'absolute', left: 36, top: -62, width: 84, height: 84, objectFit: 'contain', opacity: 0.9 },
+    /**
+     * Подпись и печать в разделе «Реквизиты и подписи сторон».
+     *
+     * Лена Парфёнова 08.10.2026: «а где подпись и печать?» — она смотрела
+     * именно сюда. Постраничный парафный блок внизу листа подписью договора
+     * для человека не выглядит: подпись должна стоять на строке продавца.
+     */
+    signOnLine: { position: 'absolute', flexDirection: 'row', alignItems: 'flex-end' },
+    signOnLineImage: { width: 92, height: 26, objectFit: 'contain' },
+    signOnLineSeal: { width: 84, height: 84, objectFit: 'contain', opacity: 0.85, marginLeft: -52, marginBottom: -24 },
 });
 
 /** Подпись и печать продавца: те же картинки, что на счёте. */
@@ -97,6 +107,25 @@ export async function buildContractPdf(params: {
     const pageCount = await countPages(lines, params.title, signing);
     const sealPage = pageCount;
 
+    /**
+     * Строка подписи продавца в разделе реквизитов: «Управляющий-ИП: ______ /
+     * Теренков Андрей Анатольевич /». Текст договора пишет модель, поэтому
+     * ищем по фамилии подписанта рядом с пустой линией, а не по шаблону.
+     */
+    const isSellerSignLine = (text: string): boolean => {
+        const name = signing?.signerName?.trim();
+        if (!name || !signing?.signatureImage) return false;
+        if (!text.includes('_')) return false;
+        const surname = name.split(/\s+/)[0];
+        return surname.length > 2 && text.includes(surname);
+    };
+
+    /** Куда по горизонтали ставить подпись: на начало пустой линии. */
+    const signLeft = (text: string): number => {
+        const prefix = text.slice(0, text.indexOf('_'));
+        return Math.min(Math.max(prefix.length * 4.3, 40), 280);
+    };
+
     const doc = (
         <Document title={params.title}>
             <Page size="A4" style={styles.page}>
@@ -104,6 +133,21 @@ export async function buildContractPdf(params: {
                 {lines.map((line, i) => {
                     const text = line.trim();
                     if (!text) return <View key={i} style={{ height: 5 }} />;
+                    if (isSellerSignLine(text)) {
+                        // Подпись и печать прямо на линии продавца — то, что
+                        // человек ищет глазами в конце договора.
+                        return (
+                            <View key={i} style={{ position: 'relative' }} wrap={false}>
+                                <Text style={styles.paragraph}>{text}</Text>
+                                <View style={[styles.signOnLine, { left: signLeft(text), top: -13 }]}>
+                                    <Image src={signing!.signatureImage!} style={styles.signOnLineImage} />
+                                    {signing?.sealImage ? (
+                                        <Image src={signing.sealImage} style={styles.signOnLineSeal} />
+                                    ) : null}
+                                </View>
+                            </View>
+                        );
+                    }
                     return (
                         <Text key={i} style={isHeading(text) ? styles.heading : styles.paragraph}>
                             {text}
@@ -117,7 +161,13 @@ export async function buildContractPdf(params: {
                 <View
                     style={styles.pageSign}
                     fixed
-                    render={({ pageNumber }) => (
+                    /**
+                     * На последнем листе парафа нет: там стоит настоящая подпись
+                     * с печатью в разделе реквизитов. Заодно уходит старая
+                     * беда — на последней странице этот блок вставал поверх
+                     * текста, вверху листа (найдено 08.10.2026).
+                     */
+                    render={({ pageNumber }) => (pageNumber === sealPage ? <View /> : (
                         <>
                             <View style={styles.pageSignCol}>
                                 <Text style={styles.pageSignLabel}>Продавец</Text>
@@ -125,21 +175,14 @@ export async function buildContractPdf(params: {
                                     <Image src={signing.signatureImage} style={{ width: 54, height: 16, objectFit: 'contain' }} />
                                 ) : null}
                                 <View style={styles.pageSignLine} />
-                                {/* Печать ставится один раз — на последнем листе,
-                                    у подписи. Отдельным блоком она уезжала на
-                                    пустую страницу: текст заканчивался внизу, и
-                                    неразрывный блок переносился целиком
-                                    (та же грабля, что была со счётом). */}
-                                {pageNumber === sealPage && signing?.sealImage ? (
-                                    <Image src={signing.sealImage} style={styles.seal} />
-                                ) : null}
+
                             </View>
                             <View style={styles.pageSignCol}>
                                 <Text style={styles.pageSignLabel}>Покупатель</Text>
                                 <View style={styles.pageSignLine} />
                             </View>
                         </>
-                    )}
+                    ))}
                 />
 
                 <Text
