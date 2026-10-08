@@ -2099,6 +2099,20 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                 Открыть договор (PDF)
                                             </a>
                                         )}
+                                        {/* Комплект как в RetailCRM: счёт, договор и
+                                            спецификация одним файлом (эталон — заказ
+                                            54729). Файл ложится в «Файлы» заказа, и
+                                            его можно приложить к письму галочкой. */}
+                                        {contractId && (
+                                            <a
+                                                href={`/api/orders/${encodeURIComponent(String(data.order?.number ?? orderId))}/contract/kit?id=${contractId}`}
+                                                target="_blank"
+                                                rel="noopener"
+                                                className="text-sm font-semibold text-blue-700 hover:underline"
+                                            >
+                                                Счёт + договор + спецификация (PDF)
+                                            </a>
+                                        )}
                                     </div>
 
                                     {/* Замечания ИИ-юрисконсульта (Лев) — к каждому
