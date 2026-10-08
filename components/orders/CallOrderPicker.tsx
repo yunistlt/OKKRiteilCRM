@@ -63,18 +63,33 @@ export default function CallOrderPicker({
         }
     };
 
-    // Ручной ввод: номер заказа человек знает из разговора.
+    /**
+     * Ручной ввод: номер заказа человек знает из разговора.
+     *
+     * Ходим в `/api/orders/list` — список заказов. Раньше запрос шёл на
+     * `/api/orders?search=…`, а такого маршрута нет: он отвечал ошибкой, и
+     * менеджер видел «Заказа №53603 не нашли» по живому заказу (жалоба
+     * 08.10.2026). Номер ищется по вхождению, поэтому из ответа берём точное
+     * совпадение, а не первую строку: «536» не должен привязать «53603».
+     */
     const bindByNumber = async () => {
         const number = manual.trim();
         if (!number) return;
         setSaving(true);
         setError(null);
         try {
-            const res = await fetch(`/api/orders?search=${encodeURIComponent(number)}&pageSize=1`);
+            const res = await fetch(`/api/orders/list?number=${encodeURIComponent(number)}&pageSize=20`);
             const json = await res.json();
-            const found = (json.orders || json.rows || json.items || [])[0];
-            if (!found) throw new Error(`Заказа №${number} не нашли`);
-            await bind(Number(found.id), String(found.number ?? number));
+            if (!res.ok) throw new Error(json.error || 'Не удалось найти заказ');
+
+            const list: Array<{ orderId: number; number: string }> = json.orders || [];
+            const found = list.find((o) => String(o.number) === number) ?? (list.length === 1 ? list[0] : null);
+            if (!found) {
+                throw new Error(list.length
+                    ? `Точного совпадения с №${number} нет — уточните номер`
+                    : `Заказа №${number} не нашли`);
+            }
+            await bind(Number(found.orderId), String(found.number));
         } catch (e: any) {
             setError(e.message);
             setSaving(false);
