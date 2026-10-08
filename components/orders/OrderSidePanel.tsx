@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import OrderMailPanel from '@/components/orders/OrderMailPanel';
 
-export type PanelKind = 'history' | 'files' | 'tasks';
+export type PanelKind = 'history' | 'files' | 'tasks' | 'mail';
 
 interface HistoryItem {
     field_label?: string;
@@ -24,15 +25,17 @@ interface OrderSidePanelProps {
     statusPalette?: StatusPalette;
     onClose: () => void;
     onTasksChanged?: (done: number, total: number) => void;
+    onMailUnread?: (count: number) => void;
 }
 
 const TITLES: Record<PanelKind, string> = {
     history: 'История заказа',
     files: 'Файлы',
     tasks: 'Задачи',
+    mail: 'Переписка',
 };
 
-export default function OrderSidePanel({ kind, orderNumber, history, statusPalette, onClose, onTasksChanged }: OrderSidePanelProps) {
+export default function OrderSidePanel({ kind, orderNumber, history, statusPalette, onClose, onTasksChanged, onMailUnread }: OrderSidePanelProps) {
     return (
         <div className="border border-gray-300 bg-white">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-900 px-3 py-2">
@@ -40,10 +43,11 @@ export default function OrderSidePanel({ kind, orderNumber, history, statusPalet
                 <button onClick={onClose} className="text-xs font-bold text-white hover:text-blue-300">Закрыть</button>
             </div>
 
-            <div className="max-h-[420px] overflow-y-auto p-3">
+            <div className={kind === 'mail' ? 'p-0' : 'max-h-[420px] overflow-y-auto p-3'}>
                 {kind === 'history' && <HistoryList items={history || []} palette={statusPalette || {}} />}
                 {kind === 'files' && <FilesList orderNumber={orderNumber} />}
                 {kind === 'tasks' && <TasksList orderNumber={orderNumber} onChanged={onTasksChanged} />}
+                {kind === 'mail' && <OrderMailPanel orderNumber={orderNumber} onUnread={onMailUnread} />}
             </div>
         </div>
     );

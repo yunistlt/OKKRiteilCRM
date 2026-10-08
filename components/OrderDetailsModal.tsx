@@ -461,6 +461,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     const catalogTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [printTemplates, setPrintTemplates] = useState<Array<{ id: string; code: string; name: string }>>([]);
     const [panel, setPanel] = useState<PanelKind | null>(null);
+    /** Сколько писем клиента менеджер ещё не читал — цифра на кнопке «Переписка». */
+    const [mailUnread, setMailUnread] = useState(0);
     const [taskCount, setTaskCount] = useState<{ done: number; total: number } | null>(null);
     const [counterpartyScore, setCounterpartyScore] = useState<CounterpartyScoreResult | null>(null);
     const [counterpartyScoreLoading, setCounterpartyScoreLoading] = useState(false);
@@ -3045,6 +3047,15 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                     </div>
                                 )}
                             </div>
+                            {/* Переписка по заказу тредами: раздел «Переписка»
+                                (docs/order-mail/TZ.md). Счётчик — непрочитанные
+                                письма клиента. */}
+                            <button
+                                onClick={() => setPanel(panel === 'mail' ? null : 'mail')}
+                                className={`shrink-0 whitespace-nowrap border ${panel === 'mail' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                            >
+                                Переписка{mailUnread ? ` · ${mailUnread}` : ''}
+                            </button>
                             <button
                                 onClick={() => setPanel(panel === 'tasks' ? null : 'tasks')}
                                 className={`shrink-0 whitespace-nowrap border ${panel === 'tasks' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
@@ -3095,6 +3106,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             statusPalette={data?.statusPalette}
                             onClose={() => setPanel(null)}
                             onTasksChanged={(done, total) => setTaskCount({ done, total })}
+                            onMailUnread={setMailUnread}
                         />
                     </div>
                 )}
