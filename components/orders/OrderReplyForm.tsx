@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader, Send } from 'lucide-react';
 import { stripOrderThreadTag } from '@/lib/email-subject';
 
@@ -50,6 +50,14 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
     };
     const [error, setError] = useState<string | null>(null);
     const [done, setDone] = useState(false);
+    /**
+     * Отмена отправки: письмо уходит не сразу, а через несколько секунд — всё
+     * это время его можно вернуть (ТЗ §4, «самая дешёвая и самая нужная
+     * функция»). Отправлено не то и не тому — обычная цена спешки.
+     */
+    const [holdLeft, setHoldLeft] = useState<number | null>(null);
+    const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const cancelled = useRef(false);
 
     const [to, setTo] = useState('');
     const [subject, setSubject] = useState('');
@@ -174,13 +182,43 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
         }
     };
 
-    const send = async () => {
-        setError(null);
+    /** Сколько секунд письмо ждёт перед отправкой. */
+    const HOLD_SECONDS = 8;
 
+    /** Нажали «Отправить»: запускаем обратный отсчёт, а не отправку. */
+    const startSend = () => {
+        setError(null);
         if (!to.trim() || !subject.trim() || !body.trim()) {
             setError('Заполните адресата, тему и текст письма.');
             return;
         }
+
+        cancelled.current = false;
+        setHoldLeft(HOLD_SECONDS);
+    };
+
+    /** Передумали — письмо остаётся в композере, как его и писали. */
+    const cancelSend = () => {
+        cancelled.current = true;
+        if (holdTimer.current) clearTimeout(holdTimer.current);
+        setHoldLeft(null);
+    };
+
+    useEffect(() => {
+        if (holdLeft === null) return;
+        if (holdLeft <= 0) {
+            setHoldLeft(null);
+            if (!cancelled.current) void send();
+            return;
+        }
+        holdTimer.current = setTimeout(() => setHoldLeft((left) => (left === null ? null : left - 1)), 1000);
+        return () => { if (holdTimer.current) clearTimeout(holdTimer.current); };
+        // send меняется на каждый ввод — в зависимости его не берём намеренно.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [holdLeft]);
+
+    const send = async () => {
+        setError(null);
 
         setSending(true);
         try {
@@ -379,14 +417,24 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                 >
                     {savingDraft ? 'Сохраняем…' : 'Сохранить черновик'}
                 </button>
-                <button
-                    onClick={send}
-                    disabled={sending}
-                    className="flex items-center gap-1.5 bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500"
-                >
-                    {sending ? <Loader size={14} className="animate-spin" /> : <Send size={14} />}
-                    {sending ? 'Отправляем…' : 'Отправить'}
-                </button>
+                {holdLeft === null ? (
+                    <button
+                        onClick={startSend}
+                        disabled={sending}
+                        className="flex items-center gap-1.5 bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500"
+                    >
+                        {sending ? <Loader size={14} className="animate-spin" /> : <Send size={14} />}
+                        {sending ? 'Отправляем…' : 'Отправить'}
+                    </button>
+                ) : (
+                    /* Письмо на руках ещё несколько секунд — можно вернуть. */
+                    <button
+                        onClick={cancelSend}
+                        className="flex items-center gap-1.5 border border-amber-600 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-800 hover:bg-amber-100"
+                    >
+                        Отменить отправку · {holdLeft}
+                    </button>
+                )}
                 <span className="text-[11px] text-gray-500">Уйдёт с общего ящика компании rop@zmktlt.ru</span>
             </div>
 

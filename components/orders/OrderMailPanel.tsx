@@ -7,11 +7,12 @@
  * карточек и теней (`golds/`): слева разговоры заказа, справа открытый.
  * Цитата свёрнута — иначе лента превращается в кашу из «>».
  *
- * Этап 1 — только чтение: письма видно, непрочитанное видно, тред можно
- * закрыть. Ответ пока живёт в прежней форме письма (кнопка «Новое письмо»),
- * композер в треде — этап 2.
+ * Ответ пишется прямо в треде, не модалкой (ТЗ §4): адресат, тема и цитата
+ * берутся из письма, на которое отвечают. Отложенная отправка — следующий шаг,
+ * и об этом сказано в интерфейсе.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import OrderReplyForm from '@/components/orders/OrderReplyForm';
 
 type Attachment = { name: string; size: number | null };
 
@@ -72,6 +73,13 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
     const [query, setQuery] = useState('');
     const marked = useRef<Set<string>>(new Set());
+    /** На какое письмо отвечаем. null — композер закрыт. */
+    const [replyTo, setReplyTo] = useState<{ to?: string | null; subject?: string | null; quote?: string | null } | null>(null);
+    const [composing, setComposing] = useState(false);
+    /** Поле поиска и открытый тред — чтобы горячие клавиши видели свежее состояние. */
+    const searchRef = useRef<HTMLInputElement | null>(null);
+    const openRef = useRef<Thread | null>(null);
+    const toggleClosedRef = useRef<((thread: Thread) => Promise<void>) | null>(null);
 
     const load = useCallback(async () => {
         const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/mail`);
@@ -88,6 +96,8 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
         () => (threads || []).find((thread) => thread.key === openKey) || null,
         [threads, openKey],
     );
+
+    useEffect(() => { openRef.current = open; }, [open]);
 
     /**
      * Открытый тред считается прочитанным. Отмечаем в ОКК, флаг `\Seen` в
@@ -106,6 +116,47 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
         }).then(() => load());
     }, [open, orderNumber, load]);
 
+    /**
+     * Сочетания клавиш (ТЗ §4): для тридцати писем в день это разница в разы.
+     * `r` — ответить, `e` — закрыть тред, `u` — к списку, `/` — поиск.
+     * Пока человек печатает в поле, клавиши не перехватываем.
+     */
+    useEffect(() => {
+        const typing = (el: EventTarget | null): boolean => {
+            const node = el as HTMLElement | null;
+            const tag = node?.tagName?.toLowerCase();
+            return tag === 'input' || tag === 'textarea' || Boolean(node?.isContentEditable);
+        };
+
+        const onKey = (event: KeyboardEvent) => {
+            if (event.metaKey || event.ctrlKey || event.altKey || typing(event.target)) return;
+            const thread = openRef.current;
+
+            if (event.key === '/') {
+                event.preventDefault();
+                searchRef.current?.focus();
+                return;
+            }
+            if (!thread) return;
+
+            if (event.key === 'r' || event.key === 'к') {
+                event.preventDefault();
+                const last = [...thread.messages].reverse().find((m) => m.direction === 'in') || thread.messages[thread.messages.length - 1];
+                setReplyTo({ to: last.from || thread.participants[0] || null, subject: last.subject, quote: last.text });
+                setComposing(true);
+            } else if (event.key === 'e' || event.key === 'у') {
+                event.preventDefault();
+                void toggleClosedRef.current?.(thread);
+            } else if (event.key === 'u' || event.key === 'г') {
+                event.preventDefault();
+                setComposing(false);
+            }
+        };
+
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
+
     const toggleClosed = async (thread: Thread) => {
         await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/mail`, {
             method: 'POST',
@@ -114,6 +165,8 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
         });
         await load();
     };
+
+    useEffect(() => { toggleClosedRef.current = toggleClosed; });
 
     const found = useMemo(() => {
         const text = query.trim().toLowerCase();
@@ -134,9 +187,10 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
         <div className="flex gap-0 border border-gray-200">
             <div className="w-64 shrink-0 border-r border-gray-200">
                 <input
+                    ref={searchRef}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Поиск по переписке"
+                    placeholder="Поиск по переписке (/)"
                     className="w-full border-b border-gray-200 px-2 py-1.5 text-xs focus:border-blue-600 focus:outline-none"
                 />
                 <ul className="max-h-[360px] overflow-y-auto">
@@ -178,11 +232,16 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                                     {open.participants.length ? ` · ${open.participants.join(', ')}` : ''}
                                 </p>
                             </div>
-                            {/* Закон «заглушки видны в интерфейсе»: ответа прямо
-                                из треда ещё нет, и человек должен знать, где он. */}
-                            <span className="shrink-0 text-[10px] text-amber-700">
-                                ответ — кнопкой «Новое письмо», композер в треде в разработке
-                            </span>
+                            <button
+                                onClick={() => {
+                                    const last = [...open.messages].reverse().find((m) => m.direction === 'in') || open.messages[open.messages.length - 1];
+                                    setReplyTo({ to: last.from || open.participants[0] || null, subject: last.subject, quote: last.text });
+                                    setComposing(true);
+                                }}
+                                className="shrink-0 border border-blue-600 px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
+                            >
+                                Ответить
+                            </button>
                             <button
                                 onClick={() => toggleClosed(open)}
                                 className="shrink-0 border border-gray-300 px-2 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"
@@ -231,6 +290,16 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                                         </>
                                     )}
 
+                                    <button
+                                        onClick={() => {
+                                            setReplyTo({ to: message.from || open.participants[0] || null, subject: message.subject, quote: message.text });
+                                            setComposing(true);
+                                        }}
+                                        className="mt-1 mr-3 text-[11px] font-semibold text-blue-700 hover:underline"
+                                    >
+                                        ответить
+                                    </button>
+
                                     {message.attachments.length > 0 && (
                                         <ul className="mt-1.5 flex flex-wrap gap-2">
                                             {message.attachments.map((file) => (
@@ -255,6 +324,19 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                                 </article>
                             ))}
                         </div>
+
+                        {composing && (
+                            /* Композер в треде, а не поверх карточки: человек видит,
+                               на что отвечает, пока пишет. */
+                            <div className="border-t border-gray-300">
+                                <OrderReplyForm
+                                    orderNumber={orderNumber}
+                                    replyTo={replyTo}
+                                    onClose={() => { setComposing(false); setReplyTo(null); }}
+                                    onSent={() => { setComposing(false); setReplyTo(null); void load(); }}
+                                />
+                            </div>
+                        )}
                     </>
                 )}
             </div>
