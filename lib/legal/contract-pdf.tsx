@@ -33,7 +33,7 @@ function ensureFonts() {
 }
 
 const styles = StyleSheet.create({
-    page: { fontFamily: FONT_FAMILY, fontSize: 10, lineHeight: 1.45, paddingTop: 36, paddingBottom: 40, paddingHorizontal: 44, color: '#111' },
+    page: { fontFamily: FONT_FAMILY, fontSize: 10, lineHeight: 1.45, paddingTop: 36, paddingBottom: 66, paddingHorizontal: 44, color: '#111' },
     title: { fontSize: 13, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' },
     heading: { fontSize: 11, fontWeight: 'bold', marginTop: 10, marginBottom: 4 },
     paragraph: { marginBottom: 6, textAlign: 'justify' },
@@ -44,6 +44,15 @@ const styles = StyleSheet.create({
     signLine: { borderBottomWidth: 1, borderBottomColor: '#111', marginTop: 2 },
     signName: { fontSize: 9, marginTop: 3 },
     sealWrap: { position: 'relative' },
+    /**
+     * Постраничная подпись: её ставят на каждом листе, чтобы лист нельзя было
+     * подменить (требование владельца 08.10.2026). Высота блока учтена в
+     * нижнем поле страницы — иначе текст налезает на подпись.
+     */
+    pageSign: { position: 'absolute', bottom: 34, left: 44, right: 44, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+    pageSignCol: { width: '45%', flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
+    pageSignLabel: { fontSize: 8, color: '#555' },
+    pageSignLine: { flexGrow: 1, borderBottomWidth: 0.7, borderBottomColor: '#555', height: 12 },
     seal: { position: 'absolute', left: 60, top: -46, width: 92, height: 92, objectFit: 'contain', opacity: 0.9 },
 });
 
@@ -109,6 +118,24 @@ export async function buildContractPdf(params: {
                         <View style={{ height: 28 }} />
                         <View style={styles.signLine} />
                         <Text style={styles.signName}>{signing?.buyerName || '____________________'}</Text>
+                    </View>
+                </View>
+
+                {/* Подпись на КАЖДОЙ странице: лист без подписи можно заменить,
+                    поэтому стороны парафируют каждый. Картинка подписи
+                    продавца подставляется автоматически, покупатель
+                    расписывается от руки. */}
+                <View style={styles.pageSign} fixed>
+                    <View style={styles.pageSignCol}>
+                        <Text style={styles.pageSignLabel}>Продавец</Text>
+                        {signing?.signatureImage ? (
+                            <Image src={signing.signatureImage} style={{ width: 54, height: 16, objectFit: 'contain' }} />
+                        ) : null}
+                        <View style={styles.pageSignLine} />
+                    </View>
+                    <View style={styles.pageSignCol}>
+                        <Text style={styles.pageSignLabel}>Покупатель</Text>
+                        <View style={styles.pageSignLine} />
                     </View>
                 </View>
 
