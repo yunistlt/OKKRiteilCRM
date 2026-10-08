@@ -29,15 +29,24 @@ export async function GET(request: Request, { params }: { params: { id: string }
      * менеджер получал «Неверный номер заказа» (Ирина 02.10.2026).
      */
     const raw = decodeURIComponent(String(params.id));
-    let orderId = Number(raw);
-    if (!Number.isFinite(orderId)) {
-        const { data: found } = await supabase
-            .from('orders')
-            .select('order_id')
-            .eq('number', raw)
-            .maybeSingle();
-        orderId = Number(found?.order_id);
-    }
+
+    /**
+     * Сначала ищем по НОМЕРУ, и только потом считаем, что пришёл id.
+     *
+     * Свои заказы нумеруются 900089 — число, но не идентификатор (настоящий
+     * `order_id` у него 900000089). Проверка «не число — значит номер»
+     * работала, пока свои номера были с кириллической «А»; после перехода на
+     * шестизначные номер молча уходил в поиск по id, заказ не находился, и
+     * кнопка «Приложить КП» давала «Заказ не найден» (Ирина Гордеева
+     * 08.10.2026).
+     */
+    const { data: byNumber } = await supabase
+        .from('orders')
+        .select('order_id')
+        .eq('number', raw)
+        .maybeSingle();
+
+    const orderId = Number((byNumber as any)?.order_id ?? raw);
     if (!Number.isFinite(orderId)) {
         return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 });
     }

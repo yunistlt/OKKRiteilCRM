@@ -5,6 +5,7 @@ import { supabase } from '@/utils/supabase';
 import { sendOrderEmail } from '@/lib/email';
 import { getLastOrderEmailSend, recordOrderEmailSend } from '@/lib/order-email-log';
 import { buildOrderDocumentPdf, loadOrderDocumentData } from '@/lib/own-crm/order-document-pdf';
+import { safeStorageSegment } from '@/lib/storage-path';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -74,6 +75,58 @@ async function buildOrderDocument(
         content: Buffer.from(new Uint8Array(built.content)),
         contentType: built.contentType,
     };
+}
+
+/**
+ * Отправленный документ — в файлы заказа.
+ *
+ * Менеджер должен видеть ИМЕННО ТО, что ушло клиенту: пересобранное заново КП
+ * может отличаться (цены, состав), а письмо уже отправлено. Перезаписываем по
+ * дате: одно КП в день, иначе список файлов засоряется.
+ */
+async function keepSentDocument(
+    orderNumber: string,
+    kind: 'proposal' | 'invoice',
+    pdf: { filename: string; content: Buffer; contentType: string },
+    author: string | null,
+): Promise<void> {
+    try {
+        const day = new Date().toISOString().slice(0, 10);
+        const path = `order-files/${safeStorageSegment(orderNumber, 40)}/sent/${kind}-${day}.pdf`;
+
+        const upload = await supabase.storage.from('okk-assets').upload(path, new Uint8Array(pdf.content), {
+            contentType: pdf.contentType,
+            upsert: true,
+        });
+        if (upload.error) {
+            console.error('[send-email] документ не лёг в файлы заказа:', upload.error.message);
+            return;
+        }
+
+        const { data: existing } = await supabase
+            .from('order_files')
+            .select('id')
+            .eq('order_number', orderNumber)
+            .eq('storage_path', path)
+            .is('deleted_at', null)
+            .maybeSingle();
+
+        if (!existing) {
+            await supabase.from('order_files').insert({
+                order_number: orderNumber,
+                file_name: pdf.filename,
+                content_type: pdf.contentType,
+                size_bytes: pdf.content.length,
+                storage_bucket: 'okk-assets',
+                storage_path: path,
+                note: kind === 'invoice' ? 'Счёт, отправленный письмом' : 'КП, отправленное письмом',
+                uploaded_by: author,
+            });
+        }
+    } catch (e: any) {
+        // Письмо важнее: провал сохранения его не отменяет.
+        console.error('[send-email] документ не сохранился:', e?.message || e);
+    }
 }
 
 /** Файл из карточки заказа как вложение письма. */
@@ -165,7 +218,23 @@ export async function POST(req: Request) {
     for (const kind of body.documents || []) {
         try {
             const pdf = await buildOrderDocument(body.orderNumber, kind);
-            if (pdf) attachments.push(pdf);
+            /**
+             * Документ не собрался — честно останавливаемся.
+             *
+             * Раньше пустой результат молча пропускался: письмо уходило БЕЗ
+             * КП, а менеджер видел «КП приложено ✓» и был уверен, что клиент
+             * его получил (Ирина Гордеева 08.10.2026, заказ 900089).
+             */
+            if (!pdf) {
+                return NextResponse.json(
+                    { ok: false, error: kind === 'invoice' ? 'Счёт по этому заказу не собрался — письмо не отправлено' : 'КП по этому заказу не собралось — письмо не отправлено' },
+                    { status: 400 },
+                );
+            }
+            attachments.push(pdf);
+            // Что ушло клиенту — остаётся в файлах заказа: иначе отправленное
+            // КП нельзя ни открыть, ни проверить (та же жалоба).
+            await keepSentDocument(body.orderNumber, kind, pdf, session.user.email || session.user.username || null);
         } catch (e: any) {
             console.error('[send-email] документ не собрался:', kind, e?.message || e);
             return NextResponse.json(
