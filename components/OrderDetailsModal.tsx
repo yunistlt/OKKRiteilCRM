@@ -25,6 +25,7 @@ import { formatQualityCriterionLabel } from '@/lib/quality-labels';
 import OrderReplyForm from '@/components/orders/OrderReplyForm';
 import { NumberInput } from '@/components/ui/NumberInput';
 import OrderSidePanel, { PanelKind } from '@/components/orders/OrderSidePanel';
+import { itemNameWithVariant } from '@/lib/own-crm/item-name';
 import OrderStatusSwitcher from '@/components/orders/OrderStatusSwitcher';
 import OwnOrderPayments from '@/components/own-crm/OwnOrderPayments';
 import { decodeEntities } from '@/lib/sales-rop/letter-render';
@@ -1471,7 +1472,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                                 id: found.id,
                                                                 // Название с размером: по нему человек
                                                                 // и узнаёт позицию в составе заказа.
-                                                                name: `${found.name} ${variant.name}`.replace(/\s+/g, ' ').trim(),
+                                                                name: itemNameWithVariant(found.name, variant.name),
                                                                 price: variant.price || found.price,
                                                                 article: variant.article ?? found.article ?? null,
                                                             });
