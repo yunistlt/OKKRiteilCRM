@@ -63,6 +63,8 @@ export const UI_AUDIT_SCREENS: UiAuditScreen[] = [
         ],
     },
     { key: 'statuses-board', title: 'Статусы и переходы', section: 'Управление', path: '/settings/statuses/board', route: '/settings/statuses/board' },
+    { key: 'read-gate', title: 'Обязательное прочтение', section: 'Управление', path: '/read-gate', route: '/read-gate' },
+    { key: 'read-gate-report', title: 'Чтение разборов', section: 'Управление', path: '/sales-rop/read-gate', route: '/sales-rop/read-gate' },
     { key: 'okk', title: 'Контроль качества', section: 'Управление', path: '/okk', route: '/okk' },
     { key: 'okk-audit', title: 'Контроль качества → аудит', section: 'Управление', path: '/okk/audit', route: '/okk/audit' },
     { key: 'okk-criteria', title: 'Контроль качества → критерии', section: 'Управление', path: '/okk/criteria', route: '/okk/criteria' },

@@ -70,7 +70,8 @@ type PersonDraft = {
     firstName: string;
     patronymic: string;
     email: string;
-    phone: string;
+    /** Телефонов у человека бывает несколько: рабочий, мобильный, приёмная. */
+    phones: string[];
 };
 
 type CallRow = {
@@ -170,6 +171,14 @@ export default function ClientCard({ clientId }: { clientId: string }) {
     const [calls, setCalls] = useState<CallRow[]>([]);
     const [emails, setEmails] = useState<EmailRow[]>([]);
     const [phone, setPhone] = useState<string | null>(null);
+    /**
+     * Телефоны компании. Их несколько: приёмная, снабжение, мобильный
+     * директора — поэтому список, а не одно поле (просьба менеджеров
+     * 08.10.2026). Пустая строка в конце — это поле «добавить ещё».
+     */
+    const [phones, setPhones] = useState<string[]>([]);
+    const [phonesSaving, setPhonesSaving] = useState(false);
+    const [phonesNote, setPhonesNote] = useState<string | null>(null);
     const [contacts, setContacts] = useState<ContactRow[]>([]);
     // Правка человека: открыт один контакт за раз.
     const [personEditId, setPersonEditId] = useState<number | null>(null);
@@ -304,11 +313,31 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                 firstName: payload.person.firstName || '',
                 patronymic: payload.person.patronymic || '',
                 email: payload.person.email || '',
-                phone: (payload.person.phones || [])[0] || '',
+                phones: (payload.person.phones || []).filter(Boolean),
             });
         } catch (e: any) {
             setPersonNote(e.message);
             setPersonEditId(null);
+        }
+    };
+
+    const savePhones = async () => {
+        setPhonesSaving(true);
+        setPhonesNote(null);
+        try {
+            const res = await fetch(`/api/clients/${clientId}/phones`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phones }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось сохранить');
+            setPhones(payload.phones || []);
+            setPhonesNote('Сохранено');
+        } catch (e: any) {
+            setPhonesNote(e.message);
+        } finally {
+            setPhonesSaving(false);
         }
     };
 
@@ -325,7 +354,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                     firstName: personDraft.firstName,
                     patronymic: personDraft.patronymic,
                     email: personDraft.email,
-                    phones: personDraft.phone ? [personDraft.phone] : [],
+                    phones: personDraft.phones.map((p) => p.trim()).filter(Boolean),
                 }),
             });
             const payload = await res.json();
@@ -359,6 +388,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
             setCalls(payload.calls || []);
             setEmails(payload.emails || []);
             setPhone(payload.phone || null);
+            setPhones(Array.isArray(payload.client?.phones) ? payload.client.phones.filter(Boolean) : []);
             setContacts(payload.contacts || []);
             setError(null);
         } catch (err: any) {
@@ -567,6 +597,60 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                         </div>
                     )}
 
+                    {/* Телефоны компании: их несколько, и менеджер добавляет
+                        столько, сколько нужно (просьба 08.10.2026). Номер в
+                        карточке — это ещё и будущая кнопка «позвонить» из
+                        реестра звонков: звоним только по тому, что здесь. */}
+                    <div className="border-y border-gray-200 bg-gray-100 px-4 py-2 font-bold uppercase tracking-wide text-gray-700">
+                        Телефоны компании
+                    </div>
+                    <div className="space-y-1.5 px-4 py-3">
+                        {phones.length === 0 && (
+                            <div className="text-gray-500">Телефонов не записано.</div>
+                        )}
+                        {phones.map((value, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                                <input
+                                    value={value}
+                                    onChange={(e) => setPhones(phones.map((p, i) => (i === index ? e.target.value : p)))}
+                                    placeholder="+7 (999) 000-00-00"
+                                    className="w-full max-w-xs border border-gray-300 px-2 py-1"
+                                />
+                                <a
+                                    href={`tel:${value.replace(/[^\d+]/g, '')}`}
+                                    className="text-[11px] font-bold text-blue-700 hover:underline"
+                                >
+                                    позвонить
+                                </a>
+                                <button
+                                    onClick={() => setPhones(phones.filter((_, i) => i !== index))}
+                                    className="text-[11px] font-bold text-gray-500 hover:underline"
+                                >
+                                    убрать
+                                </button>
+                            </div>
+                        ))}
+                        <div className="flex items-center gap-3 pt-1">
+                            <button
+                                onClick={() => setPhones([...phones, ''])}
+                                className="text-[11px] font-bold text-blue-700 hover:underline"
+                            >
+                                Добавить телефон
+                            </button>
+                            <button
+                                onClick={savePhones}
+                                disabled={phonesSaving}
+                                className="text-[11px] font-bold text-blue-700 hover:underline disabled:text-gray-400"
+                            >
+                                {phonesSaving ? 'Сохраняем…' : 'Сохранить'}
+                            </button>
+                            {phonesNote && <span className="text-[11px] text-gray-500">{phonesNote}</span>}
+                        </div>
+                        {phone && !phones.length && (
+                            <div className="text-[11px] text-gray-500">Из последнего заказа: {phone}</div>
+                        )}
+                    </div>
+
                     <div className="border-y border-gray-200 bg-gray-100 px-4 py-2 font-bold uppercase tracking-wide text-gray-700">
                         Контактные лица
                     </div>
@@ -588,9 +672,8 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                                         ['lastName', 'Фамилия'],
                                         ['firstName', 'Имя'],
                                         ['patronymic', 'Отчество'],
-                                        ['phone', 'Телефон'],
                                         ['email', 'Почта'],
-                                    ] as Array<[keyof PersonDraft, string]>).map(([key, label]) => (
+                                    ] as Array<['lastName' | 'firstName' | 'patronymic' | 'email', string]>).map(([key, label]) => (
                                         <label key={key} className="flex items-center gap-2">
                                             <span className="w-24 shrink-0 text-gray-500">{label}</span>
                                             <input
@@ -600,6 +683,45 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                                             />
                                         </label>
                                     ))}
+
+                                    {/* Телефонов столько, сколько нужно: у человека
+                                        бывает рабочий, мобильный и приёмная. */}
+                                    {(personDraft.phones.length ? personDraft.phones : ['']).map((value, index) => (
+                                        <label key={index} className="flex items-center gap-2">
+                                            <span className="w-24 shrink-0 text-gray-500">
+                                                {index === 0 ? 'Телефон' : 'Ещё телефон'}
+                                            </span>
+                                            <input
+                                                value={value}
+                                                onChange={(e) => {
+                                                    const next = personDraft.phones.length ? [...personDraft.phones] : [''];
+                                                    next[index] = e.target.value;
+                                                    setPersonDraft({ ...personDraft, phones: next });
+                                                }}
+                                                className="w-full border border-gray-300 px-2 py-1"
+                                            />
+                                            {personDraft.phones.length > 1 && (
+                                                <button
+                                                    onClick={() => setPersonDraft({
+                                                        ...personDraft,
+                                                        phones: personDraft.phones.filter((_, i) => i !== index),
+                                                    })}
+                                                    className="shrink-0 text-[11px] font-bold text-gray-500 hover:underline"
+                                                >
+                                                    убрать
+                                                </button>
+                                            )}
+                                        </label>
+                                    ))}
+                                    <button
+                                        onClick={() => setPersonDraft({
+                                            ...personDraft,
+                                            phones: [...(personDraft.phones.length ? personDraft.phones : ['']), ''],
+                                        })}
+                                        className="text-[11px] font-bold text-blue-700 hover:underline"
+                                    >
+                                        Добавить телефон
+                                    </button>
                                     <div className="flex items-center gap-3 pt-1">
                                         <button
                                             onClick={savePerson}
@@ -628,7 +750,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                                         </button>
                                     </div>
                                     <div className="text-[11px] text-gray-500">
-                                        {person.phones[0] || 'телефон неизвестен'}
+                                        {person.phones.length ? person.phones.join(' · ') : 'телефон неизвестен'}
                                         {person.email ? ` · ${person.email}` : ''}
                                     </div>
                                     <div className="text-[11px] text-gray-500">

@@ -52,7 +52,10 @@ describe('фильтр «Покупатель»', () => {
         });
         const where = q.conditions.join('|');
 
-        expect(where).toContain('raw_payload->customer->>id.in.(76464,900000034)');
+        // По карточке ищем через customer->>id: на это выражение есть индекс, а
+        // чтение снимка (raw_payload) разбирало JSON во всей таблице и валило
+        // запрос в таймаут (жалоба Ксении 07.10.2026).
+        expect(where).toContain('customer->>id.in.(76464,900000034)');
     });
 
     it('без найденных карточек ищет по полям самого заказа', () => {
@@ -60,7 +63,7 @@ describe('фильтр «Покупатель»', () => {
         const where = q.conditions.join('|');
 
         expect(where).toContain('search_text.ilike.%иванов%');
-        expect(where).not.toContain('raw_payload->customer->>id.in');
+        expect(where).not.toContain('customer->>id.in');
     });
 });
 

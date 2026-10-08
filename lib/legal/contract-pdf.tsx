@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
     pageSignCol: { width: '45%', flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
     pageSignLabel: { fontSize: 8, color: '#555' },
     pageSignLine: { flexGrow: 1, borderBottomWidth: 0.7, borderBottomColor: '#555', height: 12 },
-    seal: { position: 'absolute', left: 60, top: -46, width: 92, height: 92, objectFit: 'contain', opacity: 0.9 },
+    seal: { position: 'absolute', left: 36, top: -62, width: 84, height: 84, objectFit: 'contain', opacity: 0.9 },
 });
 
 /** Подпись и печать продавца: те же картинки, что на счёте. */
@@ -73,6 +73,16 @@ function isHeading(line: string): boolean {
     return text === text.toUpperCase() && /[А-ЯЁ]/.test(text);
 }
 
+/**
+ * Договор в PDF.
+ *
+ * Собирается ДВА раза: @react-pdf не говорит общее число страниц тому, кто
+ * рисует постраничный блок, а печать должна стоять ровно на последнем листе.
+ * Первый проход считает страницы, второй ставит печать на нужной. Отдельным
+ * неразрывным блоком печать делать нельзя — он уезжает на пустой лист, если
+ * текст закончился внизу страницы (так и вышло 08.10.2026, та же грабля, что
+ * была со счётом).
+ */
 export async function buildContractPdf(params: {
     title: string;
     bodyText: string;
@@ -82,6 +92,10 @@ export async function buildContractPdf(params: {
 
     const lines = String(params.bodyText ?? '').split('\n');
     const signing = params.signing ?? null;
+
+    // Первый проход — узнать, сколько страниц. Печать в нём не рисуем.
+    const pageCount = await countPages(lines, params.title, signing);
+    const sealPage = pageCount;
 
     const doc = (
         <Document title={params.title}>
@@ -96,48 +110,37 @@ export async function buildContractPdf(params: {
                         </Text>
                     );
                 })}
-                {/* Подпись и печать — требование владельца 08.10.2026: договор
-                    уходит клиенту подписанным, как и счёт. Картинки те же, из
-                    карточки нашего юрлица; нет картинки — остаётся линия для
-                    подписи от руки. Блок не разрывается между страницами:
-                    печать на пустом листе выглядит браком. */}
-                <View style={styles.signRow} wrap={false}>
-                    <View style={styles.signCol}>
-                        <Text style={styles.signLabel}>Продавец{signing?.signerTitle ? `, ${signing.signerTitle}` : ''}</Text>
-                        <View style={styles.sealWrap}>
-                            {signing?.signatureImage ? (
-                                <Image src={signing.signatureImage} style={{ width: 110, height: 28, objectFit: 'contain' }} />
-                            ) : null}
-                            {signing?.sealImage ? <Image src={signing.sealImage} style={styles.seal} /> : null}
-                        </View>
-                        <View style={styles.signLine} />
-                        <Text style={styles.signName}>{signing?.signerName || '____________________'}</Text>
-                    </View>
-                    <View style={styles.signCol}>
-                        <Text style={styles.signLabel}>Покупатель</Text>
-                        <View style={{ height: 28 }} />
-                        <View style={styles.signLine} />
-                        <Text style={styles.signName}>{signing?.buyerName || '____________________'}</Text>
-                    </View>
-                </View>
-
                 {/* Подпись на КАЖДОЙ странице: лист без подписи можно заменить,
                     поэтому стороны парафируют каждый. Картинка подписи
                     продавца подставляется автоматически, покупатель
                     расписывается от руки. */}
-                <View style={styles.pageSign} fixed>
-                    <View style={styles.pageSignCol}>
-                        <Text style={styles.pageSignLabel}>Продавец</Text>
-                        {signing?.signatureImage ? (
-                            <Image src={signing.signatureImage} style={{ width: 54, height: 16, objectFit: 'contain' }} />
-                        ) : null}
-                        <View style={styles.pageSignLine} />
-                    </View>
-                    <View style={styles.pageSignCol}>
-                        <Text style={styles.pageSignLabel}>Покупатель</Text>
-                        <View style={styles.pageSignLine} />
-                    </View>
-                </View>
+                <View
+                    style={styles.pageSign}
+                    fixed
+                    render={({ pageNumber }) => (
+                        <>
+                            <View style={styles.pageSignCol}>
+                                <Text style={styles.pageSignLabel}>Продавец</Text>
+                                {signing?.signatureImage ? (
+                                    <Image src={signing.signatureImage} style={{ width: 54, height: 16, objectFit: 'contain' }} />
+                                ) : null}
+                                <View style={styles.pageSignLine} />
+                                {/* Печать ставится один раз — на последнем листе,
+                                    у подписи. Отдельным блоком она уезжала на
+                                    пустую страницу: текст заканчивался внизу, и
+                                    неразрывный блок переносился целиком
+                                    (та же грабля, что была со счётом). */}
+                                {pageNumber === sealPage && signing?.sealImage ? (
+                                    <Image src={signing.sealImage} style={styles.seal} />
+                                ) : null}
+                            </View>
+                            <View style={styles.pageSignCol}>
+                                <Text style={styles.pageSignLabel}>Покупатель</Text>
+                                <View style={styles.pageSignLine} />
+                            </View>
+                        </>
+                    )}
+                />
 
                 <Text
                     style={styles.footer}
@@ -151,4 +154,43 @@ export async function buildContractPdf(params: {
     const instance = pdf(doc as any);
     const blob = await instance.toBlob();
     return Buffer.from(await blob.arrayBuffer());
+}
+
+/** Сколько страниц займёт договор. Нужен, чтобы знать последнюю. */
+async function countPages(lines: string[], title: string, signing: ContractSigning | null): Promise<number> {
+    const probe = (
+        <Document title={title}>
+            <Page size="A4" style={styles.page}>
+                <Text style={styles.title}>{title}</Text>
+                {lines.map((line, i) => {
+                    const text = line.trim();
+                    if (!text) return <View key={i} style={{ height: 5 }} />;
+                    return (
+                        <Text key={i} style={isHeading(text) ? styles.heading : styles.paragraph}>
+                            {text}
+                        </Text>
+                    );
+                })}
+                <View style={styles.pageSign} fixed>
+                    <View style={styles.pageSignCol}>
+                        <Text style={styles.pageSignLabel}>Продавец</Text>
+                        {signing?.signatureImage ? (
+                            <Image src={signing.signatureImage} style={{ width: 54, height: 16, objectFit: 'contain' }} />
+                        ) : null}
+                        <View style={styles.pageSignLine} />
+                    </View>
+                    <View style={styles.pageSignCol}>
+                        <Text style={styles.pageSignLabel}>Покупатель</Text>
+                        <View style={styles.pageSignLine} />
+                    </View>
+                </View>
+            </Page>
+        </Document>
+    );
+
+    const blob = await pdf(probe as any).toBlob();
+    const buf = Buffer.from(await blob.arrayBuffer());
+    // Считаем по меткам страниц в самом файле — без разбора PDF-библиотекой.
+    const matches = buf.toString('latin1').match(/\/Type\s*\/Page[^s]/g);
+    return matches?.length || 1;
 }
