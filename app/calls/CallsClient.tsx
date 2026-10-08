@@ -21,6 +21,8 @@ type Call = {
      * (решение владельца 08.10.2026). null — кнопки не будет.
      */
     knownClientId?: number | null;
+    /** Название клиента из карточки — колонка «Клиент», ссылка на карточку. */
+    clientName?: string | null;
     missed: boolean;
     durationSec: number;
     recordingUrl: string | null;
@@ -216,6 +218,7 @@ export default function CallsClient() {
                             <th className="px-3 py-2">Когда</th>
                             <th className="px-3 py-2">Направление</th>
                             <th className="px-3 py-2">Телефон</th>
+                            <th className="px-3 py-2">Клиент</th>
                             <th className="px-3 py-2">Менеджер</th>
                             <th className="px-3 py-2">Заказ</th>
                             <th className="px-3 py-2">Длительность</th>
@@ -247,6 +250,21 @@ export default function CallsClient() {
                                             >
                                                 {dialing === call.phone ? 'Звоню…' : 'Позвонить'}
                                             </button>
+                                        )}
+                                    </td>
+                                    {/* Клиент кликабелен и ведёт в карточку — так же,
+                                        как номер заказа (просьба 08.10.2026). Нет
+                                        карточки — нечего и показывать. */}
+                                    <td className="px-3 py-2">
+                                        {call.knownClientId ? (
+                                            <a
+                                                href={`/clients/${call.knownClientId}`}
+                                                className="font-semibold text-blue-700 hover:underline"
+                                            >
+                                                {call.clientName || `Карточка №${call.knownClientId}`}
+                                            </a>
+                                        ) : (
+                                            <span className="text-gray-400">—</span>
                                         )}
                                     </td>
                                     <td className="px-3 py-2 text-gray-700">{call.managerName || '—'}</td>
@@ -292,7 +310,7 @@ export default function CallsClient() {
                                 </tr>
                                 {openId === call.id && call.transcript && (
                                     <tr key={`${call.id}-text`}>
-                                        <td colSpan={7} className="bg-gray-50 px-3 py-3">
+                                        <td colSpan={8} className="bg-gray-50 px-3 py-3">
                                             <p className="whitespace-pre-line text-sm text-gray-800">{call.transcript}</p>
                                         </td>
                                     </tr>

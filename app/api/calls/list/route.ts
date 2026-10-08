@@ -126,7 +126,7 @@ export async function GET(req: Request) {
      * карточек клиентов (решение владельца 08.10.2026): в реестре полно
      * автоответчиков, переадресаций и чужих номеров.
      */
-    const known = await knownClientPhones(rows.map((r: any) => r.phone)).catch(() => new Map<string, number>());
+    const known = await knownClientPhones(rows.map((r: any) => r.phone)).catch(() => new Map());
 
     return NextResponse.json({
         calls: rows.map((row) => {
@@ -145,8 +145,10 @@ export async function GET(req: Request) {
                 transcript: extra?.transcript ?? null,
                 callId: extra?.callId ?? null,
                 suggestedOrder: extra?.callId ? (suggested.get(extra.callId) ?? null) : null,
-                // Номер есть в карточке клиента — значит, кнопка «позвонить».
-                knownClientId: known.get(phoneKey(row.phone) ?? '') ?? null,
+                // Номер есть в карточке клиента — значит, кнопка «позвонить»
+                // и ссылка на саму карточку.
+                knownClientId: known.get(phoneKey(row.phone) ?? '')?.clientId ?? null,
+                clientName: known.get(phoneKey(row.phone) ?? '')?.name ?? null,
             };
         }),
     });
