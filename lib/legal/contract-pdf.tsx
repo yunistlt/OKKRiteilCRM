@@ -61,9 +61,8 @@ const styles = StyleSheet.create({
      * именно сюда. Постраничный парафный блок внизу листа подписью договора
      * для человека не выглядит: подпись должна стоять на строке продавца.
      */
-    signOnLine: { position: 'absolute', flexDirection: 'row', alignItems: 'flex-end' },
-    signOnLineImage: { width: 92, height: 26, objectFit: 'contain' },
-    signOnLineSeal: { width: 84, height: 84, objectFit: 'contain', opacity: 0.85, marginLeft: -52, marginBottom: -24 },
+    signOnLineImage: { position: 'absolute', width: 92, height: 26, objectFit: 'contain' },
+    signOnLineSeal: { position: 'absolute', width: 84, height: 84, objectFit: 'contain', opacity: 0.8 },
 });
 
 /** Подпись и печать продавца: те же картинки, что на счёте. */
@@ -139,12 +138,13 @@ export async function buildContractPdf(params: {
                         return (
                             <View key={i} style={{ position: 'relative' }} wrap={false}>
                                 <Text style={styles.paragraph}>{text}</Text>
-                                <View style={[styles.signOnLine, { left: signLeft(text), top: -13 }]}>
-                                    <Image src={signing!.signatureImage!} style={styles.signOnLineImage} />
-                                    {signing?.sealImage ? (
-                                        <Image src={signing.sealImage} style={styles.signOnLineSeal} />
-                                    ) : null}
-                                </View>
+                                {/* Каждая картинка — своим местом: в общем ряду
+                                    высокая печать утягивала подпись вниз, на
+                                    соседнюю строку. */}
+                                {signing?.sealImage ? (
+                                    <Image src={signing.sealImage} style={[styles.signOnLineSeal, { left: signLeft(text) + 46, top: -24 }]} />
+                                ) : null}
+                                <Image src={signing!.signatureImage!} style={[styles.signOnLineImage, { left: signLeft(text), top: -14 }]} />
                             </View>
                         );
                     }
