@@ -97,6 +97,8 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/orders', label: 'API карточки заказа', description: 'Чтение карточки заказа и её анализ (используется в ОКК и отчётах ЗП).', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view', 'demo'] },
     { prefix: '/analytics', label: 'Мой день', description: 'Рабочий стол менеджера: очередь действий, план месяца, воронка.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/api/analysis', label: 'API аналитики', description: 'Серверные маршруты аналитики.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop'] },
+    { prefix: '/legal/knowledge', label: 'Правила юротдела', description: 'Правила, по которым ИИ-юрисконсульт проверяет договоры: что норма, что красная линия.', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },
+    { prefix: '/api/legal/knowledge', label: 'API правил юротдела', description: 'Чтение и правка правил проверки договоров.', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },
     { prefix: '/legal', label: 'Юридический отдел', description: 'Реестр исполнительных производств (ИП ФССП).', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },
     { prefix: '/legal/helpdesk', label: 'Юридический помощник', description: 'Дарья (helpdesk по базе знаний) и загрузка договоров на анализ.', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view', 'jurist'] },
     { prefix: '/legal/matters', label: 'Претензионно-исковая работа', description: 'Реестр дел: претензии, переговоры, суды и взыскание как стадии одного спора.', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },
