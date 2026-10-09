@@ -12,7 +12,7 @@
 // Безопасность: при settings.enabled = false работаем в «сухом» прогоне —
 // логируем намерение (outcome = 'dry_run'), но НЕ переназначаем и НЕ шлём писем.
 import { supabase } from '@/utils/supabase';
-import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
+import { editOrder, appendOrderNote } from '@/lib/own-crm/edit-order';
 import { sendOrderEmail } from '@/lib/email';
 import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
 
@@ -283,7 +283,7 @@ export async function runOutreachBatch(opts?: { dryRun?: boolean; limit?: number
             }
 
             // 2) Письмо ушло — переназначаем заказ на бота-квалификатора.
-            await updateExistingOrderInCrm(orderId, { managerId: settings.bot_manager_id });
+            await editOrder(orderId, { managerId: settings.bot_manager_id });
 
             const deadline = addBusinessHours(new Date(), settings.timeout_hours).toISOString();
             await logOutcome(orderId, o.number, email, 'sent', null, o.manager_id, deadline);
@@ -382,10 +382,12 @@ export async function runTimeoutReturns(opts?: { dryRun?: boolean }): Promise<Ti
 
         try {
             if (managerId) {
-                await updateExistingOrderInCrm(orderId, {
-                    managerId,
-                    noteText: `Автовозврат от бота-квалификатора: клиент не прошёл квалификацию за ${settings.timeout_hours} ч.`,
-                });
+                await editOrder(orderId, { managerId });
+                await appendOrderNote(
+                    orderId,
+                    `Автовозврат от бота-квалификатора: клиент не прошёл квалификацию за ${settings.timeout_hours} ч.`,
+                    'Бот-квалификатор',
+                );
             }
             await supabase.from('rop_outreach_log')
                 .update({ returned_at: new Date().toISOString(), outcome: 'returned', updated_at: new Date().toISOString() })

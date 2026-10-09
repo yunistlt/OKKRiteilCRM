@@ -1,7 +1,8 @@
 import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { createLeadInCrm, updateExistingOrderInCrm, formatMatchedCatalogProducts } from '@/lib/retailcrm/leads';
+import { createLeadInCrm, formatMatchedCatalogProducts } from '@/lib/retailcrm/leads';
+import { editOrder, appendOrderNote } from '@/lib/own-crm/edit-order';
 import { enrichWithLivePrice } from '@/lib/webasyst';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 import { callbackWindow, isDialablePhone } from '@/lib/callback-hours';
@@ -342,12 +343,12 @@ ${chatLog.split('\n').slice(-10).join('\n')}`;
                             nameToUpdate = null;
                         }
 
-                        await updateExistingOrderInCrm(existingOrderId, {
-                            status: 'zapros-kontaktov',
-                            noteText: managerComment,
+                        await editOrder(existingOrderId, {
+                            statusCode: 'zapros-kontaktov',
                             customFields,
-                            firstName: nameToUpdate || undefined
+                            ...(nameToUpdate ? { contact: { firstName: nameToUpdate } } : {}),
                         });
+                        await appendOrderNote(existingOrderId, managerComment, 'Елена');
                         orderNumber = String(existingOrderId);
                     } else {
                         // Если у сессии есть заявка на обратный звонок — заказ в CRM

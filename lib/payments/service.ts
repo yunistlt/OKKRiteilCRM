@@ -280,10 +280,8 @@ async function pushMatchedPaymentToCrm(
     // Не критично: сбой не должен ломать проброс оплаты (функция не бросает).
     await clearPushFailure(row.id).catch(() => undefined);
 
-    const mv = await moveOrderToProductionAfterPayment(row.matched_order_id, {
-      currentStatus: order?.status ?? null,
-      site: order?.site ?? null,
-    });
+    // Статус заказа функция читает в нашей базе сама — передавать нечего.
+    const mv = await moveOrderToProductionAfterPayment(row.matched_order_id);
     return {
       movedToProduction: mv.moved,
       productionStatusName: mv.statusName,

@@ -19,7 +19,7 @@ import {
 import { sendNotification } from '@/lib/notify/send';
 import type { NotifyContext } from '@/lib/notify/route';
 import type { OwnerRow } from '@/lib/sales-rop/format';
-import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
+import { editOrder } from '@/lib/own-crm/edit-order';
 import { analyzeClient } from '@/lib/sales-rop/analyst';
 import { appendRopNote } from '@/lib/sales-rop/crm-note';
 import { reviewCallDay } from '@/lib/sales-rop/call-review';
@@ -670,16 +670,15 @@ export type MorningResult = {
 /**
  * Ставит дату следующего контакта в карточке заказа.
  *
- * Пишем через тот же orders/edit, что и остальной проект: он единственный
- * доступен ключу и, главное, требует РЕАЛЬНЫЙ site заказа — при чужом site
- * RetailCRM отвечает «Not found», и запись молча не происходит.
+ * Пишем через общую дверь правки заказа — в нашу базу: с 09.10.2026 заказы
+ * ведутся только в ОКК.
  *
  * Ошибка одного заказа не должна отменять рассылку: план в чате полезен и без
- * записи в CRM, а провал виден в crm_error.
+ * записи даты, а провал виден в crm_error.
  */
 async function setContactDate(
     orderId: number,
-    site: string,
+    _site: string,
     date: string,
     currentDate?: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
@@ -691,8 +690,8 @@ async function setContactDate(
     }
 
     try {
-        const res = await updateExistingOrderInCrm(orderId, { customFields: { data_kontakta: date } }, site || undefined);
-        return res.success ? { ok: true } : { ok: false, error: res.errorMsg || 'RetailCRM отказал' };
+        const res = await editOrder(orderId, { customFields: { data_kontakta: date } });
+        return res.ok ? { ok: true } : { ok: false, error: res.reason };
     } catch (e: any) {
         return { ok: false, error: e.message };
     }

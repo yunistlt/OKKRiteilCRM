@@ -1,16 +1,12 @@
 /**
  * Правка заказа из нашего интерфейса: состав, цены, комментарии, доп. поля.
  *
- * Пишем В СВОЮ базу — и для своих заказов, и для приехавших из RetailCRM
- * (решение владельца 09.10.2026: «всё, что делается в ОКК, только в ОКК»).
- * RetailCRM — архив, и запись туда осталась необязательным зеркалом под
- * рубильником `retailcrm_outbound_writes`.
+ * Пишем только в свою базу — при любом источнике заказа. RetailCRM с
+ * 09.10.2026 архив на чтение, наружу не пишем вообще.
  */
 import { supabase } from '@/utils/supabase';
-import { getCrmConfig } from '@/lib/retailcrm/leads';
-import { isRetailcrmOutboundWriteEnabled } from '@/lib/retailcrm/outbound-guard';
-import { usableManagerId } from './create-order';
 import { editOwnOrder } from './own-orders';
+import { prependComment } from './comment-entries';
 
 export type EditableItem = {
     /** id позиции в RetailCRM. Пусто — позиция новая. */
@@ -115,8 +111,8 @@ export function validateItems(items: EditableItem[]): string[] {
 }
 
 /**
- * Заказ ищем и по нашему номеру строки, и по идентификатору RetailCRM: карточка
- * заказа в интерфейсе работает с их номером, а реестр — с нашим.
+ * Заказ ищем и по номеру строки, и по идентификатору заказа: карточка заказа в
+ * интерфейсе работает с одним, реестр — с другим.
  */
 async function findOrder(orderKey: number) {
     const byCrm = await supabase
@@ -139,16 +135,8 @@ async function findOrder(orderKey: number) {
         return byRow.data as any;
     }
 
-    // Заказ может быть создан минуту назад и ещё не приехать к нам
-    // синхронизацией — тогда спрашиваем саму RetailCRM. Иначе только что
-    // созданный заказ нельзя было бы поправить.
-    const { url, key } = await getCrmConfig();
-    const response = await fetch(`${url}/api/v5/orders/${orderKey}?by=id&apiKey=${key}`);
-    const payload = await response.json().catch(() => null);
-    if (payload?.order) {
-        return { id: payload.order.id, order_id: payload.order.id, number: payload.order.number, site: payload.order.site };
-    }
-
+    // Заказа нет у нас — значит нет нигде: заказы заводятся в ОКК, RetailCRM
+    // больше не спрашиваем.
     return null;
 }
 
@@ -177,148 +165,37 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
     }
 
     /**
-     * Правку всегда сохраняем У СЕБЯ.
+     * Правку сохраняем У СЕБЯ — и только у себя.
      *
-     * Решение владельца 09.10.2026: «всё, что делается в ОКК, только в ОКК;
-     * статусы ведём у себя». Раньше заказ, приехавший из RetailCRM, правился
-     * только там, и при выключенном рубильнике исходящих записей любая правка
-     * отклонялась целиком — 7 396 старых заказов были для менеджеров
-     * нередактируемыми: статус не переводился, комментарий менеджера не
-     * сохранялся.
-     *
-     * Запись наружу осталась, но стала необязательным зеркалом: пока рубильник
-     * выключен, RetailCRM о нашей правке просто не узнаёт — она архив.
+     * Решение владельца 09.10.2026: «заказы из ритейла уже правятся только в
+     * ОКК, забудь про ритейл». RetailCRM — архив на чтение, писать туда больше
+     * незачем, и источник правды один: наша база. Раньше заказ оттуда правился
+     * только через их `orders/edit`, и при выключенном рубильнике исходящих
+     * записей правка отклонялась целиком — 7 396 старых заказов менеджеры не
+     * могли ни двинуть по статусу, ни прокомментировать.
      */
     await editOwnOrder(Number((order as any).id), edit);
-
-    if ((order as any).is_own) {
-        return { ok: true, changed: describeEdit(edit) };
-    }
-
-    if (!(await isRetailcrmOutboundWriteEnabled())) {
-        // Сохранили у себя — это и есть наша система учёта. Наружу не пишем.
-        return { ok: true, changed: describeEdit(edit) };
-    }
-
-    // Магазин заказа RetailCRM её API не меняет: у себя уже поправили, туда не везём.
-    if (edit.site) {
-        return { ok: true, changed: describeEdit(edit) };
-    }
-
-    const crmOrderId = (order as any).order_id;
-    const site = (order as any).site;
-    const orderData: any = {};
-
-    if (edit.items?.length) {
-        // RetailCRM заменяет состав целиком: присылаем все позиции, которые должны
-        // остаться. Позиция без id считается новой, пропавшая — удалённой.
-        // Пустой массив не отправляем: карточка шлёт состав при любой правке, и
-        // пустой список стёр бы позиции заказа в CRM.
-        orderData.items = edit.items.map((item) => ({
-            ...(item.id ? { id: item.id } : {}),
-            productName: item.name.trim(),
-            quantity: Number(item.quantity),
-            initialPrice: Number(item.price),
-            // Скидку позиции отдаём их же полями — пересчёт цены делает RetailCRM.
-            ...(item.discountAmount ? { discountManualAmount: Number(item.discountAmount) } : {}),
-            ...(item.discountPercent ? { discountManualPercent: Number(item.discountPercent) } : {}),
-            ...(item.xmlId ? { offer: { xmlId: item.xmlId } } : {}),
-        }));
-    }
-
-    // Другой заказчик: RetailCRM ждёт карточку клиента объектом `customer`.
-    if (edit.customerId) {
-        orderData.customer = { id: Number(edit.customerId) };
-    }
-
-    // Реквизиты заказчика: RetailCRM принимает их объектом `contragent`.
-    if (edit.contragent && Object.keys(edit.contragent).length) {
-        orderData.contragent = Object.fromEntries(
-            Object.entries(edit.contragent).filter(([, value]) => value !== undefined),
-        );
-    }
-
-    // Разовая скидка на заказ. Ноль отправляем тоже: так скидку снимают.
-    if (edit.discountAmount !== undefined) orderData.discountManualAmount = Number(edit.discountAmount) || 0;
-    if (edit.discountPercent !== undefined) orderData.discountManualPercent = Number(edit.discountPercent) || 0;
-
-    if (edit.customerComment !== undefined) orderData.customerComment = edit.customerComment ?? '';
-    if (edit.managerComment !== undefined) orderData.managerComment = edit.managerComment ?? '';
-    if (edit.statusCode) orderData.status = edit.statusCode;
-    // Менеджера шлём только настоящего: у внутренних учёток бывает номер,
-    // которого в RetailCRM нет, и тогда отклоняется вся правка.
-    const managerId = await usableManagerId(edit.managerId);
-    if (managerId) orderData.managerId = managerId;
-    if (edit.customFields && Object.keys(edit.customFields).length) orderData.customFields = edit.customFields;
-
-    // Контактные данные заказа кладём как есть: имена полей у RetailCRM свои,
-    // и мы их не переводим.
-    for (const [key, value] of Object.entries(edit.contact || {})) {
-        if (value !== undefined) {
-            orderData[key] = value;
-        }
-    }
-
-    if (edit.delivery && Object.keys(edit.delivery).length) {
-        orderData.delivery = {};
-        /**
-         * Адрес и его части. RetailCRM держит их одним объектом `address`,
-         * поэтому части кладём рядом со строкой: иначе город и индекс, которые
-         * менеджер разобрал кнопкой, никуда не сохранятся (просьба Лены
-         * Парфёновой 05.10.2026).
-         */
-        const addressParts = ['address', 'region', 'city', 'index'] as const;
-        if (addressParts.some((key) => edit.delivery?.[key] !== undefined)) {
-            orderData.delivery.address = {
-                ...(edit.delivery.address !== undefined ? { text: String(edit.delivery.address ?? '') } : {}),
-                ...(edit.delivery.region !== undefined ? { region: String(edit.delivery.region ?? '') } : {}),
-                ...(edit.delivery.city !== undefined ? { city: String(edit.delivery.city ?? '') } : {}),
-                ...(edit.delivery.index !== undefined ? { index: String(edit.delivery.index ?? '') } : {}),
-            };
-        }
-        if (edit.delivery.date !== undefined) {
-            orderData.delivery.date = String(edit.delivery.date ?? '') || undefined;
-        }
-        if (edit.delivery.time !== undefined) {
-            orderData.delivery.time = String(edit.delivery.time ?? '') || undefined;
-        }
-        if (edit.delivery.code !== undefined && String(edit.delivery.code ?? '')) {
-            orderData.delivery.code = String(edit.delivery.code);
-        }
-        if (edit.delivery.cost !== undefined) {
-            orderData.delivery.cost = Number(edit.delivery.cost) || 0;
-        }
-    }
-
-    if (!Object.keys(orderData).length) {
-        return { ok: true, changed: [] };
-    }
-
-    const { url, key } = await getCrmConfig();
-    const body = new URLSearchParams();
-    body.append('order', JSON.stringify(orderData));
-    body.append('site', site);
-    body.append('by', 'id');
-
-    const response = await fetch(
-        `${url}/api/v5/orders/${crmOrderId}/edit?apiKey=${key}&by=id&site=${encodeURIComponent(site)}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() },
-    );
-
-    const result = await response.json();
-    if (!result?.success) {
-        const raw = result?.errorMsg || (result?.errors ? JSON.stringify(result.errors) : 'неизвестная ошибка');
-
-        if (String(raw).includes("parameter 'site'")) {
-            return {
-                ok: false,
-                reason: `RetailCRM не принимает магазин «${site}», в котором лежит этот заказ — сбой на их стороне. `
-                    + 'Править такой заказ нельзя ни отсюда, ни у них, пока магазин не починят.',
-            };
-        }
-
-        return { ok: false, reason: `RetailCRM отклонила правку: ${raw}` };
-    }
-
     return { ok: true, changed: describeEdit(edit) };
+}
+
+/**
+ * Дописать запись в ленту комментария менеджера по заказу.
+ *
+ * Раньше такие пометки уезжали в RetailCRM полем `noteText` и ложились
+ * заметкой заказа. Своей сущности «заметка» у нас нет намеренно: комментарий
+ * менеджера — это лента записей с метками (см. `comment-entries.ts`), её
+ * читают люди, письма, ОКК и бот-РОП. Поэтому пометки автоматики пишем туда
+ * же — наверх ленты и с подписью, кто её поставил.
+ */
+export async function appendOrderNote(orderKey: number, note: string, author: string): Promise<void> {
+    const text = String(note ?? '').trim();
+    if (!text) return;
+
+    const order = await findOrder(orderKey);
+    if (!order) return;
+
+    const { data } = await supabase.from('orders').select('raw_payload').eq('id', (order as any).id).maybeSingle();
+    const was = String(((data as any)?.raw_payload?.managerComment) ?? '');
+
+    await editOrder(Number((order as any).id), { managerComment: prependComment(was, text, author) });
 }
