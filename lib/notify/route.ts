@@ -25,13 +25,19 @@ export interface RouteOverride {
   chatId: string | null;
   threadId: string | null;
   enabled: boolean;
+  /**
+   * Кому идёт копия. `null` — берём из каталога, `'none'` — копии нет.
+   * Заведено 09.10.2026: копию «Заказ заведён в ЦехУспехе» в чат продаж
+   * пришлось убирать правкой кода, а это настройка.
+   */
+  copyTo: NotifyTarget | 'none' | null;
 }
 
 /** Переопределения из БД. Таблицы ещё нет / БД недоступна — работаем на дефолтах. */
 export async function loadRouteOverrides(): Promise<Map<string, RouteOverride>> {
   const { data, error } = await supabase
     .from('notification_routes')
-    .select('code, target, chat_id, thread_id, enabled');
+    .select('code, target, chat_id, thread_id, enabled, copy_to');
   if (error || !data) return new Map();
   return new Map(
     (data as any[]).map((r) => [
@@ -42,6 +48,7 @@ export async function loadRouteOverrides(): Promise<Map<string, RouteOverride>> 
         chatId: r.chat_id ? String(r.chat_id) : null,
         threadId: r.thread_id ? String(r.thread_id) : null,
         enabled: r.enabled !== false,
+        copyTo: (r.copy_to || null) as NotifyTarget | 'none' | null,
       },
     ]),
   );
@@ -81,6 +88,8 @@ export interface NotifyContext {
 }
 
 export interface ResolvedRoute {
+  /** Кому уходит копия: уже с учётом настройки. */
+  copyTo: NotifyTarget | null;
   def: NotifyTypeDef;
   target: NotifyTarget;
   chatId: string | null;
@@ -108,6 +117,8 @@ export async function resolveRoute(code: string, ctx: NotifyContext = {}): Promi
   // в интерфейсе не переопределяется: подменить его — значит разослать чужое личное.
   const target = def.targetFixed ? def.target : ov?.target || def.target;
   const enabled = ov?.enabled !== false;
+  // Копия: настройка перебивает каталог, «none» отключает её совсем.
+  const copyTo = ov?.copyTo === 'none' ? null : (ov?.copyTo ?? def.copyTo ?? null);
 
   const chats = await salesRopChats().catch(() => ({ group: '', owner: '' }));
   let chatId: string | null = ov?.chatId || null;
@@ -134,7 +145,7 @@ export async function resolveRoute(code: string, ctx: NotifyContext = {}): Promi
   }
   if (target !== 'group_sales') threadId = ov?.threadId ?? null;
 
-  return { def, target, chatId, threadId, enabled, token: botToken(def.bot) };
+  return { def, target, chatId, threadId, enabled, copyTo, token: botToken(def.bot) };
 }
 
 /**

@@ -85,8 +85,8 @@ export async function sendNotification(
   }
   // Копия второму адресату (см. copyTo в каталоге). Её сбой не должен отменять основную
   // отправку: ответственный своё сообщение уже получил.
-  if (route.def.copyTo && route.def.copyTo !== route.target) {
-    await sendCopy(route.def.copyTo, route.token, text, code).catch((e) =>
+  if (route.copyTo && route.copyTo !== route.target) {
+    await sendCopy(route.copyTo, route.token, text, code).catch((e) =>
       console.error('[notify] копия не ушла:', code, e instanceof Error ? e.message : e),
     );
   }
