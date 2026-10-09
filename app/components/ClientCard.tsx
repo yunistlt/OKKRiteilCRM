@@ -173,6 +173,13 @@ export default function ClientCard({ clientId }: { clientId: string }) {
     const [opened, setOpened] = useState<Requisites | null>(null);
     const [savingRequisites, setSavingRequisites] = useState(false);
     const [requisitesNote, setRequisitesNote] = useState<string | null>(null);
+    /**
+     * Сбой сохранения. Отдельно от подсказок: его показываем прямо под кнопкой
+     * «Сохранить». Раньше любой ответ сервера падал в конец длинной формы —
+     * человек жал «Сохранить», ничего не происходило, и он жал ещё раз
+     * (жалоба 09.10.2026: «кнопка не работает, снова высвечивается синим»).
+     */
+    const [requisitesError, setRequisitesError] = useState<string | null>(null);
     const [relation, setRelation] = useState<Relation | null>(null);
     const [related, setRelated] = useState<Related[]>([]);
     const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -201,9 +208,12 @@ export default function ClientCard({ clientId }: { clientId: string }) {
         try {
             const res = await fetch(`/api/clients/${clientId}/requisites`);
             const payload = await res.json();
-            if (res.ok) setRequisites(payload.requisites);
-        } catch {
-            // Молча: карточка и без реквизитов полезна, а ошибку покажем при правке.
+            if (!res.ok) throw new Error(payload.error || 'реквизиты не прочитались');
+            setRequisites(payload.requisites);
+        } catch (e: any) {
+            // Молчать нельзя: пустые поля человек читает как «данных нет» и
+            // вносит их заново — а они на месте, просто не доехали.
+            setRequisitesNote(`Реквизиты не загрузились: ${e.message}. Это сбой чтения, данные на месте — обновите страницу.`);
         }
     }, [clientId]);
 
@@ -294,6 +304,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
 
         setSavingRequisites(true);
         setRequisitesNote(null);
+        setRequisitesError(null);
         try {
             const res = await fetch(`/api/clients/${clientId}/requisites`, {
                 method: 'POST',
@@ -308,7 +319,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
             setDraft(null);
             setOpened(null);
         } catch (e: any) {
-            setRequisitesNote(e.message);
+            setRequisitesError(e.message);
         } finally {
             setSavingRequisites(false);
         }
@@ -475,6 +486,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                         ) : (
                             <button
                                 onClick={() => {
+                                    setRequisitesError(null);
                                     setDraft({ ...(requisites ?? {}) } as Requisites);
                                     setOpened({ ...(requisites ?? {}) } as Requisites);
                                     setEditing(true);
@@ -485,6 +497,14 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                             </button>
                         )}
                     </div>
+
+                    {/* Сбой сохранения — сразу под кнопкой, а не в конце длинной
+                        формы: иначе человек не видит ответа и жмёт ещё раз. */}
+                    {requisitesError && (
+                        <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-[11px] text-red-800">
+                            {requisitesError}
+                        </div>
+                    )}
 
                     {/* Заполнить реквизиты, а не переписывать их руками: по ИНН из
                         реестра или из присланной карточки предприятия (решение

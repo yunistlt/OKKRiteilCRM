@@ -281,5 +281,41 @@ export async function saveClientRequisites(
     if (Object.keys(row).length <= 2) return;
 
     const { error } = await supabase.from('clients').update(row).eq('id', id);
-    if (error) throw new Error(`Не удалось сохранить реквизиты: ${error.message}`);
+    if (!error) return;
+
+    /**
+     * ИНН уже стоит в другой карточке.
+     *
+     * Такой ИНН запрещён уникальным индексом `clients_inn_unique` (09.10.2026:
+     * «по ИНН запретить дубли просто»). Но человеку в этот момент нужно
+     * выставить счёт, а не разбираться с дублями: сохраняем всё остальное и
+     * говорим словами, в какой карточке этот ИНН уже стоит. База отдаёт
+     * техническую фразу про индекс — её показывать нельзя.
+     */
+    if (String(error.code) === '23505' && String(error.message).includes('inn')) {
+        const inn = text(requisites.inn);
+        const { data: other } = await supabase
+            .from('clients')
+            .select('id, company_name')
+            .eq('inn', inn)
+            .is('merged_into', null)
+            .maybeSingle();
+
+        delete row.inn;
+        const retry = Object.keys(row).length > 2
+            ? await supabase.from('clients').update(row).eq('id', id)
+            : { error: null };
+
+        const where = other
+            ? `он уже стоит в карточке №${(other as any).id} — ${(other as any).company_name || 'без названия'}`
+            : 'он уже стоит в другой карточке';
+
+        throw new Error(
+            `ИНН ${inn} не сохранён: ${where}. Это одна и та же компания двумя карточками. `
+            + `Остальные реквизиты${retry.error ? ' сохранить не удалось' : ' сохранены'} — счёт выставить можно. `
+            + 'Чтобы карточки не двоились, работайте в той, где уже стоит ИНН.',
+        );
+    }
+
+    throw new Error(`Не удалось сохранить реквизиты: ${error.message}`);
 }

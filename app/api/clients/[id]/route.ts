@@ -4,7 +4,8 @@
  */
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { clientRequisites, relatedClients } from '@/lib/own-crm/clients';
+import { relatedClients } from '@/lib/own-crm/clients';
+import { loadClientRequisites } from '@/lib/own-crm/client-requisites';
 import { clientCalls, clientEmails, clientPhone, clientContacts } from '@/lib/own-crm/client-activity';
 
 export const dynamic = 'force-dynamic';
@@ -50,7 +51,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
     }
 
     const [requisites, related, ordersRes] = await Promise.all([
-        clientRequisites(id),
+        loadClientRequisites(id),
         relatedClients(id),
         supabase
             .from('orders')
