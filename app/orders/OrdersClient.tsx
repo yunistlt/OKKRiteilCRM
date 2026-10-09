@@ -323,6 +323,21 @@ export default function OrdersClient() {
         if (next === null) url.searchParams.delete('order');
         else url.searchParams.set('order', next);
 
+        /**
+         * Адресат ответа принадлежит ТОМУ письму, из которого пришли, и
+         * только ему.
+         *
+         * Из списка писем кнопка «Ответить» ведёт сюда ссылкой
+         * `?order=54755&replyTo=клиент@почта`. Открываешь в том же окне другой
+         * заказ — номер в адресе меняется, а `replyTo` оставался, и форма
+         * письма подставляла чужого адресата к новому заказу. Так 08.10.2026
+         * письмо по заказу 900081 (ООО «БИР») ушло клиенту другого заказа, а
+         * его ответ по цепочке вернулся в 900081 — менеджеры увидели
+         * «сдвоенные» заказы.
+         */
+        url.searchParams.delete('replyTo');
+        url.searchParams.delete('replySubject');
+
         window.history.replaceState(null, '', `${url.pathname}${url.search}`);
     }, [openOrderNumber]);
 
@@ -690,8 +705,9 @@ export default function OrdersClient() {
                     isOpen
                     // Пришли из списка писем — карточка сразу открывает ответ
                     // на это письмо (решение владельца 05.10.2026).
-                    replyTo={searchParams.get('replyTo')}
-                    replySubject={searchParams.get('replySubject')}
+                    // Ответ подставляем только тому заказу, с которым пришла ссылка из списка писем.
+                    replyTo={searchParams.get('order') === openOrderNumber ? searchParams.get('replyTo') : null}
+                    replySubject={searchParams.get('order') === openOrderNumber ? searchParams.get('replySubject') : null}
                     onClose={() => { setOpenOrderNumber(null); void load(); }}
                 />
             )}

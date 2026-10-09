@@ -84,6 +84,8 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
      * функция»). Отправлено не то и не тому — обычная цена спешки.
      */
     const [holdLeft, setHoldLeft] = useState<number | null>(null);
+    /** Сервер сказал, что адрес не клиента этого заказа: ждём подтверждения. */
+    const [foreignWarning, setForeignWarning] = useState<string | null>(null);
     const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const cancelled = useRef(false);
 
@@ -161,6 +163,12 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
         try {
             const res = await fetch(`/api/orders/${orderNumber}/email-template/${code}`);
             const data = await res.json();
+            // Адрес не числится за клиентом заказа: показываем и ждём решения.
+            if (res.status === 409 && data?.error === 'foreign_recipient') {
+                setForeignWarning(data.message || 'Адрес не числится за клиентом этого заказа.');
+                return;
+            }
+
             if (!res.ok || !data.ok) {
                 throw new Error(
                     data.details
@@ -282,7 +290,17 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                 headers: { 'Content-Type': 'application/json' },
                 // force: письмо пишет человек, он и решает, сколько раз отвечать по заказу.
                 // Защита от двойного клика — блокировка кнопки на время отправки.
-                body: JSON.stringify({ orderNumber, to: to.trim(), subjectText: subject.trim(), html, force: true, documents, orderFileIds }),
+                body: JSON.stringify({
+                    orderNumber,
+                    to: to.trim(),
+                    subjectText: subject.trim(),
+                    html,
+                    force: true,
+                    documents,
+                    orderFileIds,
+                    // Человек уже увидел предупреждение про чужой адрес и всё равно шлёт.
+                    allowForeignRecipient: Boolean(foreignWarning),
+                }),
             });
 
             // Ответ не всегда JSON: при слишком тяжёлом письме сервер отвечает
@@ -456,6 +474,11 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                 >
                     {savingDraft ? 'Сохраняем…' : 'Сохранить черновик'}
                 </button>
+                {foreignWarning && (
+                    <span className="order-1 w-full border border-amber-500 bg-amber-50 px-2 py-1 text-[12px] text-amber-900">
+                        {foreignWarning} Нажмите «Отправить» ещё раз, если всё верно.
+                    </span>
+                )}
                 {holdLeft === null ? (
                     <button
                         onClick={startSend}

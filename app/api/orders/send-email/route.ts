@@ -48,6 +48,8 @@ const BodySchema = z.object({
      * видел «Unexpected token 'R'… is not valid JSON» (Ирина 02.10.2026).
      */
     documents: z.array(z.enum(['proposal', 'invoice'])).max(2).optional(),
+    /** Человек увидел предупреждение про чужой адрес и подтвердил отправку. */
+    allowForeignRecipient: z.boolean().optional(),
     /** Файлы, которые уже лежат в карточке заказа: берём их из хранилища. */
     orderFileIds: z.array(z.number().int().positive()).max(10).optional(),
 });
@@ -75,6 +77,57 @@ async function buildOrderDocument(
         content: Buffer.from(new Uint8Array(built.content)),
         contentType: built.contentType,
     };
+}
+
+/**
+ * Принадлежит ли адрес клиенту этого заказа.
+ *
+ * 08.10.2026 письмо по заказу 900081 (ООО «БИР») ушло на почту клиента
+ * другого заказа: в адресе страницы залип `replyTo` от прошлого письма.
+ * Ответ клиента вернулся по цепочке в чужой заказ, и менеджеры увидели
+ * «сдвоенные» заказы. Адрес проверяем по самому заказу, по карточке его
+ * клиента и по тем, с кем по заказу уже переписывались.
+ */
+async function addressBelongsToOrder(orderNumber: string, email: string): Promise<boolean> {
+    const target = email.trim().toLowerCase();
+    if (!target) return false;
+
+    const { data: order } = await supabase
+        .from('orders')
+        .select('raw_payload, customer')
+        .eq('number', orderNumber)
+        .maybeSingle();
+
+    const payload = (order as any)?.raw_payload ?? {};
+    const known = new Set<string>();
+    const add = (value: unknown) => {
+        const text = String(value ?? '').trim().toLowerCase();
+        if (text) known.add(text);
+    };
+
+    add(payload.email);
+    for (const contact of (payload.contacts ?? [])) add(contact?.email);
+
+    const clientId = (order as any)?.customer?.id ?? payload.customer?.id;
+    if (clientId) {
+        const { data: client } = await supabase
+            .from('clients')
+            .select('email, contact_email')
+            .eq('id', clientId)
+            .maybeSingle();
+        add((client as any)?.email);
+        add((client as any)?.contact_email);
+    }
+
+    // С кем уже переписывались по этому заказу — тоже свои.
+    const { data: letters } = await supabase
+        .from('incoming_emails')
+        .select('from_email')
+        .eq('created_crm_order_number', orderNumber)
+        .limit(50);
+    for (const row of ((letters ?? []) as any[])) add(row.from_email);
+
+    return known.has(target);
 }
 
 /**
@@ -194,6 +247,21 @@ export async function POST(req: Request) {
                 { status: 409 }
             );
         }
+    }
+
+    /**
+     * Чужой адресат — останавливаемся. Человек подтверждает отправку явно
+     * (`allowForeignRecipient`), и тогда письмо уходит, куда он решил.
+     */
+    if (!body.allowForeignRecipient && !(await addressBelongsToOrder(body.orderNumber, body.to))) {
+        return NextResponse.json(
+            {
+                ok: false,
+                error: 'foreign_recipient',
+                message: `Адрес ${body.to} не числится за клиентом заказа №${body.orderNumber}. Проверьте, тому ли вы пишете.`,
+            },
+            { status: 409 },
+        );
     }
 
     const seq = body.seq ?? (await nextThreadSeq(body.orderNumber));
