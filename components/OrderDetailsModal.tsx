@@ -472,6 +472,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     const [productionNote, setProductionNote] = useState('');
     const [productionFiles, setProductionFiles] = useState<number[]>([]);
     const [productionSaving, setProductionSaving] = useState(false);
+    /** Файл с компьютера прямо во вкладке производства. */
+    const [productionUploading, setProductionUploading] = useState(false);
     const [productionMessage, setProductionMessage] = useState<string | null>(null);
     const [productionData, setProductionData] = useState<{
         comment: string;
@@ -2360,6 +2362,40 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
      * данные не спрятаны: открыть можно одной вкладкой.
      */
     /** Содержимое вкладки «Для производства» — одним запросом. */
+    /**
+     * Приложить файл прямо отсюда.
+     *
+     * Евгения Матвеева 09.10.2026: «заказ оплачен, заказчики меняют габариты,
+     * отправила новое КП — в комментариях производству новые файлы не
+     * подтягиваются. Можно сделать кнопку, чтобы файл с компа самому
+     * приложить?». Раньше за этим приходилось уходить во вкладку «Файлы» и
+     * возвращаться. Тип файла не ограничиваем: цеху возят и чертежи, и
+     * фотографии, и архивы.
+     */
+    const uploadProductionFile = async (file: File) => {
+        setProductionUploading(true);
+        setProductionMessage(null);
+        try {
+            const body = new FormData();
+            body.append('file', file);
+            const res = await fetch(`/api/orders/${encodeURIComponent(String(data?.order?.number ?? orderId))}/files/upload`, {
+                method: 'POST',
+                body,
+            });
+            const payload = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(payload?.error || 'Файл не загрузился');
+
+            // Файл для цеха — сразу отмечаем: за этим его и прикладывают.
+            if (payload?.file?.id) await toggleProductionFile(Number(payload.file.id), true);
+            await loadProduction();
+            setProductionMessage(`Файл «${file.name}» приложен и отмечен для цеха`);
+        } catch (e: any) {
+            setProductionMessage(e.message || 'Файл не загрузился');
+        } finally {
+            setProductionUploading(false);
+        }
+    };
+
     const loadProduction = useCallback(async () => {
         const orderNumber = String(data?.order?.number ?? orderId);
         try {
@@ -2477,12 +2513,33 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         уходят вместе с заказом; остальные остаются только у нас.
                     </p>
 
+                    <label className={`mt-3 inline-block cursor-pointer border px-3 py-2 text-sm font-semibold ${
+                        productionUploading
+                            ? 'border-gray-200 text-gray-400'
+                            : 'border-blue-600 text-blue-700 hover:bg-blue-50'
+                    }`}>
+                        {productionUploading ? 'Загружаю…' : 'Приложить файл'}
+                        <input
+                            type="file"
+                            className="hidden"
+                            disabled={productionUploading}
+                            onChange={(event) => {
+                                const picked = event.target.files?.[0];
+                                event.target.value = '';
+                                if (picked) void uploadProductionFile(picked);
+                            }}
+                        />
+                    </label>
+
                     {files.length === 0 ? (
                         <p className="mt-3 text-sm text-gray-500">
-                            Файлов по этому заказу нет — приложите их во вкладке «Файлы».
+                            Файлов по этому заказу нет — приложите кнопкой выше или во вкладке «Файлы».
                         </p>
                     ) : (
-                        <div className="mt-3 divide-y divide-gray-100 border border-gray-200">
+                        /* Список не прячем под короткую прокрутку: файлов по
+                           заказу бывает дюжина, и человек должен видеть, что
+                           отмечено, целиком. */
+                        <div className="mt-3 max-h-[420px] overflow-y-auto divide-y divide-gray-100 border border-gray-200">
                             {files.map((file) => (
                                 <label key={file.id} className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-gray-50">
                                     <input

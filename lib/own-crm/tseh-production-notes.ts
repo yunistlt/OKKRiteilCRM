@@ -37,7 +37,11 @@ export async function loadProductionNote(orderNumber: string): Promise<Productio
             .select('id, file_name, content_type, size_bytes, for_production')
             .eq('order_number', orderNumber)
             .is('deleted_at', null)
-            .order('created_at', { ascending: true }),
+            // Свежие сверху: менеджер приложил новый чертёж и должен увидеть
+            // его сразу, а не искать в хвосте списка. Евгения Матвеева
+            // 09.10.2026: «новые файлы не подтягиваются» — они подтягивались,
+            // но уходили вниз под прокрутку.
+            .order('created_at', { ascending: false }),
     ]);
 
     return {
