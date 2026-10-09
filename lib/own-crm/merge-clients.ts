@@ -119,23 +119,34 @@ export async function mergeClients(mainId: string | number, dupId: string | numb
         if (all.length !== (mainPhones ?? []).length) patch.phones = all;
     }
 
+    /**
+     * Сначала помечаем дубль слитым и снимаем с него ИНН — и только потом
+     * переносим реквизиты в главную.
+     *
+     * Порядок важен: уникальный индекс по ИНН считает только неслитые
+     * карточки. Пока дубль «живой», запись его ИНН в главную отклоняется — и
+     * при слиянии «Пищевых технологий» (09.10.2026) ИНН так и не доехал:
+     * ошибку никто не проверял, слияние отчиталось успехом, а компания
+     * осталась без ИНН вообще.
+     */
+    const { error: markError } = await supabase
+        .from('clients')
+        .update({ merged_into: Number(main), inn: null, updated_at: new Date().toISOString() })
+        .eq('id', dup);
+
+    if (markError) throw new Error(`Карточка не пометилась слитой: ${markError.message}`);
+
     if (Object.keys(patch).length) {
         patch.updated_at = new Date().toISOString();
         if (actor) {
             patch.requisites_updated_by = actor;
             patch.requisites_updated_at = new Date().toISOString();
         }
-        await supabase.from('clients').update(patch).eq('id', main);
+        const { error } = await supabase.from('clients').update(patch).eq('id', main);
+        // Молчать нельзя: иначе главная остаётся без реквизитов дубля, а дубль
+        // уже слит — данные некуда возвращать.
+        if (error) throw new Error(`Реквизиты не перенеслись в главную карточку: ${error.message}`);
     }
-
-    // ИНН у дубля снимаем: уникальный индекс считает только неслитые карточки,
-    // но пустой ИНН в слитой карточке честнее — он живёт в главной.
-    const { error } = await supabase
-        .from('clients')
-        .update({ merged_into: Number(main), inn: null, updated_at: new Date().toISOString() })
-        .eq('id', dup);
-
-    if (error) throw new Error(`Карточка не пометилась слитой: ${error.message}`);
 
     return { mainId: main, mergedId: dup, movedOrders, movedContacts };
 }
