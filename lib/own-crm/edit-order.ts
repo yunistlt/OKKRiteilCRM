@@ -1,17 +1,14 @@
 /**
  * Правка заказа из нашего интерфейса: состав, цены, комментарии, доп. поля.
  *
- * Пишем в RetailCRM методом `orders/edit` — пока обе системы живые, заказ должен
- * меняться там, иначе производство и зарплата увидят старую версию.
- *
- * Две вещи, на которых это ломается, и обе объясняем человеку словами:
- * - рубильник исходящих записей (`retailcrm_outbound_writes`) выключен;
- * - магазин заказа не принимается RetailCRM — так 30.09.2026 встали 5 132 заказа
- *   магазина `zmktlt-ru`, и никакая правка по ним невозможна в принципе.
+ * Пишем В СВОЮ базу — и для своих заказов, и для приехавших из RetailCRM
+ * (решение владельца 09.10.2026: «всё, что делается в ОКК, только в ОКК»).
+ * RetailCRM — архив, и запись туда осталась необязательным зеркалом под
+ * рубильником `retailcrm_outbound_writes`.
  */
 import { supabase } from '@/utils/supabase';
 import { getCrmConfig } from '@/lib/retailcrm/leads';
-import { isRetailcrmOutboundWriteEnabled, RETAILCRM_WRITE_BLOCKED_MESSAGE } from '@/lib/retailcrm/outbound-guard';
+import { isRetailcrmOutboundWriteEnabled } from '@/lib/retailcrm/outbound-guard';
 import { usableManagerId } from './create-order';
 import { editOwnOrder } from './own-orders';
 
@@ -179,21 +176,33 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
             .eq('order_id', (order as any).order_id ?? orderKey);
     }
 
-    // Свой заказ правим у себя: в RetailCRM его нет, и рубильник исходящих
-    // записей к нему не относится — он про чужие заказы.
+    /**
+     * Правку всегда сохраняем У СЕБЯ.
+     *
+     * Решение владельца 09.10.2026: «всё, что делается в ОКК, только в ОКК;
+     * статусы ведём у себя». Раньше заказ, приехавший из RetailCRM, правился
+     * только там, и при выключенном рубильнике исходящих записей любая правка
+     * отклонялась целиком — 7 396 старых заказов были для менеджеров
+     * нередактируемыми: статус не переводился, комментарий менеджера не
+     * сохранялся.
+     *
+     * Запись наружу осталась, но стала необязательным зеркалом: пока рубильник
+     * выключен, RetailCRM о нашей правке просто не узнаёт — она архив.
+     */
+    await editOwnOrder(Number((order as any).id), edit);
+
     if ((order as any).is_own) {
-        await editOwnOrder(Number((order as any).id), edit);
         return { ok: true, changed: describeEdit(edit) };
     }
 
-    // Магазин заказа RetailCRM живёт в RetailCRM: её API его не меняет, и молча
-    // проглотить правку нельзя — менеджер решит, что юрлицо сменилось.
-    if (edit.site) {
-        return { ok: false, reason: 'Юрлицо можно сменить только у заказов нашей базы — у заказов RetailCRM магазин меняется в ней' };
+    if (!(await isRetailcrmOutboundWriteEnabled())) {
+        // Сохранили у себя — это и есть наша система учёта. Наружу не пишем.
+        return { ok: true, changed: describeEdit(edit) };
     }
 
-    if (!(await isRetailcrmOutboundWriteEnabled())) {
-        return { ok: false, reason: RETAILCRM_WRITE_BLOCKED_MESSAGE };
+    // Магазин заказа RetailCRM её API не меняет: у себя уже поправили, туда не везём.
+    if (edit.site) {
+        return { ok: true, changed: describeEdit(edit) };
     }
 
     const crmOrderId = (order as any).order_id;

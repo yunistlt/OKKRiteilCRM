@@ -8,8 +8,6 @@ import { queueOrderForProduction } from '@/lib/own-crm/tseh-outbox';
 import { INN_GATE_MESSAGE, INN_REQUIRED_STATUSES, ensureInnTask, orderInn } from '@/lib/own-crm/inn-gate';
 import { editOrder } from '@/lib/own-crm/edit-order';
 import { writeOwnHistory } from '@/lib/own-crm/history-write';
-import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
-import { isRetailcrmOutboundWriteEnabled, RETAILCRM_WRITE_BLOCKED_MESSAGE } from '@/lib/retailcrm/outbound-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,9 +27,12 @@ const MIN_REASON = 10;
 /**
  * Смена статуса заказа из карточки.
  *
- * Правила переходов ведём в своих таблицах (crm_statuses / crm_status_transitions), а
- * связь с RetailCRM — через external_code. Сам заказ живёт в RetailCRM, поэтому пишем
- * туда: иначе ближайший синк вернёт старый статус и менеджер решит, что кнопка врёт.
+ * Статусы ведём ТОЛЬКО у себя (решение владельца 09.10.2026). Правила переходов
+ * живут в своих таблицах (crm_statuses / crm_status_transitions), связь с
+ * RetailCRM — через external_code, но сама смена сохраняется в нашей базе: и у
+ * своих заказов, и у приехавших из RetailCRM. Раньше по чужому заказу кнопка
+ * отвечала отказом, пока выключен рубильник исходящих записей, — 7 396 старых
+ * заказов нельзя было двигать вообще.
  */
 /**
  * Заказ по тому, что пришло в адресе: это может быть и номер RetailCRM, и наш
@@ -121,9 +122,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         }))
         .sort((a, b) => a.groupOrdering - b.groupOrdering || a.ordering - b.ordering || a.name.localeCompare(b.name));
 
-    // У своего заказа рубильник исходящих записей ни при чём: менять статус
-    // можно всегда, менять его негде, кроме нашей базы.
-    const writeEnabled = (order as any).is_own ? true : await isRetailcrmOutboundWriteEnabled();
+    // Статус ведём у себя: менять его можно всегда, у любого заказа.
+    const writeEnabled = true;
 
     return NextResponse.json({
         ok: true,
@@ -215,42 +215,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         }
     }
 
-    // Свой заказ меняем у себя: в RetailCRM его нет, и рубильник исходящих
-    // записей к нему не относится.
-    if ((order as any).is_own) {
-        // Через editOwnOrder, а не прямым update: он же пишет историю заказа
-        // («Статус заказа: Новый → В просчёте»).
-        const result = await editOrder(Number((order as any).id), { statusCode: body.status });
-        if (!result.ok) return NextResponse.json({ error: 'own_update_failed', details: result.reason }, { status: 409 });
+    // Пишем у себя — через editOrder, а не прямым update: он же пишет историю
+    // заказа («Статус заказа: Новый → В просчёте») и, если рубильник исходящих
+    // записей включён, зеркалит статус в RetailCRM.
+    const result = await editOrder(Number((order as any).id), { statusCode: body.status });
+    if (!result.ok) return NextResponse.json({ error: 'update_failed', details: result.reason }, { status: 409 });
 
-        await saveStatusReason(Number((order as any).id), Number((order as any).order_id ?? (order as any).id), Number(session.user.retail_crm_manager_id) || null, to as any, reason);
+    await saveStatusReason(
+        Number((order as any).id),
+        Number((order as any).order_id ?? (order as any).id),
+        Number(session.user.retail_crm_manager_id) || null,
+        to as any,
+        reason,
+    );
 
-        // Руками поставили «Передано в производство» — заказ так же встаёт в
-        // очередь на отправку в ЦехУспех.
-        let productionNote: string | null = null;
-        if (body.status === PRODUCTION_STATUS) {
-            const queued = await queueOrderForProduction(Number((order as any).order_id ?? (order as any).id));
-            // Статус менять не мешаем, но причину говорим сразу: иначе менеджер
-            // узнает об отказе только когда ЦехУспех вернёт ошибку.
-            if (!queued.queued) productionNote = queued.reason;
-        }
-
-        return NextResponse.json({ ok: true, status: body.status, own: true, productionNote });
+    // Руками поставили «Передано в производство» — заказ так же встаёт в
+    // очередь на отправку в ЦехУспех.
+    let productionNote: string | null = null;
+    if (body.status === PRODUCTION_STATUS) {
+        const queued = await queueOrderForProduction(Number((order as any).order_id ?? (order as any).id));
+        // Статус менять не мешаем, но причину говорим сразу: иначе менеджер
+        // узнает об отказе только когда ЦехУспех вернёт ошибку.
+        if (!queued.queued) productionNote = queued.reason;
     }
 
-    // Пока свой функционал не достроен, наружу не пишем — см. lib/retailcrm/outbound-guard.
-    if (!(await isRetailcrmOutboundWriteEnabled())) {
-        return NextResponse.json({ error: 'crm_write_disabled', message: RETAILCRM_WRITE_BLOCKED_MESSAGE }, { status: 423 });
-    }
-
-    const result = await updateExistingOrderInCrm(Number((order as any).order_id ?? id), { status: body.status }, order.site || undefined);
-    if (!result.success) {
-        return NextResponse.json({ error: 'crm_rejected', details: result.errorMsg || null }, { status: 502 });
-    }
-
-    // Локальную копию поправим сразу, чтобы список не показывал старое до ближайшего синка.
-    await supabase.from('orders').update({ status: body.status }).eq('id', (order as any).id);
-    await saveStatusReason(Number((order as any).id), Number((order as any).order_id ?? id), Number(session.user.retail_crm_manager_id) || null, to as any, reason);
-
-    return NextResponse.json({ ok: true, status: body.status });
+    return NextResponse.json({ ok: true, status: body.status, own: Boolean((order as any).is_own), productionNote });
 }
