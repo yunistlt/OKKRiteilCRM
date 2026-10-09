@@ -43,11 +43,63 @@ const POLL_MS = 60_000;
 /** Сколько висит оповещение, если его не трогать. */
 const HIDE_MS = 60_000;
 
+/**
+ * Что уже показывали — переживает перерисовку.
+ *
+ * Отметки жили в памяти компонента, и любое его перемонтирование (оно
+ * случается при сохранении заказа и при переходах) обнуляло их: оповещения
+ * выскакивали заново по письмам, которые человек уже прочитал, и по звонкам,
+ * которые давно кончились. Ирина и Елена 09.10.2026: «при каждом сохранении в
+ * заказе выскакивают слева и справа оповещения… ужасно мешает работать».
+ *
+ * Поэтому храним в браузере: ключ оповещения → когда показали. Старше суток
+ * вычищаем, чтобы список не рос бесконечно.
+ */
+const SEEN_KEY = 'okk.alerts.seen';
+const SINCE_KEY = 'okk.alerts.since';
+const SEEN_TTL_MS = 24 * 60 * 60 * 1000;
+
+function loadSeen(): Map<string, number> {
+    try {
+        const raw = window.localStorage.getItem(SEEN_KEY);
+        const parsed = raw ? JSON.parse(raw) : {};
+        const now = Date.now();
+        const map = new Map<string, number>();
+        for (const [id, at] of Object.entries(parsed as Record<string, number>)) {
+            if (now - Number(at) < SEEN_TTL_MS) map.set(id, Number(at));
+        }
+        return map;
+    } catch {
+        // Приватный режим или запрет на хранилище: работаем без памяти.
+        return new Map();
+    }
+}
+
+function saveSeen(map: Map<string, number>) {
+    try {
+        window.localStorage.setItem(SEEN_KEY, JSON.stringify(Object.fromEntries(map)));
+    } catch {
+        // Не записалось — хуже будет только повтор оповещения.
+    }
+}
+
 export default function IncomingMailAlerts() {
     const pathname = usePathname();
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const since = useRef<string | null>(null);
-    const seen = useRef<Set<string>>(new Set());
+    const seen = useRef<Map<string, number>>(new Map());
+    const restored = useRef(false);
+
+    // Поднимаем память о показанном один раз при появлении компонента.
+    if (typeof window !== 'undefined' && !restored.current) {
+        restored.current = true;
+        seen.current = loadSeen();
+        try {
+            since.current = window.localStorage.getItem(SINCE_KEY);
+        } catch {
+            since.current = null;
+        }
+    }
 
     const check = useCallback(async () => {
         const query = since.current ? `?since=${encodeURIComponent(since.current)}` : '';
@@ -64,6 +116,9 @@ export default function IncomingMailAlerts() {
             if (mailRes.ok) {
                 const payload = await mailRes.json();
                 since.current = payload.checkedAt || since.current;
+                try {
+                    if (since.current) window.localStorage.setItem(SINCE_KEY, since.current);
+                } catch { /* хранилище недоступно — переживём */ }
                 for (const letter of (payload.letters || [])) {
                     fresh.push({
                         id: letter.id,
@@ -119,7 +174,11 @@ export default function IncomingMailAlerts() {
             }
 
             const unseen = fresh.filter((item) => !seen.current.has(item.id));
-            for (const item of unseen) seen.current.add(item.id);
+            if (unseen.length) {
+                const now = Date.now();
+                for (const item of unseen) seen.current.set(item.id, now);
+                saveSeen(seen.current);
+            }
             if (unseen.length) setAlerts((current) => [...unseen, ...current].slice(0, 4));
         } catch {
             // Молча: оповещение — не та вещь, ради которой стоит пугать человека ошибкой.
@@ -152,7 +211,12 @@ export default function IncomingMailAlerts() {
                         </span>
                         <button
                             type="button"
-                            onClick={() => setAlerts((current) => current.filter((item) => item.id !== alert.id))}
+                            onClick={() => {
+                                // Закрыл — значит прочитал: второй раз не показываем.
+                                seen.current.set(alert.id, Date.now());
+                                saveSeen(seen.current);
+                                setAlerts((current) => current.filter((item) => item.id !== alert.id));
+                            }}
                             className="px-1 text-sm leading-none text-white/80 hover:text-white"
                             title="Закрыть"
                         >
