@@ -25,6 +25,7 @@ import {
     searchMemory,
     titleFromQuestion,
 } from '@/lib/shtab/tamara-chat';
+import { outfitOfDay } from '@/lib/shtab/tamara-wardrobe';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -82,12 +83,16 @@ export async function POST(req: NextRequest) {
         let chat = parsed.data.chat_id ? await getChat(parsed.data.chat_id) : await latestChat();
         if (!chat) chat = await createChat(titleFromQuestion(question));
 
-        const [prompt, tail, knowledge, memory, files] = await Promise.all([
+        const [prompt, tail, knowledge, memory, files, outfit] = await Promise.all([
             getTamaraPrompt('shtab_tamara_chat'),
             chatTail(chat.id),
             searchTamaraKnowledge(question),
             searchMemory(question),
             chatFiles(chat.id),
+            // Во что она сегодня одета. Без этого на «интересный у тебя наряд»
+            // модель отвечала «сегодня без наряда, я здесь текстом», хотя
+            // владелец видит её рядом во весь рост. Сбой не отнимает ответ.
+            outfitOfDay(new Date().toISOString().slice(0, 10)).catch(() => null),
         ]);
 
         const answer = await runTamara({
@@ -102,7 +107,7 @@ export async function POST(req: NextRequest) {
                 files_context: formatFiles(files),
                 summary_context: formatSummary(chat),
                 history_context: formatTail(tail),
-            }),
+            }) + (outfit ? `\n\nТы сегодня одета так: ${outfit.outfit.title}. Владелец видит тебя рядом с перепиской во весь рост.` : ''),
         });
 
         // Обе реплики пишутся после ответа: не ответила — вопрос не должен
