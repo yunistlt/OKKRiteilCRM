@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isRetailcrmInboundSyncEnabled, RETAILCRM_READ_BLOCKED_MESSAGE } from '@/lib/retailcrm/inbound-guard';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { isRetailcrmConfigured, syncRetailcrmCatalog } from '@/lib/retailcrm/dictionaries-sync';
@@ -11,6 +12,12 @@ export const maxDuration = 300;
 // по order/customer/customer_corporate), активные и неактивные.
 // Доступ: cron (Authorization: Bearer CRON_SECRET) ИЛИ админ из браузера.
 export async function GET(req: Request) {
+    // Рубильник чтения из RetailCRM: мы живём в ОКК, снимок чужой системы не
+    // должен перезаписывать нашу работу (решение владельца 09.10.2026).
+    if (!(await isRetailcrmInboundSyncEnabled())) {
+        return NextResponse.json({ ok: false, skipped: true, reason: RETAILCRM_READ_BLOCKED_MESSAGE }, { status: 200 });
+    }
+
     const authHeader = req.headers.get('authorization');
     const isCron = !!process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`;
     if (!isCron) {

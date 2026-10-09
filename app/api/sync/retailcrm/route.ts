@@ -1,4 +1,5 @@
 import { isCronHeaderAuthorized } from '@/lib/cron-auth';
+import { isRetailcrmInboundSyncEnabled, RETAILCRM_READ_BLOCKED_MESSAGE } from '@/lib/retailcrm/inbound-guard';
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import {
@@ -27,6 +28,12 @@ function ensureAuthorized(req: Request) {
 }
 
 export async function GET(request: Request) {
+    // Рубильник чтения из RetailCRM: мы живём в ОКК, снимок чужой системы не
+    // должен перезаписывать нашу работу (решение владельца 09.10.2026).
+    if (!(await isRetailcrmInboundSyncEnabled())) {
+        return NextResponse.json({ ok: false, skipped: true, reason: RETAILCRM_READ_BLOCKED_MESSAGE }, { status: 200 });
+    }
+
     if (!RETAILCRM_URL || !RETAILCRM_API_KEY) {
         return NextResponse.json({ error: 'RetailCRM config missing' }, { status: 500 });
     }

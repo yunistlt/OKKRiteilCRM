@@ -1,4 +1,5 @@
 import { isCronHeaderAuthorized } from '@/lib/cron-auth';
+import { isRetailcrmInboundSyncEnabled, RETAILCRM_READ_BLOCKED_MESSAGE } from '@/lib/retailcrm/inbound-guard';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   claimSystemJobs,
@@ -41,6 +42,12 @@ function getSeedKey() {
 }
 
 export async function GET(req: NextRequest) {
+    // Рубильник чтения из RetailCRM: мы живём в ОКК, снимок чужой системы не
+    // должен перезаписывать нашу работу (решение владельца 09.10.2026).
+    if (!(await isRetailcrmInboundSyncEnabled())) {
+        return NextResponse.json({ ok: false, skipped: true, reason: RETAILCRM_READ_BLOCKED_MESSAGE }, { status: 200 });
+    }
+
   try {
     ensureAuthorized(req);
 

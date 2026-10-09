@@ -34,10 +34,6 @@
       "schedule": "40 4 * * 1-5"
     },
     {
-      "path": "/api/cron/crm-reconcile-deleted",
-      "schedule": "25 * * * *"
-    },
-    {
       "path": "/api/cron/rop-morning",
       "schedule": "0 5 * * 1-5"
     },
@@ -64,10 +60,6 @@
     {
       "path": "/api/sync/telphin/recovery",
       "schedule": "*/1 * * * *"
-    },
-    {
-      "path": "/api/sync/retailcrm/calls",
-      "schedule": "*/2 * * * *"
     },
     {
       "path": "/api/cron/system-jobs/call-match",
@@ -138,18 +130,6 @@
       "schedule": "0 5 * * *"
     },
     {
-      "path": "/api/sync/managers",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/sync/retailcrm/clients",
-      "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/sync/dictionaries",
-      "schedule": "30 4 * * *"
-    },
-    {
       "path": "/api/cron/system-audit",
       "schedule": "0 */4 * * *"
     },
@@ -204,10 +184,6 @@
     {
       "path": "/api/cron/system-jobs/legal-enforcement-parse",
       "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/sync-customers",
-      "schedule": "17 * * * *"
     },
     {
       "path": "/api/cron/error-digest",
