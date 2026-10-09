@@ -83,6 +83,20 @@ export async function GET(req: NextRequest) {
                 continue;
             }
 
+            /**
+             * Отмечаем в журнале отправок, что копия на месте.
+             *
+             * Журнал пишется в момент отправки, когда копия ещё в очереди, —
+             * без этой отметки он навсегда утверждал бы «копии нет», и
+             * интерфейс пугал бы менеджера зря.
+             */
+            if (payload.messageId) {
+                await supabase
+                    .from('order_email_sends')
+                    .update({ appended_to_sent: true })
+                    .eq('message_id', payload.messageId);
+            }
+
             // Легло — файл в хранилище больше не нужен.
             await supabase.storage.from(SENT_QUEUE_BUCKET).remove([path]).catch(() => undefined);
             await completeSystemJob(job.id, { folder: result.folder, messageId: payload.messageId });
