@@ -42,6 +42,17 @@ export default async function PublicDocsPage({ params }: { params: Promise<{ slu
             <h1 className="mt-1 text-2xl font-bold">{entity.name}</h1>
             {entity.inn && <p className="mt-1 text-sm text-gray-500">ИНН {entity.inn}</p>}
 
+            {files.length > 0 && (
+                <p className="mt-4">
+                    <Link
+                        href={`/api/public/docs/${slug}?zip=1`}
+                        className="inline-block border border-gray-900 px-3 py-1.5 text-sm font-bold text-gray-900 hover:bg-gray-900 hover:text-white"
+                    >
+                        Скачать все {files.length} документов архивом
+                    </Link>
+                </p>
+            )}
+
             {!files.length && (
                 <p className="mt-8 border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
                     Документы ещё не выложены. Напишите менеджеру — пришлём почтой.

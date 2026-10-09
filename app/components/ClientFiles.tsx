@@ -133,6 +133,12 @@ export default function ClientFiles({ clientId }: { clientId: string }) {
                 {ours && slug && (
                     <>
                         <p className="mt-2 text-gray-600">
+                            Всё архивом:{' '}
+                            <a href={`/api/public/docs/${slug}?zip=1`} className="font-semibold text-blue-700 hover:underline">
+                                скачать {files.length} файлов
+                            </a>
+                        </p>
+                        <p className="mt-1 text-gray-600">
                             Ссылка для клиента:{' '}
                             <a href={`/docs/${slug}`} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 hover:underline">
                                 /docs/{slug}
@@ -156,6 +162,23 @@ export default function ClientFiles({ clientId }: { clientId: string }) {
                                         {file.fileName}
                                     </span>
                                     <span className="shrink-0 text-gray-400">{size(file.size)}</span>
+                                    {/* Прямая ссылка на файл: её можно просто
+                                        вставить в письмо — клиент скачает одним
+                                        щелчком, без страницы со списком. */}
+                                    <button
+                                        onClick={async () => {
+                                            const link = `${window.location.origin}/api/public/docs/${slug}?file=${file.id}`;
+                                            try {
+                                                await navigator.clipboard.writeText(link);
+                                                setNote(`Ссылка на «${file.fileName}» скопирована`);
+                                            } catch {
+                                                setNote(link);
+                                            }
+                                        }}
+                                        className="shrink-0 font-semibold text-blue-700 hover:underline"
+                                    >
+                                        ссылка
+                                    </button>
                                     <button
                                         onClick={() => change(file.id, { deleted: true })}
                                         className="shrink-0 font-semibold text-gray-500 hover:underline"

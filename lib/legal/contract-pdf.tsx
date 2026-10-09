@@ -172,7 +172,7 @@ export async function buildContractPdf(params: {
                             <View style={styles.pageSignCol}>
                                 <Text style={styles.pageSignLabel}>Продавец</Text>
                                 {signing?.signatureImage ? (
-                                    <Image src={signing.signatureImage} style={{ width: 76, height: 22, objectFit: 'contain' }} />
+                                    <Image src={signing.signatureImage} style={{ width: 104, height: 30, objectFit: "contain" }} />
                                 ) : null}
                                 <View style={styles.pageSignLine} />
 
@@ -218,7 +218,7 @@ async function countPages(lines: string[], title: string, signing: ContractSigni
                     <View style={styles.pageSignCol}>
                         <Text style={styles.pageSignLabel}>Продавец</Text>
                         {signing?.signatureImage ? (
-                            <Image src={signing.signatureImage} style={{ width: 76, height: 22, objectFit: 'contain' }} />
+                            <Image src={signing.signatureImage} style={{ width: 104, height: 30, objectFit: "contain" }} />
                         ) : null}
                         <View style={styles.pageSignLine} />
                     </View>
