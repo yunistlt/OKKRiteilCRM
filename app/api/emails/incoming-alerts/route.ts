@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { alertAudience } from '@/lib/alerts/audience';
 import { supabase } from '@/utils/supabase';
 import { clientsByOrderNumbers } from '@/lib/orders/order-client';
 import { keepUnseen } from '@/lib/alerts/seen';
@@ -29,9 +30,9 @@ export async function GET(req: Request) {
      */
     const from = new Date(Date.now() - 60 * 60 * 1000);
 
-    const managerId = session.user.retail_crm_manager_id;
-    // Руководителю и ОКК показываем письма по всем заказам, менеджеру — по своим.
-    const onlyMine = session.user.role === 'manager' && managerId;
+    // Оповещение — тому, кто ведёт заказ (см. lib/alerts/audience.ts).
+    const audience = alertAudience(session);
+    if (!audience) return NextResponse.json({ letters: [], checkedAt: new Date().toISOString() });
 
     const { data: letters, error } = await supabase
         .from('incoming_emails')
@@ -53,14 +54,12 @@ export async function GET(req: Request) {
     const numbers = Array.from(new Set(rows.map((row) => String(row.created_crm_order_number))));
     let allowed = new Set(numbers);
 
-    if (onlyMine) {
-        const { data: orders } = await supabase
-            .from('orders')
-            .select('number')
-            .in('number', numbers)
-            .eq('manager_id', managerId);
-        allowed = new Set(((orders || []) as any[]).map((row) => String(row.number)));
-    }
+    const { data: orders } = await supabase
+        .from('orders')
+        .select('number')
+        .in('number', numbers)
+        .eq('manager_id', audience.managerId);
+    allowed = new Set(((orders || []) as any[]).map((row) => String(row.number)));
 
     // Чей это заказ: в оповещении имя клиента ведёт в его карточку.
     const clients = await clientsByOrderNumbers(Array.from(allowed));

@@ -9,6 +9,7 @@
  */
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { alertAudience } from '@/lib/alerts/audience';
 import { supabase } from '@/utils/supabase';
 import { clientByPhone } from '@/lib/call-binding';
 import { keepUnseen } from '@/lib/alerts/seen';
@@ -18,6 +19,13 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
+
+    /**
+     * Звонок показываем тем, кто работает с клиентами: у владельца и
+     * просмотровых ролей номера менеджера нет — им окошко ни к чему
+     * (см. lib/alerts/audience.ts).
+     */
+    if (!alertAudience(session)) return NextResponse.json({ calls: [], checkedAt: new Date().toISOString() });
 
     const { searchParams } = new URL(req.url);
     // Оставлено для совместимости со старыми вкладками: решает не он, а

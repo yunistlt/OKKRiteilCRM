@@ -13,6 +13,7 @@
  */
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { alertAudience } from '@/lib/alerts/audience';
 import { supabase } from '@/utils/supabase';
 import { clientsByOrderNumbers } from '@/lib/orders/order-client';
 import { keepUnseen } from '@/lib/alerts/seen';
@@ -68,19 +69,16 @@ export async function GET(req: Request) {
     });
     if (!rows.length) return NextResponse.json({ tasks: [], checkedAt: new Date().toISOString() });
 
-    // Менеджеру — задачи по его заказам, руководителю и ОКК — по всем.
-    const managerId = session.user.retail_crm_manager_id;
-    const onlyMine = session.user.role === 'manager' && managerId;
+    // Оповещение — тому, кто ведёт заказ (см. lib/alerts/audience.ts).
+    const audience = alertAudience(session);
+    if (!audience) return NextResponse.json({ tasks: [], checkedAt: new Date().toISOString() });
 
-    let allowed = new Set(rows.map((row) => String(row.order_number)));
-    if (onlyMine) {
-        const { data: orders } = await supabase
-            .from('orders')
-            .select('number')
-            .in('number', Array.from(allowed))
-            .eq('manager_id', managerId);
-        allowed = new Set(((orders || []) as any[]).map((row) => String(row.number)));
-    }
+    const { data: orders } = await supabase
+        .from('orders')
+        .select('number')
+        .in('number', Array.from(new Set(rows.map((row) => String(row.order_number)))))
+        .eq('manager_id', audience.managerId);
+    const allowed = new Set(((orders || []) as any[]).map((row) => String(row.number)));
 
     // Чей это заказ: в оповещении имя клиента ведёт в его карточку.
     const clients = await clientsByOrderNumbers(Array.from(allowed));
