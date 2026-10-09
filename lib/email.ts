@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import MailComposer from 'nodemailer/lib/mail-composer';
 import { randomUUID } from 'crypto';
+import { linkifyHtml } from '@/lib/html-links';
 import { brandAttachment, wrapInBrand } from '@/lib/email-brand';
 import { appendToSentFolder } from './email/imap';
 
@@ -52,7 +53,7 @@ export async function sendAppEmail({ to, subject, html, fromName = 'OKKRiteil CR
             from: `"${fromName}" <${process.env.SMTP_USER}>`,
             to,
             subject,
-            html: wrapInBrand(html),
+            html: wrapInBrand(linkifyHtml(html)),
             replyTo,
             attachments: [brandAttachment(), ...(attachments || []).map((a) => ({
                 filename: a.filename || 'attachment',
@@ -149,7 +150,7 @@ export async function sendOrderEmail(input: SendOrderEmailInput): Promise<SendOr
             from: `"${fromName}" <${user}>`,
             to: input.to,
             subject,
-            html: wrapInBrand(input.html),
+            html: wrapInBrand(linkifyHtml(input.html)),
             // Текстовая часть обязательна: без неё письмо в папке «Отправленные»
             // лежит одним HTML, и лента переписки по заказу показывает пустоту.
             text: htmlToPlainText(input.html),
