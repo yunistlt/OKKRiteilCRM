@@ -232,29 +232,53 @@ export async function saveClientRequisites(
     const id = Number(clientId);
     if (!Number.isFinite(id)) throw new Error('Не понял, какому клиенту сохранять реквизиты');
 
+    /**
+     * Пишем ТОЛЬКО то, что прислали.
+     *
+     * Раньше сохранялись все поля разом — тем снимком, которым форма
+     * открылась. Если за время правки данные менялись (второй человек, перенос
+     * из заказа, слияние карточек), сохранение затирало их пустотой: у ООО
+     * «УАС» так пропал ОГРН, а до того — банковские реквизиты (жалобы Евгении
+     * Матвеевой 09.10.2026). Теперь поле, которого в запросе нет, остаётся в
+     * базе нетронутым.
+     *
+     * Пустая строка — это осознанная очистка поля человеком, она проходит.
+     */
+    const columns: Array<[keyof Requisites, string]> = [
+        ['contragentType', 'contragent_type'],
+        ['legalName', 'legalName'],
+        ['fullName', 'full_name'],
+        ['signerName', 'signer_name'],
+        ['signerTitle', 'signer_title'],
+        ['signerBasis', 'signer_basis'],
+        ['inn', 'inn'],
+        ['kpp', 'kpp'],
+        ['ogrn', 'OGRN'],
+        ['ogrnip', 'OGRNIP'],
+        ['legalAddress', 'legalAddress'],
+        ['bank', 'bank'],
+        ['bankAccount', 'bankAccount'],
+        ['bik', 'BIK'],
+        ['corrAccount', 'corrAccount'],
+        ['bankAddress', 'bankAddress'],
+    ];
+
     const row: Record<string, unknown> = {
-        contragent_type: text(requisites.contragentType),
-        legalName: text(requisites.legalName),
-        full_name: text(requisites.fullName),
-        signer_name: text(requisites.signerName),
-        signer_title: text(requisites.signerTitle),
-        signer_basis: text(requisites.signerBasis),
-        // `company_name` приезжает из RetailCRM и показывается в списке клиентов:
-        // держим его в согласии с юридическим названием, если его внесли.
-        ...(text(requisites.legalName) ? { company_name: text(requisites.legalName) } : {}),
-        inn: text(requisites.inn),
-        kpp: text(requisites.kpp),
-        OGRN: text(requisites.ogrn),
-        OGRNIP: text(requisites.ogrnip),
-        legalAddress: text(requisites.legalAddress),
-        bank: text(requisites.bank),
-        bankAccount: text(requisites.bankAccount),
-        BIK: text(requisites.bik),
-        corrAccount: text(requisites.corrAccount),
-        bankAddress: text(requisites.bankAddress),
         requisites_updated_by: text(actor),
         requisites_updated_at: new Date().toISOString(),
     };
+
+    for (const [field, column] of columns) {
+        if (requisites[field] === undefined) continue;
+        row[column] = text(requisites[field]);
+    }
+
+    // `company_name` приезжает из RetailCRM и показывается в списке клиентов:
+    // держим его в согласии с юридическим названием, если его внесли.
+    if (text(requisites.legalName)) row.company_name = text(requisites.legalName);
+
+    // Кроме служебных отметок ничего не прислали — сохранять нечего.
+    if (Object.keys(row).length <= 2) return;
 
     const { error } = await supabase.from('clients').update(row).eq('id', id);
     if (error) throw new Error(`Не удалось сохранить реквизиты: ${error.message}`);

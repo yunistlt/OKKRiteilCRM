@@ -164,6 +164,13 @@ export default function ClientCard({ clientId }: { clientId: string }) {
     // подтягиваются (решение владельца 02.10.2026).
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState<Requisites | null>(null);
+    /**
+     * Чем форма открылась. Нужен, чтобы отправить на сервер ТОЛЬКО поля,
+     * которые человек правда менял. Иначе открытая заранее форма сохраняет
+     * свой устаревший снимок и затирает то, что внесли за это время, —
+     * так пропал ОГРН у ООО «УАС» 09.10.2026.
+     */
+    const [opened, setOpened] = useState<Requisites | null>(null);
     const [savingRequisites, setSavingRequisites] = useState(false);
     const [requisitesNote, setRequisitesNote] = useState<string | null>(null);
     const [relation, setRelation] = useState<Relation | null>(null);
@@ -263,30 +270,35 @@ export default function ClientCard({ clientId }: { clientId: string }) {
 
     const saveRequisites = async () => {
         if (!draft) return;
+
+        // Отправляем только изменённое: поле, которого нет в запросе, сервер
+        // не трогает. Пустая строка здесь — осознанная очистка человеком.
+        const fields: Array<keyof Requisites> = [
+            'legalName', 'fullName', 'signerName', 'signerTitle', 'signerBasis',
+            'inn', 'kpp', 'ogrn', 'ogrnip', 'legalAddress',
+            'bank', 'bankAccount', 'bik', 'corrAccount', 'bankAddress', 'contragentType',
+        ];
+        const changedFields: Record<string, string> = {};
+        for (const key of fields) {
+            const now = String(draft[key] ?? '');
+            const was = String(opened?.[key] ?? '');
+            if (now !== was) changedFields[key] = now;
+        }
+
+        if (!Object.keys(changedFields).length) {
+            setEditing(false);
+            setDraft(null);
+            setOpened(null);
+            return;
+        }
+
         setSavingRequisites(true);
         setRequisitesNote(null);
         try {
             const res = await fetch(`/api/clients/${clientId}/requisites`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    legalName: draft.legalName ?? '',
-                    fullName: draft.fullName ?? '',
-                    signerName: draft.signerName ?? '',
-                    signerTitle: draft.signerTitle ?? '',
-                    signerBasis: draft.signerBasis ?? '',
-                    inn: draft.inn ?? '',
-                    kpp: draft.kpp ?? '',
-                    ogrn: draft.ogrn ?? '',
-                    ogrnip: draft.ogrnip ?? '',
-                    legalAddress: draft.legalAddress ?? '',
-                    bank: draft.bank ?? '',
-                    bankAccount: draft.bankAccount ?? '',
-                    bik: draft.bik ?? '',
-                    corrAccount: draft.corrAccount ?? '',
-                    bankAddress: draft.bankAddress ?? '',
-                    contragentType: draft.contragentType ?? '',
-                }),
+                body: JSON.stringify(changedFields),
             });
             const payload = await res.json();
             if (!res.ok) throw new Error(payload.error || 'Не удалось сохранить реквизиты');
@@ -294,6 +306,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
             void loadRequisites();
             setEditing(false);
             setDraft(null);
+            setOpened(null);
         } catch (e: any) {
             setRequisitesNote(e.message);
         } finally {
@@ -453,7 +466,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                                     {savingRequisites ? 'Сохраняем…' : 'Сохранить'}
                                 </button>
                                 <button
-                                    onClick={() => { setEditing(false); setDraft(null); }}
+                                    onClick={() => { setEditing(false); setDraft(null); setOpened(null); }}
                                     className="text-[11px] font-bold normal-case text-gray-500 hover:underline"
                                 >
                                     Отменить
@@ -461,7 +474,11 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                             </span>
                         ) : (
                             <button
-                                onClick={() => { setDraft({ ...(requisites ?? {}) } as Requisites); setEditing(true); }}
+                                onClick={() => {
+                                    setDraft({ ...(requisites ?? {}) } as Requisites);
+                                    setOpened({ ...(requisites ?? {}) } as Requisites);
+                                    setEditing(true);
+                                }}
                                 className="text-[11px] font-bold normal-case text-blue-700 hover:underline"
                             >
                                 Править
