@@ -12,13 +12,33 @@ import { supabase } from '@/utils/supabase';
  * подпись была только в первом.
  *
  * Имя и добавочный — из справочника менеджеров (закон «имена из RetailCRM»),
- * телефон и сайт компании — здесь, одной строкой на всю систему.
+ * телефон и сайт компании — здесь, одной строкой на всю систему. Здесь же
+ * кнопка «Посмотрите наш каталог продукции»: она должна быть в каждом письме.
  */
 const COMPANY_PHONE = '+7 (499) 350-44-90';
 const COMPANY_SITE = 'https://zmktlt.ru';
 const COMPANY_NAME = 'Завод металлических конструкций';
 /** Общий ящик компании: письма уходят с него, туда же приходят ответы. */
 const COMPANY_EMAIL = 'rop@zmktlt.ru';
+/**
+ * Каталог продукции — кнопкой в каждом письме (требование владельца
+ * 09.10.2026). Ссылка постоянная: заменили файл в карточке юрлица, и письма,
+ * ушедшие месяц назад, ведут на свежий каталог.
+ *
+ * Живёт здесь, а не в шаблонах: писем одиннадцать шаблонов, семь из них пишет
+ * модель — в них кнопку не впишешь, и каждый новый шаблон пришлось бы
+ * вспоминать. Подпись приклеивается ко всем письмам одинаково, значит и
+ * кнопка тоже.
+ */
+const CATALOG_URL = `${(process.env.NEXT_PUBLIC_APP_URL || 'https://okk.zmksoft.com').replace(/\/+$/, '')}/katalog`;
+const CATALOG_LABEL = 'ПОСМОТРИТЕ НАШ КАТАЛОГ ПРОДУКЦИИ';
+
+/** Кнопка каталога: в письме — настоящей кнопкой, в простом тексте — строкой. */
+const catalogButtonHtml = `<a href="${CATALOG_URL}" `
+    + 'style="display:inline-block;padding:10px 18px;background:#1d4ed8;color:#ffffff;'
+    + 'font-weight:700;font-size:13px;letter-spacing:.3px;text-decoration:none">'
+    + `${CATALOG_LABEL}</a>`;
+const catalogLineText = `${CATALOG_LABEL}: ${CATALOG_URL}`;
 
 export type Signature = { text: string; html: string };
 
@@ -50,8 +70,8 @@ export async function managerSignature(managerId: number | null | undefined): Pr
     ];
 
     return {
-        text: lines.join('\n'),
-        html: lines.map((l, i) => (i === 1 ? `<strong>${l}</strong>` : l)).join('<br>'),
+        text: `${catalogLineText}\n\n${lines.join('\n')}`,
+        html: `${catalogButtonHtml}<br><br>${lines.map((l, i) => (i === 1 ? `<strong>${l}</strong>` : l)).join('<br>')}`,
     };
 }
 
@@ -63,7 +83,13 @@ export async function managerSignature(managerId: number | null | undefined): Pr
  */
 export function withSignature(body: string | undefined, signature: Signature | null, asHtml: boolean): string {
     const text = String(body ?? '');
-    if (!signature) return text;
+
+    // Менеджер не определился (письмо робота, заказ без ответственного) —
+    // подписи нет, но каталог в письме должен быть всё равно.
+    if (!signature) {
+        const catalog = asHtml ? catalogButtonHtml : catalogLineText;
+        return asHtml ? `${text.trimEnd()}<br><br>${catalog}` : `${text.trimEnd()}\n\n${catalog}`;
+    }
 
     const cut = text.search(/С уважением[,\s]/i);
     const head = (cut >= 0 ? text.slice(0, cut) : text).trimEnd();
