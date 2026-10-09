@@ -10,13 +10,29 @@ export async function GET(
     request: Request,
     { params }: { params: { id: string } }
 ) {
-    const orderId = parseInt(params.id, 10);
+    const rawId = decodeURIComponent(String(params.id));
 
-    if (Number.isNaN(orderId)) {
+    if (!rawId) {
         return NextResponse.json({ error: 'Invalid order id' }, { status: 400 });
     }
 
     try {
+        /**
+         * Сюда приходит номер заказа, а оценки лежат по идентификатору. У
+         * заказов RetailCRM они совпадали; свой заказ 900118 имеет id
+         * 900000118, и карточка качества отвечала 404 (жалоба 09.10.2026).
+         */
+        const { data: byNumber } = await supabase
+            .from('orders')
+            .select('order_id')
+            .eq('number', rawId)
+            .maybeSingle();
+
+        const orderId = Number((byNumber as any)?.order_id ?? rawId);
+        if (!Number.isFinite(orderId)) {
+            return NextResponse.json({ error: 'Invalid order id' }, { status: 400 });
+        }
+
         const session = await getSession();
         if (!session?.user) {
             return NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 });
@@ -94,7 +110,7 @@ export async function GET(
 
         return NextResponse.json({ order: payload });
     } catch (error: any) {
-        console.error(`[OKK Score] ${orderId}:`, error);
+        console.error(`[OKK Score] ${rawId}:`, error);
         return NextResponse.json(
             { error: error.message || 'Не удалось загрузить оценку' },
             { status: 500 }

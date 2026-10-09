@@ -20,8 +20,27 @@ export const dynamic = 'force-dynamic';
 // разговоры за разговоры по этому заказу.
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
-    const orderId = parseInt(params.id, 10);
-    if (Number.isNaN(orderId)) {
+    const raw = decodeURIComponent(String(params.id));
+
+    /**
+     * Сюда приходит НОМЕР заказа, а звонки привязаны к его идентификатору.
+     *
+     * У заказов RetailCRM номер и id совпадали, и разницы не было видно. Свои
+     * заказы нумеруются 900118, а их `order_id` — 900000118: вкладка «Качество
+     * заявки» показывала «К заказу пока не привязаны звонки», хотя привязано
+     * их было шесть (жалоба 09.10.2026, заказ 900118).
+     *
+     * Поэтому сначала ищем заказ по номеру и берём его id, и только если
+     * такого номера нет — считаем, что пришёл сам идентификатор.
+     */
+    const { data: byNumber } = await supabase
+        .from('orders')
+        .select('order_id')
+        .eq('number', raw)
+        .maybeSingle();
+
+    const orderId = Number((byNumber as any)?.order_id ?? raw);
+    if (!Number.isFinite(orderId)) {
         return NextResponse.json({ error: 'Invalid Order ID' }, { status: 400 });
     }
 
