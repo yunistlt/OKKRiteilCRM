@@ -76,6 +76,10 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
     /** На какое письмо отвечаем. null — композер закрыт. */
     const [replyTo, setReplyTo] = useState<{ to?: string | null; subject?: string | null; quote?: string | null } | null>(null);
     const [composing, setComposing] = useState(false);
+    /** Подсказка по клавишам: вызывается знаком вопроса (ТЗ §4). */
+    const [helpOpen, setHelpOpen] = useState(false);
+    /** Пересылка — из обработчика клавиш, поэтому держим свежую ссылку. */
+    const forwardRef = useRef<((message: Message) => void) | null>(null);
     /** Поле поиска и открытый тред — чтобы горячие клавиши видели свежее состояние. */
     const searchRef = useRef<HTMLInputElement | null>(null);
     const openRef = useRef<Thread | null>(null);
@@ -137,6 +141,15 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                 searchRef.current?.focus();
                 return;
             }
+            if (event.key === '?') {
+                event.preventDefault();
+                setHelpOpen((was) => !was);
+                return;
+            }
+            if (event.key === 'Escape') {
+                setHelpOpen(false);
+                return;
+            }
             if (!thread) return;
 
             if (event.key === 'r' || event.key === 'к') {
@@ -144,6 +157,10 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                 const last = [...thread.messages].reverse().find((m) => m.direction === 'in') || thread.messages[thread.messages.length - 1];
                 setReplyTo({ to: last.from || thread.participants[0] || null, subject: last.subject, quote: last.text });
                 setComposing(true);
+            } else if (event.key === 'f' || event.key === 'а') {
+                event.preventDefault();
+                const last = [...thread.messages].reverse().find((m) => m.direction === 'in') || thread.messages[thread.messages.length - 1];
+                forwardRef.current?.(last);
             } else if (event.key === 'e' || event.key === 'у') {
                 event.preventDefault();
                 void toggleClosedRef.current?.(thread);
@@ -157,6 +174,35 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
         return () => window.removeEventListener('keydown', onKey);
     }, []);
 
+    /**
+     * Переслать письмо (ТЗ §4).
+     *
+     * Открываем тот же композер: адресата вписывает человек, тема получает
+     * «Fwd:», в тело уходит исходное письмо с шапкой «от кого и когда» — как
+     * в любой почте. Вложения исходного письма лежат во вкладке «Файлы»
+     * заказа, их прикладывают галочкой; об этом прямо сказано в подсказке
+     * под полем, а не предполагается.
+     */
+    const forward = (message: Message) => {
+        const head = [
+            '---------- Пересылаемое письмо ----------',
+            `От кого: ${message.fromName ? `${message.fromName} <${message.from ?? ''}>` : message.from ?? 'неизвестно'}`,
+            `Когда: ${message.at ? new Date(message.at).toLocaleString('ru-RU') : 'не указано'}`,
+            `Тема: ${message.subject ?? 'без темы'}`,
+            message.attachments.length
+                ? `Вложения: ${message.attachments.map((a) => a.name).join(', ')} — приложите их из файлов заказа`
+                : '',
+            '',
+        ].filter(Boolean).join('\n');
+
+        setReplyTo({
+            to: null,
+            subject: `Fwd: ${String(message.subject ?? '').replace(/^Fwd:\s*/i, '')}`,
+            quote: `${head}${message.text}`,
+        });
+        setComposing(true);
+    };
+
     const toggleClosed = async (thread: Thread) => {
         await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/mail`, {
             method: 'POST',
@@ -167,6 +213,7 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
     };
 
     useEffect(() => { toggleClosedRef.current = toggleClosed; });
+    useEffect(() => { forwardRef.current = forward; });
 
     const found = useMemo(() => {
         const text = query.trim().toLowerCase();
@@ -193,6 +240,32 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                     placeholder="Поиск по переписке (/)"
                     className="w-full border-b border-gray-200 px-2 py-1.5 text-xs focus:border-blue-600 focus:outline-none"
                 />
+                {/* Подсказка по клавишам: вызывается «?» (ТЗ §4). Без неё о
+                    сочетаниях знает только тот, кто их делал. */}
+                <button
+                    type="button"
+                    onClick={() => setHelpOpen((was) => !was)}
+                    className="w-full border-b border-gray-200 px-2 py-1 text-left text-[10px] text-gray-400 hover:text-gray-700"
+                >
+                    Клавиши: ?
+                </button>
+                {helpOpen && (
+                    <dl className="border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] text-gray-600">
+                        {[
+                            ['r', 'ответить'],
+                            ['f', 'переслать'],
+                            ['e', 'закрыть или вернуть тред'],
+                            ['u', 'свернуть ответ'],
+                            ['/', 'поиск по переписке'],
+                            ['?', 'эта подсказка'],
+                        ].map(([key, what]) => (
+                            <div key={key} className="flex gap-2">
+                                <dt className="w-6 shrink-0 font-bold text-gray-900">{key}</dt>
+                                <dd>{what}</dd>
+                            </div>
+                        ))}
+                    </dl>
+                )}
                 <ul className="max-h-[360px] overflow-y-auto">
                     {found.map((thread) => (
                         <li key={thread.key}>
@@ -298,6 +371,13 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                                         className="mt-1 mr-3 text-[11px] font-semibold text-blue-700 hover:underline"
                                     >
                                         ответить
+                                    </button>
+
+                                    <button
+                                        onClick={() => forward(message)}
+                                        className="mt-1 mr-3 text-[11px] font-semibold text-blue-700 hover:underline"
+                                    >
+                                        переслать
                                     </button>
 
                                     {message.attachments.length > 0 && (
