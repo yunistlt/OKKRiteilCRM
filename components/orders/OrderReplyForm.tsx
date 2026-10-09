@@ -323,8 +323,10 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
             setDone(true);
             onSent?.();
 
-            if (data.appendedToSent === false) {
-                setError('Письмо клиенту ушло, но копия не легла в «Отправленные» — в переписке RetailCRM его может не быть.');
+            // Копия в «Отправленные» уезжает фоном — это нормальный путь, а не
+            // сбой: ругаемся только когда её не взяли ни фоном, ни сразу.
+            if (data.appendedToSent === false && data.appendQueued !== true) {
+                setError('Письмо клиенту ушло, но копия не легла в «Отправленные» — в почтовом ящике его не будет видно.');
             }
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Письмо не ушло');

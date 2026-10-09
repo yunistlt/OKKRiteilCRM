@@ -281,6 +281,15 @@ export async function POST(req: Request) {
         contentType: file.contentType,
     }));
 
+    /**
+     * Сколько заняли этапы отправки. Менеджеры жаловались, что письмо уходит
+     * долго (Лена Парфёнова 09.10.2026), а разложить это было не на что —
+     * теперь в журнале видно, что именно тянет: сборка документов, вложения
+     * из хранилища или сам SMTP.
+     */
+    const timing: Record<string, number> = {};
+    let stage = Date.now();
+
     // КП и счёт собираем здесь же: они делаются из самого заказа, гонять их
     // через браузер незачем.
     for (const kind of body.documents || []) {
@@ -312,11 +321,17 @@ export async function POST(req: Request) {
         }
     }
 
+    timing.documents = Date.now() - stage;
+    stage = Date.now();
+
     // Файлы заказа тоже лежат у нас — достаём из хранилища, а не из браузера.
     for (const fileId of body.orderFileIds || []) {
         const file = await orderFileAttachment(body.orderNumber, fileId);
         if (file) attachments.push(file);
     }
+
+    timing.files = Date.now() - stage;
+    stage = Date.now();
 
     const result = await sendOrderEmail({
         to: body.to,
@@ -329,9 +344,20 @@ export async function POST(req: Request) {
         attachments,
     });
 
+    timing.smtp = Date.now() - stage;
+
     if (!result.sent) {
         return NextResponse.json({ ok: false, ...result }, { status: 502 });
     }
+
+    console.log('[send-email] отправлено', JSON.stringify({
+        order: body.orderNumber,
+        attachments: attachments.length,
+        documents_ms: timing.documents,
+        files_ms: timing.files,
+        smtp_ms: timing.smtp,
+        sent_copy: result.appendQueued ? 'очередь' : result.appendedToSent ? 'сразу' : 'нет',
+    }));
 
     // Фиксируем отправку в реестр (идемпотентность на будущее).
     await recordOrderEmailSend({

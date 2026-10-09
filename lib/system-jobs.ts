@@ -24,7 +24,8 @@ export type SystemJobType =
   | 'legal_contract_scan'
   | 'legal_enforcement_parse'
   | 'telphin_callback'
-  | 'salary_estimate_classify';
+  | 'salary_estimate_classify'
+  | 'email_sent_append';
 
 /**
  * Классификация заказа по диалогу: смета ли это (запрос цены под бюджет далёкого

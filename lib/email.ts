@@ -112,6 +112,8 @@ export interface SendOrderEmailInput {
 export interface SendOrderEmailResult {
     sent: boolean;
     appendedToSent: boolean;      // легла ли копия в «Отправленные» (нужно для видимости в CRM)
+    /** Копия в «Отправленные» встала в очередь и уйдёт туда фоном, в ближайшую минуту. */
+    appendQueued?: boolean;
     subject: string;
     messageId?: string;
     sentFolder?: string;
@@ -181,7 +183,24 @@ export async function sendOrderEmail(input: SendOrderEmailInput): Promise<SendOr
         return { sent: false, appendedToSent: false, subject, messageId, error: error?.message || 'send_failed' };
     }
 
-    // 2) Дозапись копии в «Отправленные» (best-effort: видимость в почте и импорт в RetailCRM).
+    /**
+     * 2) Копия в «Отправленные» — ФОНОМ.
+     *
+     * Это отдельное соединение с ящиком: TLS, вход и заливка всего письма с
+     * вложениями. Секунды, которые менеджер стоял и ждал уже отправленное
+     * письмо («быстрее отправку писем можно сделать?» — Лена Парфёнова
+     * 09.10.2026). Для клиента копия в Sent ничего не меняет: письмо у него
+     * уже есть.
+     *
+     * Кладём письмо в очередь задач — её разбирает крон раз в минуту. Если
+     * очередь недоступна, дозаписываем здесь же: лучше подождать, чем
+     * потерять копию.
+     */
+    const queued = await queueSentAppend(raw, messageId, subject);
+    if (queued) {
+        return { sent: true, appendedToSent: false, appendQueued: true, subject, messageId };
+    }
+
     const appended = await appendToSentFolder(raw);
     if (!appended.appended) {
         console.warn('[email] sendOrderEmail: письмо отправлено, но НЕ дозаписано в Sent:', appended.error);
@@ -195,4 +214,53 @@ export async function sendOrderEmail(input: SendOrderEmailInput): Promise<SendOr
         sentFolder: appended.folder,
         appendError: appended.appended ? undefined : appended.error,
     };
+}
+
+/** Где лежат письма, ждущие дозаписи в «Отправленные». */
+export const SENT_QUEUE_BUCKET = 'okk-assets';
+export const SENT_QUEUE_PREFIX = 'outgoing-mime';
+
+/**
+ * Положить готовое письмо в очередь на дозапись в «Отправленные».
+ *
+ * Само письмо кладём в хранилище, а в задачу — путь: MIME с вложениями весит
+ * мегабайты, в поле задачи ему не место.
+ *
+ * Возвращает true, если задача встала в очередь.
+ */
+async function queueSentAppend(raw: Buffer, messageId: string, subject: string): Promise<boolean> {
+    try {
+        const { supabase } = await import('@/utils/supabase');
+        const { safeEnqueueSystemJob } = await import('@/lib/system-jobs');
+
+        const key = messageId.replace(/[<>]/g, '').replace(/[^a-zA-Z0-9._@-]/g, '-');
+        const path = `${SENT_QUEUE_PREFIX}/${key}.eml`;
+
+        const upload = await supabase.storage
+            .from(SENT_QUEUE_BUCKET)
+            .upload(path, new Uint8Array(raw), { contentType: 'message/rfc822', upsert: true });
+        if (upload.error) {
+            console.warn('[email] письмо не легло в хранилище для дозаписи:', upload.error.message);
+            return false;
+        }
+
+        const job = await safeEnqueueSystemJob({
+            jobType: 'email_sent_append',
+            payload: { path, messageId, subject },
+            priority: 40,
+            // Одно письмо — одна дозапись, сколько бы раз задача ни повторилась.
+            idempotencyKey: `email_sent_append:${key}`,
+            maxAttempts: 5,
+        });
+
+        if (!job) {
+            await supabase.storage.from(SENT_QUEUE_BUCKET).remove([path]).catch(() => undefined);
+            return false;
+        }
+
+        return true;
+    } catch (e: any) {
+        console.warn('[email] очередь дозаписи недоступна, пишем в Sent сразу:', e?.message ?? e);
+        return false;
+    }
 }

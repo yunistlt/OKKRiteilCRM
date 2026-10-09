@@ -162,6 +162,10 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/cron/system-jobs/email-sent-append",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/ai-balance-watch",
       "schedule": "0 * * * *"
     },

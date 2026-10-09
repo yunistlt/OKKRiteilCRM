@@ -136,7 +136,9 @@ export default function RelevanceClient({ managers }: { managers: ManagerOption[
             }
             const warn = data.appendedToSent
                 ? `привязано к заказу, копия в «${data.sentFolder || 'Отправленные'}»`
-                : '⚠ отправлено, но копия НЕ легла в Sent (в CRM может не отобразиться)';
+                : data.appendQueued
+                    ? 'копия в «Отправленные» уедет в ближайшую минуту'
+                    : '⚠ отправлено, но копия НЕ легла в «Отправленные» — в ящике его не будет видно';
             setSendResult(`✅ Отправлено: ${data.subject} — ${warn}`);
             setConflict(null);
             // Помечаем заказ как отправленный — кнопка «Отправить» больше не покажется.
