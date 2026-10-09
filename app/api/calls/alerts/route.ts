@@ -11,6 +11,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { clientByPhone } from '@/lib/call-binding';
+import { keepUnseen } from '@/lib/alerts/seen';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,8 @@ export async function GET(req: Request) {
     if (!session) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
+    // Оставлено для совместимости со старыми вкладками: решает не он, а
+    // отметка показа в системе.
     const since = searchParams.get('since');
     // Звонок живёт минуты: первый заход смотрит последние пять, дальше — от
     // прошлой проверки.
@@ -141,5 +144,10 @@ export async function GET(req: Request) {
         });
     }
 
-    return NextResponse.json({ calls: result, checkedAt: new Date().toISOString() });
+    const viewer = session.user.email || session.user.username || session.user.id;
+
+    return NextResponse.json({
+        calls: await keepUnseen(viewer, result),
+        checkedAt: new Date().toISOString(),
+    });
 }

@@ -15,6 +15,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { clientsByOrderNumbers } from '@/lib/orders/order-client';
+import { keepUnseen } from '@/lib/alerts/seen';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,12 +23,11 @@ export async function GET(req: Request) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
 
-    const { searchParams } = new URL(req.url);
-    const since = searchParams.get('since');
-    // Первый заход: последний час, чтобы не вываливать всё за ночь.
-    const from = since && !Number.isNaN(Date.parse(since))
-        ? new Date(since)
-        : new Date(Date.now() - 60 * 60 * 1000);
+    /**
+     * Окно свежести часовое. Что уже показывали — помнит система
+     * (`alert_seen`), «since» от браузера здесь ничего не решает.
+     */
+    const from = new Date(Date.now() - 60 * 60 * 1000);
 
     const now = new Date();
     // Срок задаётся по-московски, как его видит человек в карточке.
@@ -85,8 +85,7 @@ export async function GET(req: Request) {
     // Чей это заказ: в оповещении имя клиента ведёт в его карточку.
     const clients = await clientsByOrderNumbers(Array.from(allowed));
 
-    return NextResponse.json({
-        tasks: rows
+    const freshTasks = rows
             .filter((row) => allowed.has(String(row.order_number)))
             .map((row) => ({
                 id: `task-${row.id}`,
@@ -99,7 +98,12 @@ export async function GET(req: Request) {
                     : null,
                 author: row.created_by ?? null,
                 createdAt: row.created_at,
-            })),
+            }));
+
+    const viewer = session.user.email || session.user.username || session.user.id;
+
+    return NextResponse.json({
+        tasks: await keepUnseen(viewer, freshTasks),
         checkedAt: new Date().toISOString(),
     });
 }

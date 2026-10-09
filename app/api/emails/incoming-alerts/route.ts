@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { clientsByOrderNumbers } from '@/lib/orders/order-client';
+import { keepUnseen } from '@/lib/alerts/seen';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,13 +21,13 @@ export async function GET(req: Request) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
 
-    const { searchParams } = new URL(req.url);
-    const since = searchParams.get('since');
-    // Первый заход после открытия системы: берём последний час, чтобы не
-    // вываливать человеку всё, что пришло за ночь.
-    const from = since && !Number.isNaN(Date.parse(since))
-        ? new Date(since)
-        : new Date(Date.now() - 60 * 60 * 1000);
+    /**
+     * Окно свежести — часовое и жёсткое. Что человеку уже показывали, помнит
+     * система (`alert_seen`), а не браузер: «since» от клиента здесь больше
+     * ничего не решает. Письмо старше часа — не новость, оно и так лежит в
+     * заказе (решение владельца 09.10.2026).
+     */
+    const from = new Date(Date.now() - 60 * 60 * 1000);
 
     const managerId = session.user.retail_crm_manager_id;
     // Руководителю и ОКК показываем письма по всем заказам, менеджеру — по своим.
@@ -64,8 +65,7 @@ export async function GET(req: Request) {
     // Чей это заказ: в оповещении имя клиента ведёт в его карточку.
     const clients = await clientsByOrderNumbers(Array.from(allowed));
 
-    return NextResponse.json({
-        letters: rows
+    const fresh = rows
             .filter((row) => allowed.has(String(row.created_crm_order_number)))
             .map((row) => ({
                 id: row.id,
@@ -75,7 +75,13 @@ export async function GET(req: Request) {
                 subject: row.subject || 'Без темы',
                 from: row.from_name || row.from_email || 'Неизвестный отправитель',
                 receivedAt: row.received_at,
-            })),
+            }));
+
+    // Отдаём только то, чего человек ещё не видел, и сразу это запоминаем.
+    const viewer = session.user.email || session.user.username || session.user.id;
+
+    return NextResponse.json({
+        letters: await keepUnseen(viewer, fresh),
         checkedAt: new Date().toISOString(),
     });
 }
