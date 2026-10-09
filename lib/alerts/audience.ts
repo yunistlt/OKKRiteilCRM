@@ -10,6 +10,10 @@
  * нужны» — он видел письма, задачи и звонки всего отдела. Раньше «всё подряд»
  * получал каждый, кроме менеджера.
  *
+ * Владелец сюда не попадает отдельной строкой: у его учётной записи номер
+ * менеджера есть (технический «Системный Администратор», заказов за ним нет),
+ * но заказы он не ведёт и в очереди звонков не стоит.
+ *
  * Это не про права: читать чужие письма и звонки по-прежнему можно в заказе и
  * в разделах. Речь только о том, кого дёргать окошком.
  */
@@ -18,7 +22,13 @@ import type { AppSession } from '@/lib/auth';
 export type AlertAudience = { managerId: number };
 
 export function alertAudience(session: AppSession | null): AlertAudience | null {
-    const managerId = Number(session?.user?.retail_crm_manager_id);
+    if (!session) return null;
+
+    // Владелец работает с системой, а не с заказами: окошки ему не нужны
+    // (решение владельца 09.10.2026).
+    if (session.user.role === 'admin') return null;
+
+    const managerId = Number(session.user.retail_crm_manager_id);
     if (!Number.isFinite(managerId) || managerId <= 0) return null;
     return { managerId };
 }

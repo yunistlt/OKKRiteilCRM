@@ -21,8 +21,15 @@ describe('адресат всплывающих оповещений', () => {
         expect(alertAudience(session('manager', 119))).toEqual({ managerId: 119 });
     });
 
-    it('владелец без номера менеджера не получает ничего', () => {
+    it('владелец не получает ничего даже с номером менеджера', () => {
+        // У учётной записи владельца номер есть — технический «Системный
+        // Администратор», заказов за ним нет.
+        expect(alertAudience(session('admin', 999))).toBeNull();
         expect(alertAudience(session('admin', null))).toBeNull();
+    });
+
+    it('логист с номером менеджера получает', () => {
+        expect(alertAudience(session('logistics', 13))).toEqual({ managerId: 13 });
     });
 
     it('просмотровая роль не получает ничего', () => {
