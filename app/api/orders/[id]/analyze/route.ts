@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { analyzeOrderWithAI } from '@/lib/prioritization';
 import { supabase } from '@/utils/supabase';
+import { resolveOrderRef } from '@/lib/own-crm/order-ref';
 import { resolveRetailCRMLabel } from '@/lib/retailcrm/mapping';
 
 export const dynamic = 'force-dynamic';
@@ -19,10 +20,15 @@ export async function POST(
 
     try {
         // 1. Fetch full order context
+        const ref = await resolveOrderRef(orderId);
+        if (!ref) {
+            return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+        }
+
         const { data: order, error } = await supabase
             .from('orders')
             .select('*')
-            .eq('id', orderId)
+            .eq('id', ref.id)
             .single();
 
         if (error || !order) {
@@ -37,7 +43,7 @@ export async function POST(
         const { data: callLinks } = await supabase
             .from('call_order_link')
             .select('telphin_call_id')
-            .eq('order_id', orderId);
+            .eq('order_id', ref.orderId);
         const linkedIds = Array.from(
             new Set(((callLinks ?? []) as any[]).map((l) => String(l.telphin_call_id)).filter(Boolean)),
         );

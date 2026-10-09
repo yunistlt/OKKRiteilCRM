@@ -4,6 +4,7 @@ import { supabase } from '@/utils/supabase';
 import { formatEventValue, MAIL_FEED_FIELD_PATTERNS } from '@/lib/order-events';
 import { buildFieldLabelResolver } from '@/lib/order-field-labels';
 import { loadOrderCalls } from '@/lib/own-crm/order-calls';
+import { resolveOrderRef } from '@/lib/own-crm/order-ref';
 import { loadOrderMail } from '@/lib/own-crm/order-mail';
 import { clientCardIdForOrder } from '@/lib/own-crm/clients';
 
@@ -18,13 +19,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     try {
         // 1. Fetch Order Details (Basic info)
+        // Номер или идентификатор — разбирает одно место на весь проект.
+        const ref = await resolveOrderRef(id);
+        if (!ref) {
+            return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 });
+        }
+
         const { data: order, error: orderError } = await supabase
             .from('orders')
             .select(`
                 *,
                 managers ( first_name, last_name, email )
             `)
-            .eq('order_id', id)
+            .eq('id', ref.id)
             .single();
 
         if (orderError) throw orderError;

@@ -1,6 +1,7 @@
 
 // @ts-nocheck
 import { NextResponse } from 'next/server';
+import { resolveOrderRef } from '@/lib/own-crm/order-ref';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { runInsightAnalysis } from '@/lib/insight-agent';
@@ -20,11 +21,13 @@ export async function GET(
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const orderId = parseInt(params.id);
-
-    if (isNaN(orderId)) {
-        return NextResponse.json({ error: 'Invalid order ID' }, { status: 400 });
+    // Карточка зовёт разбор номером заказа, а конвейер работает по
+    // идентификатору: у своих заказов это разные числа.
+    const ref = await resolveOrderRef(params.id);
+    if (!ref) {
+        return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
+    const orderId = ref.orderId;
 
     try {
         console.log(`[Manual Analysis] Running for order ${orderId}...`);

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { resolveOrderRef } from '@/lib/own-crm/order-ref';
 import { PRODUCTION_STATUS } from '@/lib/payments/production';
 import { queueOrderForProduction } from '@/lib/own-crm/tseh-outbox';
 import { INN_GATE_MESSAGE, INN_REQUIRED_STATUSES, ensureInnTask, orderInn } from '@/lib/own-crm/inn-gate';
@@ -39,17 +40,13 @@ const MIN_REASON = 10;
  * отвечала «order_not_found» (поймано 02.10.2026).
  */
 async function findOrder(id: string, columns: string) {
-    const key = decodeURIComponent(String(id)).trim();
+    // Номер или идентификатор разбирает одно место на весь проект: порядок
+    // «сначала номер» важен, у своих заказов номер тоже число.
+    const ref = await resolveOrderRef(id);
+    if (!ref) return null;
 
-    // `order_id` числовой: сравнивать его с «1025А» нельзя — база откажется
-    // приводить тип. Поэтому по нему ищем только числа.
-    if (/^\d+$/.test(key)) {
-        const byCrmId = await supabase.from('orders').select(columns).eq('order_id', key).maybeSingle();
-        if (byCrmId.data) return byCrmId.data as any;
-    }
-
-    const byNumber = await supabase.from('orders').select(columns).eq('number', key).maybeSingle();
-    return (byNumber.data as any) ?? null;
+    const { data } = await supabase.from('orders').select(columns).eq('id', ref.id).maybeSingle();
+    return (data as any) ?? null;
 }
 
 /**

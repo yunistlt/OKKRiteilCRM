@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { resolveOrderRef } from '@/lib/own-crm/order-ref';
 import { buildOrderContext, renderTemplate } from '@/lib/templates/render';
 import { writeLetter } from '@/lib/templates/ai-letter';
 import { managerSignature, withSignature } from '@/lib/templates/signature';
@@ -33,11 +34,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     }
 
     // Подпись менеджера заказа — одна и та же во всех письмах клиенту.
-    const { data: orderRow } = await supabase
-        .from('orders')
-        .select('manager_id')
-        .eq('order_id', Number(id))
-        .maybeSingle();
+    const ref = await resolveOrderRef(id);
+    const { data: orderRow } = ref
+        ? await supabase.from('orders').select('manager_id').eq('id', ref.id).maybeSingle()
+        : { data: null };
     const signature = await managerSignature((orderRow as any)?.manager_id ?? null);
 
     // Шаблон с заданием: письмо пишет ИИ под этот заказ, менеджер правит руками.
