@@ -57,6 +57,17 @@ export type ClientRequisitesCard = Requisites & {
     updatedBy: string | null;
 };
 
+/**
+ * ИНН уже стоит в другой карточке. Отдельный тип ошибки, а не текст: карточка
+ * по нему показывает кнопку «Объединить» — решает человек, а не программа.
+ */
+export class DuplicateInnError extends Error {
+    constructor(message: string, readonly otherClientId: string, readonly otherClientName: string | null) {
+        super(message);
+        this.name = 'DuplicateInnError';
+    }
+}
+
 const EMPTY: Requisites = {
     contragentType: null, legalName: null, fullName: null,
     signerName: null, signerTitle: null, signerBasis: null, inn: null, kpp: null, ogrn: null, ogrnip: null,
@@ -310,10 +321,11 @@ export async function saveClientRequisites(
             ? `он уже стоит в карточке №${(other as any).id} — ${(other as any).company_name || 'без названия'}`
             : 'он уже стоит в другой карточке';
 
-        throw new Error(
+        throw new DuplicateInnError(
             `ИНН ${inn} не сохранён: ${where}. Это одна и та же компания двумя карточками. `
-            + `Остальные реквизиты${retry.error ? ' сохранить не удалось' : ' сохранены'} — счёт выставить можно. `
-            + 'Чтобы карточки не двоились, работайте в той, где уже стоит ИНН.',
+            + `Остальные реквизиты${retry.error ? ' сохранить не удалось' : ' сохранены'}.`,
+            other ? String((other as any).id) : '',
+            other ? ((other as any).company_name ?? null) : null,
         );
     }
 

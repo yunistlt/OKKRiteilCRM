@@ -180,6 +180,12 @@ export default function ClientCard({ clientId }: { clientId: string }) {
      * (жалоба 09.10.2026: «кнопка не работает, снова высвечивается синим»).
      */
     const [requisitesError, setRequisitesError] = useState<string | null>(null);
+    /**
+     * Карточка, в которой этот ИНН уже стоит. Её предлагаем объединить: одно
+     * юрлицо — одна карточка, но решает человек, а не программа.
+     */
+    const [duplicate, setDuplicate] = useState<{ clientId: string; clientName: string | null } | null>(null);
+    const [merging, setMerging] = useState(false);
     const [relation, setRelation] = useState<Relation | null>(null);
     const [related, setRelated] = useState<Related[]>([]);
     const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -278,6 +284,30 @@ export default function ClientCard({ clientId }: { clientId: string }) {
         }
     };
 
+    /**
+     * Объединить эту карточку с той, где уже стоит ИНН. Заказы, контактные
+     * лица и недостающие реквизиты переезжают туда, эта помечается слитой —
+     * удалять нельзя, на неё ссылаются старые документы.
+     */
+    const mergeWithDuplicate = async () => {
+        if (!duplicate) return;
+        setMerging(true);
+        try {
+            const res = await fetch(`/api/clients/${clientId}/merge`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ into: duplicate.clientId }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось объединить карточки');
+            router.replace(`/clients/${duplicate.clientId}`);
+        } catch (e: any) {
+            setRequisitesError(e.message);
+        } finally {
+            setMerging(false);
+        }
+    };
+
     const saveRequisites = async () => {
         if (!draft) return;
 
@@ -305,6 +335,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
         setSavingRequisites(true);
         setRequisitesNote(null);
         setRequisitesError(null);
+        setDuplicate(null);
         try {
             const res = await fetch(`/api/clients/${clientId}/requisites`, {
                 method: 'POST',
@@ -312,7 +343,13 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                 body: JSON.stringify(changedFields),
             });
             const payload = await res.json();
-            if (!res.ok) throw new Error(payload.error || 'Не удалось сохранить реквизиты');
+            if (!res.ok) {
+                // Остальные реквизиты сервер уже сохранил — показываем их,
+                // чтобы человек видел, что работа не пропала.
+                if (payload.requisites) setRequisites(payload.requisites);
+                if (payload.duplicate?.clientId) setDuplicate(payload.duplicate);
+                throw new Error(payload.error || 'Не удалось сохранить реквизиты');
+            }
             setRequisites(payload.requisites);
             void loadRequisites();
             setEditing(false);
@@ -405,6 +442,11 @@ export default function ClientCard({ clientId }: { clientId: string }) {
             const response = await fetch(`/api/clients/${clientId}`);
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || 'Не удалось открыть карточку клиента');
+            // Карточку объединили с другой — ведём туда: здесь работы больше нет.
+            if (payload.mergedInto) {
+                router.replace(`/clients/${payload.mergedInto}`);
+                return;
+            }
             setClient(payload.client);
             setRequisites(payload.requisites);
             setRelation(payload.relation || null);
@@ -502,7 +544,22 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                         формы: иначе человек не видит ответа и жмёт ещё раз. */}
                     {requisitesError && (
                         <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-[11px] text-red-800">
-                            {requisitesError}
+                            <div>{requisitesError}</div>
+                            {duplicate && (
+                                <div className="mt-2 flex flex-wrap items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={mergeWithDuplicate}
+                                        disabled={merging}
+                                        className="border border-red-700 px-3 py-1 text-[11px] font-semibold text-red-800 hover:bg-red-100 disabled:border-gray-300 disabled:text-gray-400"
+                                    >
+                                        {merging ? 'Объединяем…' : `Это та же компания — объединить с №${duplicate.clientId}`}
+                                    </button>
+                                    <a href={`/clients/${duplicate.clientId}`} className="font-semibold underline">
+                                        Открыть карточку {duplicate.clientName || `№${duplicate.clientId}`}
+                                    </a>
+                                </div>
+                            )}
                         </div>
                     )}
 

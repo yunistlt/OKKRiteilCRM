@@ -50,6 +50,15 @@ export async function GET(_request: Request, { params }: { params: { id: string 
         );
     }
 
+    /**
+     * Слитая карточка: ведём на главную. Открывать её незачем — заказы,
+     * контакты и реквизиты переехали, а здесь человек увидел бы остатки и
+     * решил, что данные пропали.
+     */
+    if ((client as any).merged_into) {
+        return NextResponse.json({ mergedInto: String((client as any).merged_into) }, { status: 200 });
+    }
+
     const [requisites, related, ordersRes] = await Promise.all([
         loadClientRequisites(id),
         relatedClients(id),
