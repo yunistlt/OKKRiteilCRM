@@ -84,6 +84,13 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
      * функция»). Отправлено не то и не тому — обычная цена спешки.
      */
     const [holdLeft, setHoldLeft] = useState<number | null>(null);
+    /**
+     * Ключ этого письма. Рождается, когда композер открыли, и живёт до
+     * успешной отправки: сервер по нему узнаёт повтор и второй раз письмо не
+     * шлёт. Защита кнопкой не спасает — страницу перезагружают, запрос
+     * повторяют, письмо уходит при закрытии карточки.
+     */
+    const clientKey = useRef<string>(makeKey());
     /** Сервер сказал, что адрес не клиента этого заказа: ждём подтверждения. */
     const [foreignWarning, setForeignWarning] = useState<string | null>(null);
     const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -253,7 +260,29 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [holdLeft]);
 
-    const send = async () => {
+    /**
+     * Карточку закрыли, пока шёл обратный отсчёт.
+     *
+     * Письмо человек уже отправил — терять его нельзя. Досылаем немедленно,
+     * с `keepalive`, чтобы запрос пережил закрытие вкладки. Повтора не
+     * будет: у письма свой ключ.
+     */
+    useEffect(() => {
+        const flush = () => {
+            if (holdLeft === null || cancelled.current) return;
+            cancelled.current = true;
+            void send(true);
+        };
+
+        window.addEventListener('pagehide', flush);
+        return () => {
+            window.removeEventListener('pagehide', flush);
+            flush();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [holdLeft]);
+
+    const send = async (immediate = false) => {
         setError(null);
 
         setSending(true);
@@ -288,14 +317,17 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
             const res = await fetch('/api/orders/send-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                // force: письмо пишет человек, он и решает, сколько раз отвечать по заказу.
-                // Защита от двойного клика — блокировка кнопки на время отправки.
+                // Карточку закрывают — запрос должен пережить закрытие вкладки.
+                keepalive: immediate,
+                // force: письмо пишет человек, он и решает, сколько раз отвечать по
+                // заказу. От повтора защищает clientKey — он же на сервере.
                 body: JSON.stringify({
                     orderNumber,
                     to: to.trim(),
                     subjectText: subject.trim(),
                     html,
                     force: true,
+                    clientKey: clientKey.current,
                     documents,
                     orderFileIds,
                     // Человек уже увидел предупреждение про чужой адрес и всё равно шлёт.
@@ -321,6 +353,8 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
             await fetch(`/api/orders/${orderNumber}/email-draft`, { method: 'DELETE' }).catch(() => undefined);
 
             setDone(true);
+            // Письмо ушло — следующее будет со своим ключом.
+            clientKey.current = makeKey();
             onSent?.();
 
             // Копия в «Отправленные» уезжает фоном — это нормальный путь, а не
@@ -592,6 +626,12 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
 }
 
 /** Переводит HTML шаблона в текст для поля ввода: менеджер правит словами, а не разметкой. */
+/** Ключ письма: одно нажатие «Отправить» — один ключ. */
+function makeKey(): string {
+    const random = globalThis.crypto?.randomUUID?.();
+    return random ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function htmlToPlainText(html: string): string {
     return html
         .replace(/<br\s*\/?>/gi, '\n')

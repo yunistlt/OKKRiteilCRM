@@ -12,6 +12,26 @@ export interface OrderEmailSend {
     sent_by: string | null;
 }
 
+/**
+ * Письмо, уже отправленное с этим ключом браузера.
+ *
+ * Ключ рождается при открытии письма и живёт до успешной отправки. Если он
+ * уже в журнале — письмо ушло, и второе нажатие «Отправить» (или повтор
+ * запроса) ничего отправлять не должно.
+ */
+export async function findSendByClientKey(clientKey: string): Promise<OrderEmailSend | null> {
+    const key = String(clientKey ?? '').trim();
+    if (!key) return null;
+
+    const { data } = await supabase
+        .from('order_email_sends')
+        .select('created_at, to_email, subject, message_id, sent_by')
+        .eq('client_key', key)
+        .maybeSingle();
+
+    return (data as OrderEmailSend) || null;
+}
+
 /** Последняя отправка письма по заказу (по номеру), либо null. */
 export async function getLastOrderEmailSend(orderNumber: string): Promise<OrderEmailSend | null> {
     const { data } = await supabase
@@ -36,6 +56,8 @@ export async function recordOrderEmailSend(rec: {
     /** Тело письма: сохраняем сразу, иначе до прихода синка «Отправленных» текста нет. */
     bodyHtml?: string | null;
     bodyText?: string | null;
+    /** Ключ письма от браузера — по нему узнаём повтор того же нажатия. */
+    clientKey?: string | null;
 }): Promise<void> {
     try {
         await supabase.from('order_email_sends').insert({
@@ -48,6 +70,7 @@ export async function recordOrderEmailSend(rec: {
             message_id: rec.messageId ?? null,
             appended_to_sent: rec.appendedToSent,
             sent_by: rec.sentBy ?? null,
+            client_key: rec.clientKey ?? null,
         });
     } catch (e: any) {
         console.warn('[order-email-log] запись не удалась:', e?.message || e);

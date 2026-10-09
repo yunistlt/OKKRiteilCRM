@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { sendOrderEmail } from '@/lib/email';
-import { getLastOrderEmailSend, recordOrderEmailSend } from '@/lib/order-email-log';
+import { findSendByClientKey, getLastOrderEmailSend, recordOrderEmailSend } from '@/lib/order-email-log';
 import { buildOrderDocumentPdf, loadOrderDocumentData } from '@/lib/own-crm/order-document-pdf';
 import { safeStorageSegment } from '@/lib/storage-path';
 
@@ -52,6 +52,12 @@ const BodySchema = z.object({
     allowForeignRecipient: z.boolean().optional(),
     /** Файлы, которые уже лежат в карточке заказа: берём их из хранилища. */
     orderFileIds: z.array(z.number().int().positive()).max(10).optional(),
+    /**
+     * Ключ письма от браузера: одно нажатие «Отправить» — одно письмо.
+     * Повтор того же ключа (двойной щелчок, повтор запроса, отправка при
+     * закрытии вкладки) ничего не отправляет второй раз.
+     */
+    clientKey: z.string().trim().max(100).optional(),
 });
 
 
@@ -238,6 +244,22 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'invalid_body', details: e?.errors ?? String(e) }, { status: 400 });
     }
 
+    // Это письмо уже уходило — второй раз не шлём, отвечаем как в первый.
+    if (body.clientKey) {
+        const already = await findSendByClientKey(body.clientKey);
+        if (already) {
+            return NextResponse.json({
+                ok: true,
+                duplicate: true,
+                sent: true,
+                appendedToSent: true,
+                subject: already.subject,
+                messageId: already.message_id,
+                message: 'Это письмо уже отправлено — второй раз не отправляем.',
+            });
+        }
+    }
+
     // Идемпотентность: если по заказу уже отправляли письмо — блокируем, пока не передан force.
     if (!body.force) {
         const last = await getLastOrderEmailSend(body.orderNumber);
@@ -368,6 +390,7 @@ export async function POST(req: Request) {
         messageId: result.messageId,
         appendedToSent: result.appendedToSent,
         sentBy: session.user.email || session.user.role,
+        clientKey: body.clientKey ?? null,
         // Текст кладём сразу: лента переписки иначе ждёт синк «Отправленных»
         // и до тех пор показывает письмо без текста.
         bodyHtml: body.html,
