@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import OrderReplyForm from '@/components/orders/OrderReplyForm';
 import { othersInConversation } from '@/lib/order-mail/recipients';
+import { orderFileHref } from '@/lib/orders/file-href';
 
 type Attachment = { name: string; size: number | null };
 
@@ -422,7 +423,7 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                                                 <li key={file.name} className="text-[11px]">
                                                     {message.emailId ? (
                                                         <a
-                                                            href={`/api/orders/${encodeURIComponent(orderNumber)}/files/download?emailId=${encodeURIComponent(message.emailId)}&name=${encodeURIComponent(file.name)}`}
+                                                            href={orderFileHref({ orderNumber, emailId: message.emailId, name: file.name })}
                                                             target="_blank"
                                                             rel="noreferrer"
                                                             className="font-semibold text-blue-700 hover:underline"

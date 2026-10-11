@@ -9,6 +9,7 @@ import TextWithOrderLinks from './ui/TextWithOrderLinks';
 import { CardSection, CardSectionsProvider } from './orders/CardSections';
 import ItemPhoto from './orders/ItemPhoto';
 import AttachmentList from './orders/AttachmentList';
+import { orderFileHref } from '@/lib/orders/file-href';
 import { prependComment } from '@/lib/own-crm/comment-entries';
 import { clientTime } from '@/lib/own-crm/phone-timezone';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -2313,7 +2314,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                             <AttachmentList
                                                                 files={email.attachmentList}
                                                                 href={email.emailId
-                                                                    ? (name: string) => `/api/orders/${encodeURIComponent(String(data.order?.number ?? orderId))}/files/download?emailId=${encodeURIComponent(email.emailId)}&filename=${encodeURIComponent(name)}`
+                                                                    ? (name: string) => orderFileHref({
+                                                                        orderNumber: String(data.order?.number ?? orderId),
+                                                                        emailId: email.emailId,
+                                                                        name,
+                                                                    })
                                                                     : null}
                                                             />
                                                         </div>
@@ -2605,7 +2610,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                     />
                                     <span className="flex-1 truncate text-sm text-gray-800">{file.fileName}</span>
                                     <a
-                                        href={`/api/orders/${encodeURIComponent(orderNumber)}/files/download?fileId=${file.id}`}
+                                        href={orderFileHref({ orderNumber, fileId: file.id })}
                                         target="_blank"
                                         rel="noreferrer"
                                         onClick={(event) => event.stopPropagation()}

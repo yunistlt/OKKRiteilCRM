@@ -71,8 +71,11 @@ function firstAddress(addr: any): { email: string | null; name: string | null } 
 /**
  * Все адреса поля. Почтовые клиенты кладут их либо одним объектом, либо
  * списком (так бывает у «Кому» с несколькими получателями).
+ *
+ * Открыта наружу ради проверки: разбор писем локально не погонять (IMAP режет
+ * DPI), а ошибиться здесь — значит молча потерять половину переписки.
  */
-function allAddresses(addr: any): string[] {
+export function allAddresses(addr: any): string[] {
     const list = Array.isArray(addr) ? addr : [addr];
     const out: string[] = [];
     for (const item of list) {

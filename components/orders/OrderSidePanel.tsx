@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import OrderMailPanel from '@/components/orders/OrderMailPanel';
+import { orderFileHref } from '@/lib/orders/file-href';
 
 export type PanelKind = 'history' | 'files' | 'tasks' | 'mail';
 
@@ -247,7 +248,7 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
                             {f.source === 'manual' ? (
                                 <div className="flex items-baseline justify-between gap-2">
                                     <a
-                                        href={`/api/orders/${encodeURIComponent(orderNumber)}/files/download?fileId=${f.fileId}`}
+                                        href={orderFileHref({ orderNumber, fileId: f.fileId })}
                                         target="_blank"
                                         rel="noreferrer"
                                         className="text-sm font-bold text-blue-700 hover:underline"
@@ -264,7 +265,7 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
                                 </div>
                             ) : f.downloadable !== false && f.emailId ? (
                                 <a
-                                    href={`/api/orders/${encodeURIComponent(orderNumber)}/files/download?emailId=${encodeURIComponent(String(f.emailId))}&name=${encodeURIComponent(f.filename)}`}
+                                    href={orderFileHref({ orderNumber, emailId: String(f.emailId), name: f.filename })}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="text-sm font-bold text-blue-700 hover:underline"

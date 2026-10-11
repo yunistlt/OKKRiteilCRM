@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import TextWithOrderLinks from '@/components/ui/TextWithOrderLinks';
 import AttachmentList from '@/components/orders/AttachmentList';
+import { orderFileHref } from '@/lib/orders/file-href';
 
 /**
  * Ответить можно из заказа: письмо уходит с его номером в теме и ложится в
@@ -289,7 +290,11 @@ export default function EmailsClient() {
                                     <AttachmentList
                                         files={mail.attachmentList}
                                         href={mail.orderNumber && mail.emailId
-                                            ? (name: string) => `/api/orders/${encodeURIComponent(String(mail.orderNumber))}/files/download?emailId=${encodeURIComponent(String(mail.emailId))}&filename=${encodeURIComponent(name)}`
+                                            ? (name: string) => orderFileHref({
+                                                orderNumber: String(mail.orderNumber),
+                                                emailId: String(mail.emailId),
+                                                name,
+                                            })
                                             : null}
                                     />
                                 </div>
