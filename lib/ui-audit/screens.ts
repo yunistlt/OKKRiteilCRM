@@ -103,6 +103,28 @@ export const UI_AUDIT_SCREENS: UiAuditScreen[] = [
     { key: 'legal-helpdesk', title: 'Юридический помощник', section: 'Юридический отдел', path: '/legal/helpdesk', route: '/legal/helpdesk' },
     { key: 'legal-enforcement-case', title: 'Карточка исполнительного производства', section: 'Юридический отдел', path: '/legal/enforcement/1', route: '/legal/enforcement/[id]' },
     { key: 'emails', title: 'Письма', section: 'CRM', path: '/emails', route: '/emails' },
+    {
+        key: 'emails-triage',
+        title: 'Письма → Разбор',
+        section: 'CRM',
+        path: '/emails',
+        route: '/emails',
+        steps: [
+            { click: '[data-ui-audit="emails-scope-unlinked"]', label: 'вкладка «Разбор»' },
+            { waitFor: 'table', timeout: 20000 },
+        ],
+    },
+    {
+        key: 'emails-mine',
+        title: 'Письма → Мои',
+        section: 'CRM',
+        path: '/emails',
+        route: '/emails',
+        steps: [
+            { click: '[data-ui-audit="emails-scope-mine"]', label: 'вкладка «Мои»' },
+            { waitFor: 'table', timeout: 20000 },
+        ],
+    },
     { key: 'notifications', title: 'Оповещения', section: 'CRM', path: '/notifications', route: '/notifications' },
     { key: 'help', title: 'Инструкции', section: 'CRM', path: '/help', route: '/help' },
     { key: 'help-article', title: 'Инструкция', section: 'CRM', path: '/help/bulk-email', route: '/help/[slug]' },

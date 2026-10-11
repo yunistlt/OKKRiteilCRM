@@ -162,6 +162,7 @@ export default function EmailsClient() {
                         key={s.code}
                         type="button"
                         onClick={() => setScope(s.code)}
+                        data-ui-audit={`emails-scope-${s.code}`}
                         className={`px-4 py-2 text-sm font-bold ${
                             scope === s.code ? 'bg-gray-900 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
                         }`}

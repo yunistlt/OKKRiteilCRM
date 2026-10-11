@@ -287,7 +287,7 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
     return (
         <>
         {scheduledBlock}
-        <div className="flex gap-0 border border-gray-200">
+        <div className="flex gap-0 border border-gray-200" data-ui-audit="order-mail-panel">
             <div className="w-64 shrink-0 border-r border-gray-200">
                 <input
                     ref={searchRef}
