@@ -402,6 +402,15 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                             >
                                 Ответить
                             </button>
+                            {/* Помощник: пересказ разговора. Ничего не отправляет
+                                и в заказе не меняет (ТЗ §6). */}
+                            <button
+                                onClick={() => void askSummary(open)}
+                                disabled={summaryBusy}
+                                className="shrink-0 border border-gray-300 px-2 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 disabled:text-gray-400"
+                            >
+                                {summaryBusy ? 'Читаю переписку…' : 'О чём договорились'}
+                            </button>
                             <button
                                 onClick={() => toggleClosed(open)}
                                 className="shrink-0 border border-gray-300 px-2 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50"

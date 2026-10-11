@@ -114,6 +114,42 @@ export async function GET(req: Request) {
         outgoingQuery = outgoingQuery.lte('sent_at', `${to}T23:59:59+03:00`);
     }
     if (type) incomingQuery = incomingQuery.eq('email_type', type);
+
+    /**
+     * «Разбор» и «Мои» отбираем ЗАПРОСОМ, а не фильтром по последним двум
+     * сотням писем.
+     *
+     * Иначе экран врал: сверху написано «ждут разбора 151», а в списке пять
+     * штук — те, что попали в окно последних писем (поймано на проверке
+     * 11.10.2026).
+     */
+    if (scope === 'unlinked') {
+        incomingQuery = incomingQuery
+            .is('created_crm_order_number', null)
+            .not('email_type', 'in', `(${Array.from(NOT_FOR_TRIAGE).join(',')})`);
+    }
+
+    if (scope === 'mine') {
+        const managerId = Number(session.user.retail_crm_manager_id) || null;
+        if (!managerId) {
+            return NextResponse.json({ emails: [], stats: null, types: Object.entries(TYPE_LABELS).map(([code, label]) => ({ code, label })) });
+        }
+
+        const { data: myOrders } = await supabase
+            .from('orders')
+            .select('number')
+            .eq('manager_id', managerId)
+            .order('createdAt', { ascending: false })
+            .limit(1000);
+
+        const numbers = ((myOrders ?? []) as any[]).map((row) => String(row.number)).filter(Boolean);
+        if (!numbers.length) {
+            return NextResponse.json({ emails: [], stats: null, types: Object.entries(TYPE_LABELS).map(([code, label]) => ({ code, label })) });
+        }
+
+        incomingQuery = incomingQuery.in('created_crm_order_number', numbers);
+        outgoingQuery = outgoingQuery.in('order_number', numbers);
+    }
     if (search) {
         incomingQuery = incomingQuery.or(`subject.ilike.%${search}%,from_email.ilike.%${search}%`);
         outgoingQuery = outgoingQuery.or(`subject.ilike.%${search}%,to_email.ilike.%${search}%`);
@@ -121,8 +157,15 @@ export async function GET(req: Request) {
 
     const [incoming, outgoing] = await Promise.all([
         wantIncoming ? incomingQuery : Promise.resolve({ data: [] as any[], error: null }),
-        // Тип письма есть только у входящих — при фильтре по типу исходящие не показываем.
-        wantOutgoing && !type ? outgoingQuery : Promise.resolve({ data: [] as any[], error: null }),
+        /**
+         * Тип письма есть только у входящих — при фильтре по типу исходящие не
+         * показываем. В «Разборе» их нет по смыслу: там входящие без заказа, и
+         * если брать исходящие, они съедают страницу и список выглядит почти
+         * пустым (поймано 11.10.2026).
+         */
+        wantOutgoing && !type && scope !== 'unlinked'
+            ? outgoingQuery
+            : Promise.resolve({ data: [] as any[], error: null }),
     ]);
 
     if (incoming.error) console.warn('[emails] входящие не прочитались:', incoming.error.message);
@@ -270,12 +313,18 @@ export async function GET(req: Request) {
         const since = new Date(Date.now() - 14 * 86400000).toISOString();
         const { data: recent } = await supabase
             .from('incoming_emails')
-            .select('created_crm_order_number, email_type')
+            .select('created_crm_order_number, email_type, subject')
             .gt('received_at', since)
             .limit(3000);
 
         const work = ((recent ?? []) as any[]).filter((row) => !NOT_FOR_TRIAGE.has(String(row.email_type ?? '')));
-        const linked = work.filter((row) => row.created_crm_order_number).length;
+        /**
+         * Привязанным считаем и письмо с нашим тегом в теме: заказ у него есть,
+         * просто записан не колонкой. Иначе наверху стояло «ждут разбора 151»,
+         * а в списке было восемнадцать (поймано 11.10.2026).
+         */
+        const linked = work.filter((row) =>
+            row.created_crm_order_number || orderFromSubject(row.subject).tagged).length;
         stats = {
             period: 'за две недели',
             total: work.length,
@@ -298,23 +347,9 @@ export async function GET(req: Request) {
         };
     });
 
-    const mineId = Number(session.user.retail_crm_manager_id) || null;
-
     const visible = withClients.filter((row) => {
-        if (scope === 'mine') {
-            // Моё — это письма по моим заказам. Без номера менеджера (владелец,
-            // просмотровые роли) личной ленты нет: своих заказов у них нет.
-            const managerId = managerOf(row);
-            return Boolean(mineId) && Number(managerId) === mineId;
-        }
-
-        if (scope === 'unlinked') {
-            if (row.direction !== 'Входящее') return false;
-            if (row.orderNumber) return false;
-            // Спам и служебные в разбор не кладём: иначе за ними не видно работы.
-            return !NOT_FOR_TRIAGE.has(String(row.rawType ?? ''));
-        }
-
+        // Письмо с нашим тегом в теме заказ уже нашло — в разборе ему не место.
+        if (scope === 'unlinked') return row.direction === 'Входящее' && !row.orderNumber;
         return true;
     });
 
