@@ -67,7 +67,10 @@ export default async function PublicDocsPage({ params }: { params: Promise<{ slu
                             <li key={file.id} className="flex items-baseline justify-between gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0">
                                 <Link
                                     href={`/api/public/docs/${slug}?file=${file.id}`}
-                                    className="text-sm font-semibold text-blue-700 hover:underline"
+                                    /* Имена документов длинные и с подчёркиваниями: на
+                                       телефоне такое имя не переносится и растягивает
+                                       страницу вбок (проверка 11.10.2026). */
+                                    className="min-w-0 break-all text-sm font-semibold text-blue-700 hover:underline"
                                 >
                                     {file.fileName}
                                 </Link>

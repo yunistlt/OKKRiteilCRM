@@ -303,6 +303,13 @@ export function runUiChecks(options: UiChecksOptions): UiChecksResult {
         if (el.matches('[data-ui-audit-clip="ok"]')) continue;
         // Однострочные обрезки текста (ellipsis) — не ошибка.
         if (cs.textOverflow === 'ellipsis' || cs.whiteSpace === 'nowrap') continue;
+        /**
+         * Обрезка в N строк (`line-clamp`) — тоже осознанная: в списке заказов
+         * так показывают три строки комментария, а целиком его читают в
+         * карточке. Проверка ругалась на каждую такую ячейку и забивала отчёт
+         * (прогон 11.10.2026: 18 «ошибок» из тридцати — это они).
+         */
+        if ((cs as any).webkitLineClamp && (cs as any).webkitLineClamp !== 'none') continue;
         if (el.clientHeight < 40) continue;
         add('scroll-dead', 'error', el, `Контент выше блока на ${el.scrollHeight - el.clientHeight}px, но блок с overflow:hidden и без прокрутки — низ недоступен.`);
     }
