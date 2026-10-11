@@ -107,6 +107,16 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
     const [cc, setCc] = useState('');
     const [bcc, setBcc] = useState('');
     const [copyOpen, setCopyOpen] = useState(false);
+    /** Файл тащат мышью на письмо — подсвечиваем, куда бросать (ТЗ §4). */
+    const [dragging, setDragging] = useState(false);
+    /**
+     * Отложенная отправка: во сколько письмо уедет само. Пусто — сейчас.
+     * Письмо уходит из очереди задач, а не из браузера: человек уйдёт домой,
+     * а оно уедет вовремя.
+     */
+    const [sendAt, setSendAt] = useState('');
+    const [laterOpen, setLaterOpen] = useState(false);
+    const [scheduledNote, setScheduledNote] = useState<string | null>(null);
     const [thread, setThread] = useState<ThreadState | null>(null);
     const [templates, setTemplates] = useState<Array<{ id: string; code: string; name: string; mode?: string }>>([]);
     const [applyingTemplate, setApplyingTemplate] = useState(false);
@@ -340,6 +350,7 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                     html,
                     force: true,
                     clientKey: clientKey.current,
+                    ...(sendAt ? { sendAt: new Date(sendAt).toISOString() } : {}),
                     ...(addressList(cc).length ? { cc: addressList(cc) } : {}),
                     ...(addressList(bcc).length ? { bcc: addressList(bcc) } : {}),
                     documents,
@@ -366,6 +377,10 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
             // Письмо ушло — черновик больше не нужен, иначе он всплывёт снова.
             await fetch(`/api/orders/${orderNumber}/email-draft`, { method: 'DELETE' }).catch(() => undefined);
 
+            if (data.scheduled) {
+                setError(null);
+                setScheduledNote(data.message || 'Письмо поставлено в очередь и уйдёт в назначенное время.');
+            }
             setDone(true);
             // Письмо ушло — следующее будет со своим ключом.
             clientKey.current = makeKey();
@@ -399,8 +414,38 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
         );
     }
 
+    /**
+     * Вложения перетаскиванием.
+     *
+     * Файл из переписки в мессенджере или с рабочего стола тащат мышью — это
+     * привычнее, чем «Файл с компьютера» и окно выбора. Падает в тот же
+     * список, что и выбранное кнопкой: дальше оно одинаково уедет в файлы
+     * заказа и приложится к письму.
+     */
+    const onDrop = (event: React.DragEvent) => {
+        event.preventDefault();
+        setDragging(false);
+        const dropped = Array.from(event.dataTransfer?.files ?? []);
+        if (dropped.length) setFiles((prev) => [...prev, ...dropped]);
+    };
+
     return (
-        <div className="border border-gray-300 bg-gray-50 p-4">
+        <div
+            className={`border bg-gray-50 p-4 ${dragging ? 'border-blue-600 bg-blue-50' : 'border-gray-300'}`}
+            onDragOver={(e) => { e.preventDefault(); if (!dragging) setDragging(true); }}
+            onDragLeave={(e) => {
+                // Уход на дочерний элемент — не уход с письма.
+                if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                setDragging(false);
+            }}
+            onDrop={onDrop}
+        >
+            {dragging && (
+                <p className="mb-2 border border-dashed border-blue-500 bg-white px-2 py-3 text-center text-sm font-semibold text-blue-700">
+                    Бросьте файлы сюда — приложим к письму
+                </p>
+            )}
+        <div className="contents">
             <div className="mb-3 flex items-center justify-between">
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
                     {thread?.hasThread ? 'Ответ в переписку по заказу' : 'Первое письмо по заказу'}
@@ -570,6 +615,38 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                         {foreignWarning} Нажмите «Отправить» ещё раз, если всё верно.
                     </span>
                 )}
+                {/* Отложенная отправка: кнопкой, чтобы поле времени не висело
+                    над каждым обычным письмом. */}
+                {!laterOpen ? (
+                    <button
+                        type="button"
+                        onClick={() => setLaterOpen(true)}
+                        className="border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100"
+                    >
+                        Отправить позже
+                    </button>
+                ) : (
+                    <span className="flex items-center gap-2">
+                        <input
+                            type="datetime-local"
+                            value={sendAt}
+                            onChange={(e) => setSendAt(e.target.value)}
+                            className="border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => { setSendAt(''); setLaterOpen(false); }}
+                            className="text-[11px] font-semibold text-gray-500 hover:underline"
+                        >
+                            отправить сразу
+                        </button>
+                    </span>
+                )}
+                {scheduledNote && (
+                    <span className="order-1 w-full border border-blue-500 bg-blue-50 px-2 py-1 text-[12px] text-blue-900">
+                        {scheduledNote}
+                    </span>
+                )}
                 {holdLeft === null ? (
                     <button
                         onClick={startSend}
@@ -577,7 +654,7 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                         className="flex items-center gap-1.5 bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500"
                     >
                         {sending ? <Loader size={14} className="animate-spin" /> : <Send size={14} />}
-                        {sending ? 'Отправляем…' : 'Отправить'}
+                        {sending ? 'Отправляем…' : sendAt ? 'Поставить в очередь' : 'Отправить'}
                     </button>
                 ) : (
                     /* Письмо на руках ещё несколько секунд — можно вернуть. */
@@ -676,6 +753,7 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                     </ul>
                 </div>
             ) : null}
+        </div>
         </div>
     );
 }

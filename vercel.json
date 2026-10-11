@@ -166,6 +166,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/system-jobs/email-scheduled-send",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/ai-balance-watch",
       "schedule": "0 * * * *"
     },
