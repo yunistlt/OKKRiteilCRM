@@ -87,6 +87,14 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
     const [composing, setComposing] = useState(false);
     /** Подсказка по клавишам: вызывается знаком вопроса (ТЗ §4). */
     const [helpOpen, setHelpOpen] = useState(false);
+    /**
+     * «О чём договорились» — изложение разговора. Помощник: собирает и
+     * показывает, сам ничего не отправляет (ТЗ §6).
+     */
+    const [summary, setSummary] = useState<{ agreed: string[]; weOwe: string[]; nextStep: string | null } | null>(null);
+    const [summaryBusy, setSummaryBusy] = useState(false);
+    const [summaryNote, setSummaryNote] = useState<string | null>(null);
+
     /** Письма, назначенные на будущее: их видно и можно отменить до срока. */
     const [scheduled, setScheduled] = useState<Array<{ jobId: string; sendAt: string; to: string | null; subject: string | null }>>([]);
     /** Пересылка — из обработчика клавиш, поэтому держим свежую ссылку. */
@@ -213,6 +221,27 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
             quote: `${head}${message.text}`,
         });
         setComposing(true);
+    };
+
+    /** Собрать изложение разговора. */
+    const askSummary = async (thread: Thread) => {
+        setSummaryBusy(true);
+        setSummary(null);
+        setSummaryNote(null);
+        try {
+            const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/mail`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'summary', threadKey: thread.key }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Изложение не собралось');
+            setSummary(payload.summary);
+        } catch (e: any) {
+            setSummaryNote(e.message);
+        } finally {
+            setSummaryBusy(false);
+        }
     };
 
     /** Отменить отложенное письмо, пока оно не ушло. */
@@ -378,6 +407,38 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                                 {open.state === 'closed' ? 'Вернуть в работу' : 'Закрыть тред'}
                             </button>
                         </div>
+
+                        {(summary || summaryNote) && (
+                            <div className="border-b border-gray-200 bg-amber-50 px-3 py-2 text-[12px] text-gray-800">
+                                {summaryNote && <p className="text-amber-900">{summaryNote}</p>}
+                                {summary && (
+                                    <>
+                                        <p className="text-[10px] font-black uppercase tracking-wide text-amber-800">
+                                            Пересказ помощника — проверьте по письмам
+                                        </p>
+                                        {summary.agreed.length > 0 && (
+                                            <div className="mt-1">
+                                                <span className="font-semibold">Договорились:</span>
+                                                <ul className="ml-4 list-disc">
+                                                    {summary.agreed.map((line) => <li key={line}>{line}</li>)}
+                                                </ul>
+                                            </div>
+                                        )}
+                                        {summary.weOwe.length > 0 && (
+                                            <div className="mt-1">
+                                                <span className="font-semibold">Мы обещали:</span>
+                                                <ul className="ml-4 list-disc">
+                                                    {summary.weOwe.map((line) => <li key={line}>{line}</li>)}
+                                                </ul>
+                                            </div>
+                                        )}
+                                        {summary.nextStep && (
+                                            <p className="mt-1"><span className="font-semibold">Дальше:</span> {summary.nextStep}</p>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        )}
 
                         <div className="max-h-[360px] overflow-y-auto">
                             {open.messages.map((message) => (

@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { loadOrderThreads } from '@/lib/order-mail/load';
 import { stateLabel, visibleBody } from '@/lib/order-mail/thread';
+import { summarizeThread } from '@/lib/order-mail/summary';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -104,6 +105,8 @@ const ActionSchema = z.discriminatedUnion('action', [
     z.object({ action: z.literal('reopen'), threadKey: z.string().max(400) }),
     /** Отменить отложенное письмо, пока оно не ушло. */
     z.object({ action: z.literal('cancel-scheduled'), jobId: z.string().max(64) }),
+    /** «О чём договорились» — краткое изложение разговора (ТЗ §6). */
+    z.object({ action: z.literal('summary'), threadKey: z.string().max(400) }),
 ]);
 
 /** Отметить письма прочитанными, закрыть тред или вернуть его в работу. */
@@ -133,6 +136,36 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             return NextResponse.json({ error: 'Не записалось' }, { status: 500 });
         }
         return NextResponse.json({ ok: true });
+    }
+
+    const command = parsed.data;
+
+    if (command.action === 'summary') {
+        /**
+         * Помощник, а не действие: собирает изложение и отдаёт его человеку.
+         * Ничего не отправляет и в заказе не меняет.
+         */
+        const { data: order } = await supabase
+            .from('orders')
+            .select('order_id')
+            .eq('number', orderNumber)
+            .maybeSingle();
+
+        const { threads } = await loadOrderThreads({
+            orderNumber,
+            orderId: (order as any)?.order_id ?? null,
+            viewer: who,
+            limit: 100,
+        });
+
+        const thread = threads.find((item) => item.key === command.threadKey);
+        if (!thread) return NextResponse.json({ error: 'Разговор не найден' }, { status: 404 });
+
+        try {
+            return NextResponse.json({ ok: true, summary: await summarizeThread(thread.messages) });
+        } catch (e: any) {
+            return NextResponse.json({ error: e?.message ?? 'Изложение не собралось' }, { status: 502 });
+        }
     }
 
     if (parsed.data.action === 'cancel-scheduled') {
