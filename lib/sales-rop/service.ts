@@ -697,6 +697,128 @@ async function setContactDate(
     }
 }
 
+
+/**
+ * Письмо клиента без ответа (ТЗ переписки §9, этап 3).
+ *
+ * Разговор «ждём нас» — это невыполненная работа ровно так же, как
+ * просроченный контакт: клиент написал, а ему не ответили. До сих пор план
+ * видел звонки и даты, но не почту — и письмо могло лежать неделю, пока
+ * менеджер уверен, что по заказу тихо.
+ *
+ * Берём заказы, где последнее входящее письмо свежее последнего нашего и
+ * старше суток. Сутки — чтобы не дёргать по письму, пришедшему час назад.
+ */
+async function loadUnansweredMailTasks(settings: Settings, orders: PresaleOrder[]): Promise<Task[]> {
+    /** Сколько ждать, прежде чем считать письмо оставшимся без ответа. */
+    const MIN_HOURS = 24;
+    /** Сколько таких заказов даём одному менеджеру за день. */
+    const PER_MANAGER = 3;
+
+    const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+
+    const byNumber = new Map<string, PresaleOrder>();
+    for (const order of orders) byNumber.set(String(order.number), order);
+    if (!byNumber.size) return [];
+
+    const [incomingRes, sentRes, mailboxRes] = await Promise.all([
+        supabase
+            .from('incoming_emails')
+            .select('created_crm_order_number, received_at, subject')
+            .not('created_crm_order_number', 'is', null)
+            .gt('received_at', since)
+            .order('received_at', { ascending: false })
+            .limit(3000),
+        supabase
+            .from('order_email_sends')
+            .select('order_number, created_at')
+            .gt('created_at', since)
+            .order('created_at', { ascending: false })
+            .limit(3000),
+        /**
+         * Ответы из самого ящика: менеджер мог ответить почтой, а не из ОКК.
+         * Без этого мы бы требовали ответить на уже отвеченное письмо — верный
+         * способ сделать план недостоверным.
+         */
+        supabase
+            .from('outgoing_emails')
+            .select('order_number, sent_at')
+            .not('order_number', 'is', null)
+            .gt('sent_at', since)
+            .order('sent_at', { ascending: false })
+            .limit(3000),
+    ]);
+
+    const lastOut = new Map<string, number>();
+    const remember = (key: unknown, at: unknown) => {
+        const number = String(key ?? '').trim();
+        const ms = new Date(String(at ?? '')).getTime();
+        if (!number || !Number.isFinite(ms)) return;
+        if ((lastOut.get(number) ?? 0) < ms) lastOut.set(number, ms);
+    };
+
+    for (const row of ((sentRes.data ?? []) as any[])) remember(row.order_number, row.created_at);
+    for (const row of ((mailboxRes.data ?? []) as any[])) remember(row.order_number, row.sent_at);
+
+    const seen = new Set<string>();
+    const candidates: Array<Task & { letterAt: number }> = [];
+
+    for (const row of ((incomingRes.data ?? []) as any[])) {
+        const number = String(row.created_crm_order_number ?? '');
+        if (!number || seen.has(number)) continue;
+        seen.add(number);
+
+        const order = byNumber.get(number);
+        if (!order) continue;
+        if (settings.excludedStatuses.includes(order.statusCode)) continue;
+        if (settings.planManagerIds.length > 0 && order.managerId !== null && !settings.planManagerIds.includes(order.managerId)) continue;
+
+        const letterAt = new Date(String(row.received_at)).getTime();
+        if ((lastOut.get(number) ?? 0) > letterAt) continue;
+
+        const hours = Math.floor((Date.now() - letterAt) / 3_600_000);
+        if (hours < MIN_HOURS) continue;
+
+        const days = Math.floor(hours / 24);
+        candidates.push({
+            orderId: order.orderId,
+            number,
+            client: order.client,
+            statusCode: order.statusCode,
+            statusName: order.statusName,
+            amount: order.amount,
+            managerId: order.managerId,
+            reasonCode: 'mail_unanswered',
+            reasonText:
+                `клиент написал ${days <= 1 ? 'вчера' : `${days} дн назад`} и ответа не получил` +
+                `${row.subject ? ` («${String(row.subject).slice(0, 60)}»)` : ''} — ответь письмом в заказе`,
+            weight: order.amount,
+            letterAt,
+        });
+    }
+
+    /**
+     * Сначала те, кто ждёт дольше. Без ограничения в план падало бы три сотни
+     * заказов разом (замер 11.10.2026: 354) — столько писем за день никто не
+     * разберёт, и план перестал бы работать как план.
+     */
+    candidates.sort((a, b) => a.letterAt - b.letterAt);
+
+    const perManager = new Map<number | null, number>();
+    const tasks: Task[] = [];
+
+    for (const candidate of candidates) {
+        const taken = perManager.get(candidate.managerId) ?? 0;
+        if (taken >= PER_MANAGER) continue;
+        perManager.set(candidate.managerId, taken + 1);
+
+        const { letterAt: _letterAt, ...task } = candidate;
+        tasks.push(task);
+    }
+
+    return tasks;
+}
+
 export async function runMorning(today: string, opts: { dryRun?: boolean } = {}): Promise<MorningResult & { preview: string[] }> {
     const settings = await loadSettings();
 
@@ -757,6 +879,15 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         list.push(back);
         plan.set(back.managerId, list);
         plannedIds.add(back.orderId);
+    }
+
+    // Письма без ответа — вперёд обзвона: клиент уже обратился сам.
+    for (const mail of await loadUnansweredMailTasks(settings, orders)) {
+        if (plannedIds.has(mail.orderId)) continue;
+        const list = plan.get(mail.managerId) ?? [];
+        list.push(mail);
+        plan.set(mail.managerId, list);
+        plannedIds.add(mail.orderId);
     }
 
     for (const touch of await loadClientTouchTasks(settings, today)) {

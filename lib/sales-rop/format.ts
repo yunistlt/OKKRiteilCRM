@@ -27,6 +27,7 @@ function tag(username: string, name: string): string {
 
 /** Заголовки причин — чтобы задачи в сообщении шли смысловыми блоками. */
 const REASON_TITLE: Record<Task['reasonCode'], string> = {
+    mail_unanswered: '✉️ Письмо без ответа',
     invoice_stale: '🔴 Счёт висит',
     contact_overdue: '🟠 Просрочено обещание',
     contact_today: '📅 Твой план на сегодня (из CRM)',
