@@ -122,6 +122,16 @@ export const NOTIFY_TYPES: NotifyTypeDef[] = [
     target: 'owner_dm',
   },
   {
+    code: 'mail.sent_copy_missing',
+    name: 'Письмо не попало в «Отправленные»',
+    description:
+      'Письмо клиенту ушло, но копия не легла в почтовый ящик: в почте его не видно, '
+      + 'и ответ клиента может не найти заказ. Чинится повтором дозаписи или руками.',
+    group: 'system',
+    bot: 'igor',
+    target: 'owner_dm',
+  },
+  {
     code: 'payment.push_error',
     name: 'Оплата не проведена в CRM',
     description: 'Платёж привязан к заказу, но RetailCRM его не принял — сбой, чинится руками.',
