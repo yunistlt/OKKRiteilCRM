@@ -196,6 +196,19 @@ export async function POST(req: Request) {
     if (body.sendAt) {
         const when = new Date(body.sendAt);
         if (when.getTime() > Date.now() + 30_000) {
+            /**
+             * Файлы в отложенное письмо кладём ссылками на файлы заказа, а не
+             * содержимым: мегабайты в очереди задач — это раздутая таблица и
+             * медленный разбор. Карточка так и делает, этот запрет — для
+             * прочих вызовов.
+             */
+            if ((body.attachments || []).length) {
+                return NextResponse.json(
+                    { ok: false, error: 'Для отложенного письма сначала приложите файлы к заказу, а потом выберите их галочкой' },
+                    { status: 400 },
+                );
+            }
+
             const job = await safeEnqueueSystemJob({
                 jobType: 'email_scheduled_send',
                 payload: { letter: { ...body, seq }, actor: session.user.email || session.user.username || session.user.role },
