@@ -39,10 +39,31 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         limit: Number(new URL(req.url).searchParams.get('limit') || 100),
     });
 
+    /**
+     * Письма, назначенные на будущее: их видно рядом с перепиской, и до
+     * срока их можно отменить. Иначе отложенное письмо уходит сюрпризом.
+     */
+    const { data: waiting } = await supabase
+        .from('system_jobs')
+        .select('id, payload, available_at')
+        .eq('job_type', 'email_scheduled_send')
+        .eq('status', 'queued')
+        .order('available_at');
+
+    const scheduled = ((waiting ?? []) as any[])
+        .filter((job) => String(job.payload?.letter?.orderNumber ?? '') === orderNumber)
+        .map((job) => ({
+            jobId: String(job.id),
+            sendAt: job.available_at,
+            to: job.payload?.letter?.to ?? null,
+            subject: job.payload?.letter?.subjectText ?? null,
+        }));
+
     return NextResponse.json({
         ok: true,
         unread,
         total,
+        scheduled,
         threads: threads.map((thread) => ({
             key: thread.key,
             subject: thread.subject,
@@ -81,6 +102,8 @@ const ActionSchema = z.discriminatedUnion('action', [
     z.object({ action: z.literal('read'), messageKeys: z.array(z.string().max(64)).max(200) }),
     z.object({ action: z.literal('close'), threadKey: z.string().max(400) }),
     z.object({ action: z.literal('reopen'), threadKey: z.string().max(400) }),
+    /** Отменить отложенное письмо, пока оно не ушло. */
+    z.object({ action: z.literal('cancel-scheduled'), jobId: z.string().max(64) }),
 ]);
 
 /** Отметить письма прочитанными, закрыть тред или вернуть его в работу. */
@@ -110,6 +133,48 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             return NextResponse.json({ error: 'Не записалось' }, { status: 500 });
         }
         return NextResponse.json({ ok: true });
+    }
+
+    if (parsed.data.action === 'cancel-scheduled') {
+        /**
+         * Снимаем задачу, пока её не взял воркер. Если взял — письмо уже
+         * уходит, и врать «отменили» нельзя.
+         */
+        const { data: job } = await supabase
+            .from('system_jobs')
+            .select('id, status, payload')
+            .eq('id', parsed.data.jobId)
+            .maybeSingle();
+
+        if (!job) return NextResponse.json({ error: 'Письмо не найдено' }, { status: 404 });
+
+        if (String((job as any).payload?.letter?.orderNumber ?? '') !== orderNumber) {
+            return NextResponse.json({ error: 'Это письмо не по этому заказу' }, { status: 403 });
+        }
+
+        if (String((job as any).status) !== 'queued') {
+            return NextResponse.json(
+                { error: 'Письмо уже отправляется — отменить поздно' },
+                { status: 409 },
+            );
+        }
+
+        const { error: cancelError } = await supabase
+            .from('system_jobs')
+            .update({
+                status: 'completed',
+                finished_at: new Date().toISOString(),
+                result: { status: 'отменено человеком', by: who },
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', parsed.data.jobId)
+            .eq('status', 'queued');
+
+        if (cancelError) {
+            return NextResponse.json({ error: `Не удалось отменить: ${cancelError.message}` }, { status: 500 });
+        }
+
+        return NextResponse.json({ ok: true, message: 'Отложенное письмо отменено — оно не уйдёт.' });
     }
 
     const closing = parsed.data.action === 'close';

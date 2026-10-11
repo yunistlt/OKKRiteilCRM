@@ -87,6 +87,8 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
     const [composing, setComposing] = useState(false);
     /** Подсказка по клавишам: вызывается знаком вопроса (ТЗ §4). */
     const [helpOpen, setHelpOpen] = useState(false);
+    /** Письма, назначенные на будущее: их видно и можно отменить до срока. */
+    const [scheduled, setScheduled] = useState<Array<{ jobId: string; sendAt: string; to: string | null; subject: string | null }>>([]);
     /** Пересылка — из обработчика клавиш, поэтому держим свежую ссылку. */
     const forwardRef = useRef<((message: Message) => void) | null>(null);
     /** Поле поиска и открытый тред — чтобы горячие клавиши видели свежее состояние. */
@@ -99,6 +101,7 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
         const data = await res.json().catch(() => null);
         const list = (data?.threads || []) as Thread[];
         setThreads(list);
+        setScheduled(data?.scheduled || []);
         onUnread?.(Number(data?.unread ?? 0));
         setOpenKey((current) => current ?? (list.length ? list[0].key : null));
     }, [orderNumber, onUnread]);
@@ -212,6 +215,16 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
         setComposing(true);
     };
 
+    /** Отменить отложенное письмо, пока оно не ушло. */
+    const cancelScheduled = async (jobId: string) => {
+        await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/mail`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'cancel-scheduled', jobId }),
+        });
+        await load();
+    };
+
     const toggleClosed = async (thread: Thread) => {
         await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/mail`, {
             method: 'POST',
@@ -236,10 +249,44 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
         );
     }, [threads, query]);
 
+    /* Назначенные письма видно и без переписки: они уже существуют. */
+    const scheduledBlock = scheduled.length ? (
+        <div className="mb-2 border border-blue-300 bg-blue-50 px-3 py-2">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-blue-900">Письма уйдут позже</p>
+            <ul className="mt-1 space-y-1">
+                {scheduled.map((letter) => (
+                    <li key={letter.jobId} className="flex items-baseline justify-between gap-3 text-xs text-blue-900">
+                        <span className="truncate">
+                            {new Date(letter.sendAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
+                            {' · '}
+                            {letter.to || 'без адреса'}
+                            {letter.subject ? ` · ${letter.subject}` : ''}
+                        </span>
+                        <button
+                            onClick={() => void cancelScheduled(letter.jobId)}
+                            className="shrink-0 font-semibold text-blue-700 hover:underline"
+                        >
+                            отменить
+                        </button>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    ) : null;
+
     if (threads === null) return <p className="text-sm text-gray-500">Загружаем переписку…</p>;
-    if (!threads.length) return <p className="text-sm text-gray-500">Писем по заказу нет.</p>;
+    if (!threads.length) {
+        return (
+            <>
+                {scheduledBlock}
+                <p className="text-sm text-gray-500">Писем по заказу нет.</p>
+            </>
+        );
+    }
 
     return (
+        <>
+        {scheduledBlock}
         <div className="flex gap-0 border border-gray-200">
             <div className="w-64 shrink-0 border-r border-gray-200">
                 <input
@@ -458,5 +505,6 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                 )}
             </div>
         </div>
+        </>
     );
 }
