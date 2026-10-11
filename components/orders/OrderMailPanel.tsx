@@ -317,7 +317,9 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
         <>
         {scheduledBlock}
         <div className="flex gap-0 border border-gray-200" data-ui-audit="order-mail-panel">
-            <div className="w-64 shrink-0 border-r border-gray-200">
+            {/* Один разговор — списка нет: он занимал бы четверть экрана ради
+                одной строки (ТЗ §4). Появился второй — список вернулся. */}
+            <div className={`w-64 shrink-0 border-r border-gray-200 ${threads.length < 2 ? 'hidden' : ''}`}>
                 <input
                     ref={searchRef}
                     value={query}
