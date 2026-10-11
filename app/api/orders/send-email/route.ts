@@ -57,6 +57,9 @@ const BodySchema = z.object({
      * Повтор того же ключа (двойной щелчок, повтор запроса, отправка при
      * закрытии вкладки) ничего не отправляет второй раз.
      */
+    /** Копия и скрытая копия: со стороны клиента в переписке обычно несколько человек. */
+    cc: z.array(z.string().trim().email()).max(20).optional(),
+    bcc: z.array(z.string().trim().email()).max(20).optional(),
     clientKey: z.string().trim().max(100).optional(),
 });
 
@@ -357,6 +360,8 @@ export async function POST(req: Request) {
 
     const result = await sendOrderEmail({
         to: body.to,
+        cc: body.cc,
+        bcc: body.bcc,
         orderNumber: body.orderNumber,
         subjectText: body.subjectText,
         html: body.html,
@@ -391,6 +396,8 @@ export async function POST(req: Request) {
         appendedToSent: result.appendedToSent,
         sentBy: session.user.email || session.user.role,
         clientKey: body.clientKey ?? null,
+        cc: body.cc ?? null,
+        bcc: body.bcc ?? null,
         // Текст кладём сразу: лента переписки иначе ждёт синк «Отправленных»
         // и до тех пор показывает письмо без текста.
         bodyHtml: body.html,

@@ -108,6 +108,16 @@ export interface SendOrderEmailInput {
     fromName?: string;
     replyTo?: string;             // по умолчанию НЕ задаём: ответ должен вернуться в ящик rop@ для привязки в CRM
     attachments?: EmailAttachment[];
+    /**
+     * Копия и скрытая копия.
+     *
+     * Со стороны клиента в переписке обычно несколько человек — снабженец,
+     * бухгалтер, начальник. Ответ только отправителю разваливает разговор на
+     * два (ТЗ §4). Скрытая копия нужна реже, но нужна: руководителю показать
+     * письмо, не втягивая его в переписку.
+     */
+    cc?: string[];
+    bcc?: string[];
 }
 
 export interface SendOrderEmailResult {
@@ -149,6 +159,8 @@ export async function sendOrderEmail(input: SendOrderEmailInput): Promise<SendOr
         const composer = new MailComposer({
             from: `"${fromName}" <${user}>`,
             to: input.to,
+            ...(input.cc?.length ? { cc: input.cc.join(', ') } : {}),
+            ...(input.bcc?.length ? { bcc: input.bcc.join(', ') } : {}),
             subject,
             html: wrapInBrand(linkifyHtml(input.html)),
             // Текстовая часть обязательна: без неё письмо в папке «Отправленные»
@@ -178,7 +190,18 @@ export async function sendOrderEmail(input: SendOrderEmailInput): Promise<SendOr
     // 1) Отправка по SMTP той самой собранной копии.
     try {
         const transporter = createTransporter();
-        await transporter.sendMail({ envelope: { from: user, to: input.to }, raw });
+        /**
+         * Конверт перечисляем сами: раз письмо собрано заранее, SMTP не
+         * вычитывает из него «Кому» и «Копию». Скрытая копия идёт только в
+         * конверте — в заголовках письма её нет, на то она и скрытая.
+         */
+        const envelopeTo = Array.from(new Set([
+            input.to,
+            ...(input.cc ?? []),
+            ...(input.bcc ?? []),
+        ].map((address) => String(address ?? '').trim()).filter(Boolean)));
+
+        await transporter.sendMail({ envelope: { from: user, to: envelopeTo }, raw });
     } catch (error: any) {
         console.error('[email] sendOrderEmail SMTP error:', error?.message || error);
         return { sent: false, appendedToSent: false, subject, messageId, error: error?.message || 'send_failed' };

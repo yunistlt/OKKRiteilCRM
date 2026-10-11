@@ -23,6 +23,9 @@ export type MailMessage = {
     from: string | null;
     fromName: string | null;
     to: string | null;
+    /** Все получатели и копия: по ним делается «ответить всем». */
+    toAll: string[];
+    cc: string[];
     at: string | null;
     body: string | null;
     attachments: Array<{ name: string; size: number | null }>;

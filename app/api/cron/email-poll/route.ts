@@ -317,6 +317,9 @@ export async function GET(req: Request) {
                     from_email: e.fromEmail,
                     from_name: e.fromName,
                     to_email: e.toEmail,
+                    // Все получатели и копия: по ним работает «ответить всем».
+                    to_emails: e.toEmails?.length ? e.toEmails : null,
+                    cc_emails: e.ccEmails?.length ? e.ccEmails : null,
                     subject: e.subject,
                     in_reply_to: e.inReplyTo,
                     email_refs: e.references,

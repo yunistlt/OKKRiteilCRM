@@ -58,6 +58,9 @@ export async function recordOrderEmailSend(rec: {
     bodyText?: string | null;
     /** Ключ письма от браузера — по нему узнаём повтор того же нажатия. */
     clientKey?: string | null;
+    /** Копия и скрытая копия — чтобы в переписке было видно, кто ещё получил письмо. */
+    cc?: string[] | null;
+    bcc?: string[] | null;
 }): Promise<void> {
     try {
         await supabase.from('order_email_sends').insert({
@@ -71,6 +74,8 @@ export async function recordOrderEmailSend(rec: {
             appended_to_sent: rec.appendedToSent,
             sent_by: rec.sentBy ?? null,
             client_key: rec.clientKey ?? null,
+            cc_emails: rec.cc?.length ? rec.cc : null,
+            bcc_emails: rec.bcc?.length ? rec.bcc : null,
         });
     } catch (e: any) {
         console.warn('[order-email-log] запись не удалась:', e?.message || e);

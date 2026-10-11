@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import OrderReplyForm from '@/components/orders/OrderReplyForm';
+import { othersInConversation } from '@/lib/order-mail/recipients';
 
 type Attachment = { name: string; size: number | null };
 
@@ -23,6 +24,8 @@ type Message = {
     from: string | null;
     fromName: string | null;
     to: string | null;
+    toAll: string[];
+    cc: string[];
     at: string | null;
     text: string;
     quoted: string | null;
@@ -74,7 +77,12 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
     const [query, setQuery] = useState('');
     const marked = useRef<Set<string>>(new Set());
     /** На какое письмо отвечаем. null — композер закрыт. */
-    const [replyTo, setReplyTo] = useState<{ to?: string | null; subject?: string | null; quote?: string | null } | null>(null);
+    const [replyTo, setReplyTo] = useState<{
+        to?: string | null;
+        subject?: string | null;
+        quote?: string | null;
+        cc?: string[];
+    } | null>(null);
     const [composing, setComposing] = useState(false);
     /** Подсказка по клавишам: вызывается знаком вопроса (ТЗ §4). */
     const [helpOpen, setHelpOpen] = useState(false);
@@ -338,6 +346,13 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                                         <span className="shrink-0 text-[10px] text-gray-400">{when(message.at)}</span>
                                     </header>
 
+                                    {/* Кто ещё в письме: без этой строки менеджер не
+                                        знает, что переписку читают бухгалтер и
+                                        начальник клиента. */}
+                                    {message.cc?.length > 0 && (
+                                        <p className="text-[10px] text-gray-500">Копия: {message.cc.join(', ')}</p>
+                                    )}
+
                                     <p className="mt-1 whitespace-pre-wrap text-[13px] leading-snug text-gray-800">
                                         {message.text || '— пусто —'}
                                     </p>
@@ -372,6 +387,27 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                                     >
                                         ответить
                                     </button>
+
+                                    {/* «Ответить всем» — когда со стороны клиента в
+                                        письме несколько человек: снабженец,
+                                        бухгалтер, начальник. Иначе разговор
+                                        разваливается на два. */}
+                                    {othersInConversation(message).length > 0 && (
+                                        <button
+                                            onClick={() => {
+                                                setReplyTo({
+                                                    to: message.from || open.participants[0] || null,
+                                                    subject: message.subject,
+                                                    quote: message.text,
+                                                    cc: othersInConversation(message),
+                                                });
+                                                setComposing(true);
+                                            }}
+                                            className="mt-1 mr-3 text-[11px] font-semibold text-blue-700 hover:underline"
+                                        >
+                                            ответить всем
+                                        </button>
+                                    )}
 
                                     <button
                                         onClick={() => forward(message)}

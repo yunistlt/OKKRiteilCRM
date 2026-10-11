@@ -61,6 +61,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
                     from: message.from,
                     fromName: message.fromName,
                     to: message.to,
+                    // Кто ещё в переписке: по ним работает «ответить всем».
+                    toAll: message.toAll,
+                    cc: message.cc,
                     at: message.at,
                     text,
                     // Цитата едет отдельно: в ленте она свёрнута.

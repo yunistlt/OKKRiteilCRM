@@ -13,7 +13,7 @@ interface OrderReplyFormProps {
      * Раньше форма всегда начиналась с чистого листа, и менеджер вручную искал,
      * кому и на что отвечает (просьба Жени Матвеевой 05.10.2026).
      */
-    replyTo?: { to?: string | null; subject?: string | null; quote?: string | null } | null;
+    replyTo?: { to?: string | null; subject?: string | null; quote?: string | null; cc?: string[] } | null;
 }
 
 interface ThreadState {
@@ -99,6 +99,14 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
     const [to, setTo] = useState('');
     const [subject, setSubject] = useState('');
     const [body, setBody] = useState('');
+    /**
+     * Копия и скрытая копия (ТЗ §4). Копию заполняет «ответить всем», скрытую
+     * — человек руками: показать письмо руководителю, не втягивая его в
+     * переписку.
+     */
+    const [cc, setCc] = useState('');
+    const [bcc, setBcc] = useState('');
+    const [copyOpen, setCopyOpen] = useState(false);
     const [thread, setThread] = useState<ThreadState | null>(null);
     const [templates, setTemplates] = useState<Array<{ id: string; code: string; name: string; mode?: string }>>([]);
     const [applyingTemplate, setApplyingTemplate] = useState(false);
@@ -117,6 +125,10 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                 if (!res.ok) throw new Error(data.error || 'Не удалось загрузить переписку');
                 setThread(data);
                 setTo(replyTo?.to || data.to || '');
+                if (replyTo?.cc?.length) {
+                    setCc(replyTo.cc.join(', '));
+                    setCopyOpen(true);
+                }
                 // Отвечаем — тема письма с «Re:», иначе обычная тема по заказу.
                 // Номер заказа в тему ставит сервер — здесь только человеческая
                 // часть. Поэтому чистим тему исходного письма от тега и от
@@ -328,6 +340,8 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                     html,
                     force: true,
                     clientKey: clientKey.current,
+                    ...(addressList(cc).length ? { cc: addressList(cc) } : {}),
+                    ...(addressList(bcc).length ? { bcc: addressList(bcc) } : {}),
                     documents,
                     orderFileIds,
                     // Человек уже увидел предупреждение про чужой адрес и всё равно шлёт.
@@ -424,7 +438,48 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                         placeholder="client@example.com"
                         className="w-full border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none"
                     />
+                    {!copyOpen && (
+                        <button
+                            type="button"
+                            onClick={() => setCopyOpen(true)}
+                            className="mt-1 text-[11px] font-semibold text-blue-700 hover:underline"
+                        >
+                            Добавить копию
+                        </button>
+                    )}
                 </div>
+
+                {/* Копия и скрытая копия. Открываются по надобности: обычное
+                    письмо идёт одному человеку, и два пустых поля над каждым
+                    ответом только мешают. */}
+                {copyOpen && (
+                    <>
+                        <div>
+                            <label className="mb-1 block text-[10px] font-black uppercase text-gray-400">
+                                Копия · её видят все получатели
+                            </label>
+                            <input
+                                type="text"
+                                value={cc}
+                                onChange={(e) => setCc(e.target.value)}
+                                placeholder="бухгалтер@example.com, начальник@example.com"
+                                className="w-full border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-[10px] font-black uppercase text-gray-400">
+                                Скрытая копия · получателям не видна
+                            </label>
+                            <input
+                                type="text"
+                                value={bcc}
+                                onChange={(e) => setBcc(e.target.value)}
+                                placeholder="руководитель@zmktlt.ru"
+                                className="w-full border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none"
+                            />
+                        </div>
+                    </>
+                )}
 
                 <div>
                     <label className="mb-1 block text-[10px] font-black uppercase text-gray-400">Тема</label>
@@ -626,6 +681,16 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
 }
 
 /** Переводит HTML шаблона в текст для поля ввода: менеджер правит словами, а не разметкой. */
+/** Адреса из строки: через запятую, точку с запятой или пробел. */
+function addressList(value: string): string[] {
+    return Array.from(new Set(
+        String(value ?? '')
+            .split(/[,;\s]+/)
+            .map((item) => item.trim().toLowerCase())
+            .filter((item) => item.includes('@')),
+    ));
+}
+
 /** Ключ письма: одно нажатие «Отправить» — один ключ. */
 function makeKey(): string {
     const random = globalThis.crypto?.randomUUID?.();

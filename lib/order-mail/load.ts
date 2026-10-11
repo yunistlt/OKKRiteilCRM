@@ -36,6 +36,15 @@ const bodyOf = (row: { body_text?: unknown; body_html?: unknown }): string | nul
     return fromHtml || null;
 };
 
+/** Список адресов из колонки-массива; пусто — берём одиночный адрес. */
+function addressList(list: unknown, single: unknown): string[] {
+    const many = Array.isArray(list) ? list.map((x) => String(x ?? '').trim().toLowerCase()) : [];
+    const one = String(single ?? '').trim().toLowerCase();
+    const all = many.filter(Boolean);
+    if (!all.length && one) all.push(one);
+    return Array.from(new Set(all));
+}
+
 /** Вложения письма из `attachments_meta`: формат у строк разный, берём мягко. */
 function attachmentsOf(meta: unknown): Array<{ name: string; size: number | null }> {
     const list = Array.isArray(meta) ? meta : [];
@@ -76,13 +85,13 @@ export async function loadOrderThreads(params: {
     const [incomingRes, sentRes, mailboxRes, readsRes, threadsRes] = await Promise.all([
         supabase
             .from('incoming_emails')
-            .select('id, message_id, in_reply_to, email_refs, subject, from_email, from_name, to_email, received_at, body_text, body_html, attachments_meta')
+            .select('id, message_id, in_reply_to, email_refs, subject, from_email, from_name, to_email, to_emails, cc_emails, received_at, body_text, body_html, attachments_meta')
             .or(incomingFilters.join(','))
             .order('received_at', { ascending: false })
             .limit(limit),
         supabase
             .from('order_email_sends')
-            .select('id, message_id, subject, to_email, created_at, body_text, body_html')
+            .select('id, message_id, subject, to_email, cc_emails, created_at, body_text, body_html')
             .eq('order_number', number)
             .order('created_at', { ascending: false })
             .limit(limit),
@@ -124,6 +133,8 @@ export async function loadOrderThreads(params: {
             from: row.from_email ?? null,
             fromName: row.from_name ?? null,
             to: row.to_email ?? null,
+            toAll: addressList(row.to_emails, row.to_email),
+            cc: addressList(row.cc_emails, null),
             at: row.received_at ?? null,
             body: bodyOf(row),
             attachments: attachmentsOf(row.attachments_meta),
@@ -147,6 +158,8 @@ export async function loadOrderThreads(params: {
             from: null,
             fromName: null,
             to: row.to_email ?? null,
+            toAll: addressList(null, row.to_email),
+            cc: addressList(row.cc_emails, null),
             at: row.created_at ?? null,
             body: bodyOf(row),
             attachments: [],
@@ -170,6 +183,9 @@ export async function loadOrderThreads(params: {
             from: null,
             fromName: null,
             to: row.to_email ?? null,
+            toAll: addressList(null, row.to_email),
+            // В папке «Отправленные» копию мы не разбираем — она есть в журнале.
+            cc: [],
             at: row.sent_at ?? null,
             body: bodyOf(row),
             attachments: attachmentsOf(row.attachments_meta),
