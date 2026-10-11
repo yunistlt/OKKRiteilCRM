@@ -29,6 +29,9 @@ const TYPE_LABELS: Record<string, string> = {
     spam: 'Спам',
 };
 
+/** Служебное и мусор: в «Разборе» их быть не должно, иначе лента мертва (ТЗ §8). */
+const SERVICE_TYPES = new Set(['spam', 'noreply', 'blocked', 'not_request']);
+
 const textFromHtml = (html: unknown): string =>
     String(html ?? '')
         .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
@@ -69,6 +72,14 @@ export async function GET(req: Request) {
     const search = (searchParams.get('search') || '').trim();
     const from = searchParams.get('from');
     const to = searchParams.get('to');
+    /**
+     * Чьи письма показываем (ТЗ §9, этап 4):
+     *  - `all` — вся почта компании, как было;
+     *  - `mine` — личная лента: письма по МОИМ заказам;
+     *  - `unlinked` — «Разбор»: входящие, которые ни к какому заказу не
+     *    привязались. Непривязанное письмо — видимая работа, а не тихая папка.
+     */
+    const scope = searchParams.get('scope') || 'all';
 
     const wantIncoming = direction !== 'out';
     const wantOutgoing = direction !== 'in';
@@ -131,6 +142,7 @@ export async function GET(req: Request) {
             subject: row.subject,
             body: body(row),
             typeLabel: TYPE_LABELS[row.email_type] || row.email_type || null,
+            rawType: row.email_type ?? null,
             /**
              * Номер заказа: из автоприёма, а если его нет — из тега в теме.
              * Ответы клиентов приходят с нашим тегом «[#3/54929]» и заказа не
@@ -152,6 +164,7 @@ export async function GET(req: Request) {
             subject: row.subject,
             body: body(row),
             typeLabel: null,
+            rawType: null,
             orderNumber: row.order_number || orderFromSubject(row.subject).tagged,
             attachments: !!row.has_attachments,
             attachmentList: files(row.attachments_meta),
@@ -238,6 +251,31 @@ export async function GET(req: Request) {
         }
     }
 
+    /**
+     * Доля автопривязки — мера того, работает ли разбор (ТЗ §10). Считаем по
+     * входящим за две недели: сколько из тех, что вообще относятся к работе
+     * (не спам и не служебные), доехали до заказа сами.
+     */
+    let stats: { period: string; total: number; linked: number; share: number; unlinked: number } | null = null;
+    if (scope === 'unlinked') {
+        const since = new Date(Date.now() - 14 * 86400000).toISOString();
+        const { data: recent } = await supabase
+            .from('incoming_emails')
+            .select('created_crm_order_number, email_type')
+            .gt('received_at', since)
+            .limit(3000);
+
+        const work = ((recent ?? []) as any[]).filter((row) => !SERVICE_TYPES.has(String(row.email_type ?? '')));
+        const linked = work.filter((row) => row.created_crm_order_number).length;
+        stats = {
+            period: 'за две недели',
+            total: work.length,
+            linked,
+            share: work.length ? Math.round((linked / work.length) * 100) : 0,
+            unlinked: work.length - linked,
+        };
+    }
+
     const withClients = page.map((row) => {
         const client = clientByEmail.get(String(row.partyEmail || '').trim().toLowerCase()) || null;
         const managerId = managerOf(row);
@@ -251,8 +289,29 @@ export async function GET(req: Request) {
         };
     });
 
+    const mineId = Number(session.user.retail_crm_manager_id) || null;
+
+    const visible = withClients.filter((row) => {
+        if (scope === 'mine') {
+            // Моё — это письма по моим заказам. Без номера менеджера (владелец,
+            // просмотровые роли) личной ленты нет: своих заказов у них нет.
+            const managerId = managerOf(row);
+            return Boolean(mineId) && Number(managerId) === mineId;
+        }
+
+        if (scope === 'unlinked') {
+            if (row.direction !== 'Входящее') return false;
+            if (row.orderNumber) return false;
+            // Спам и служебные в разбор не кладём: иначе за ними не видно работы.
+            return !SERVICE_TYPES.has(String(row.rawType ?? ''));
+        }
+
+        return true;
+    });
+
     return NextResponse.json({
-        emails: withClients,
+        emails: visible,
+        stats,
         types: Object.entries(TYPE_LABELS).map(([code, label]) => ({ code, label })),
     });
 }

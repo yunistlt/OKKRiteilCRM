@@ -8,6 +8,7 @@ import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import TextWithOrderLinks from '@/components/ui/TextWithOrderLinks';
 import AttachmentList from '@/components/orders/AttachmentList';
 import { orderFileHref } from '@/lib/orders/file-href';
+import { formatIntRu } from '@/lib/format';
 
 /**
  * Ответить можно из заказа: письмо уходит с его номером в теме и ложится в
@@ -51,6 +52,16 @@ export default function EmailsClient() {
     const [emails, setEmails] = useState<Email[]>([]);
     const [types, setTypes] = useState<Array<{ code: string; label: string }>>([]);
     const [direction, setDirection] = useState('all');
+    /**
+     * Чьи письма смотрим (ТЗ §9, этап 4):
+     * «Вся почта» — как было, «Мои» — личная лента по моим заказам,
+     * «Разбор» — входящие, которые ни к какому заказу не привязались.
+     */
+    const [scope, setScope] = useState<'all' | 'mine' | 'unlinked'>('all');
+    const [stats, setStats] = useState<{ period: string; total: number; linked: number; share: number; unlinked: number } | null>(null);
+    /** Номер заказа, который человек вписал письму в «Разборе». */
+    const [linking, setLinking] = useState<Record<string, string>>({});
+    const [linkNote, setLinkNote] = useState<string | null>(null);
     const [type, setType] = useState('');
     const [search, setSearch] = useState('');
     const [query, setQuery] = useState('');
@@ -78,7 +89,7 @@ export default function EmailsClient() {
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const params = new URLSearchParams({ direction, limit: '200' });
+            const params = new URLSearchParams({ direction, limit: '200', scope });
             if (type) params.set('type', type);
             if (query) params.set('search', query);
             const res = await fetch(`/api/emails?${params.toString()}`);
@@ -86,17 +97,50 @@ export default function EmailsClient() {
             if (!res.ok) throw new Error(data.error || 'Не удалось получить письма');
             setEmails(data.emails || []);
             setTypes(data.types || []);
+            setStats(data.stats || null);
             setError(null);
         } catch (e: any) {
             setError(e.message);
         } finally {
             setLoading(false);
         }
-    }, [direction, type, query]);
+    }, [direction, type, query, scope]);
 
     useEffect(() => {
         void load();
     }, [load]);
+
+    /**
+     * Привязать письмо к заказу руками.
+     *
+     * Автоматика не всегда находит заказ: клиент снёс тему, написал с другого
+     * адреса, переслал через коллегу. Тогда это работа человека, и она должна
+     * быть видимой, а не теряться в общей ленте (ТЗ §3).
+     */
+    const linkToOrder = async (emailId: string) => {
+        const orderNumber = String(linking[emailId] ?? '').trim();
+        if (!orderNumber) {
+            setLinkNote('Впишите номер заказа.');
+            return;
+        }
+
+        setLinkNote(null);
+        try {
+            const res = await fetch('/api/emails/link', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ emailId, orderNumber }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось привязать письмо');
+
+            setLinkNote(payload.message);
+            setLinking((prev) => ({ ...prev, [emailId]: '' }));
+            await load();
+        } catch (e: any) {
+            setLinkNote(e.message);
+        }
+    };
 
     return (
         <div className="p-6">
@@ -106,6 +150,48 @@ export default function EmailsClient() {
                     Вся переписка компании: входящие с общего ящика и письма, отправленные из CRM.
                 </p>
             </div>
+
+            {/* Чьи письма: вся почта, мои или разбор непривязанных. */}
+            <div className="mb-3 flex flex-wrap items-center gap-px bg-gray-200">
+                {[
+                    { code: 'all' as const, label: 'Вся почта' },
+                    { code: 'mine' as const, label: 'Мои' },
+                    { code: 'unlinked' as const, label: 'Разбор' },
+                ].map((s) => (
+                    <button
+                        key={s.code}
+                        type="button"
+                        onClick={() => setScope(s.code)}
+                        className={`px-4 py-2 text-sm font-bold ${
+                            scope === s.code ? 'bg-gray-900 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
+                    >
+                        {s.label}
+                    </button>
+                ))}
+            </div>
+
+            {scope === 'mine' && (
+                <p className="mb-3 bg-white px-3 py-2 text-sm text-gray-600">
+                    Письма по заказам, которые ведёте вы. Пусто — значит по вашим заказам переписки нет.
+                </p>
+            )}
+
+            {scope === 'unlinked' && (
+                <div className="mb-3 bg-white px-3 py-2 text-sm text-gray-700">
+                    <p>
+                        Письма, которые не нашли свой заказ. Впишите номер — письмо встанет в переписку
+                        заказа, и его вложения появятся в его файлах.
+                    </p>
+                    {stats && (
+                        <p className="mt-1 text-gray-500">
+                            Сами привязались {stats.share}% писем {stats.period}: {formatIntRu(stats.linked)} из{' '}
+                            {formatIntRu(stats.total)}. Ждут разбора: {formatIntRu(stats.unlinked)}.
+                        </p>
+                    )}
+                    {linkNote && <p className="mt-1 font-semibold text-blue-800">{linkNote}</p>}
+                </div>
+            )}
 
             <div className="mb-3 flex flex-wrap items-center gap-2">
                 {[
@@ -202,7 +288,31 @@ export default function EmailsClient() {
                                     </div>
                                 </td>
                                 <td className="px-3 py-2 whitespace-nowrap">
-                                    {mail.orderNumber ? <OrderNumberLink number={mail.orderNumber} /> : <span className="text-gray-400">—</span>}
+                                    {mail.orderNumber ? (
+                                        <OrderNumberLink number={mail.orderNumber} />
+                                    ) : scope === 'unlinked' && mail.emailId ? (
+                                        /* Разбор: человек говорит, чей это заказ. */
+                                        <span
+                                            className="flex items-center gap-1"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <input
+                                                value={linking[mail.emailId] ?? ''}
+                                                onChange={(e) => setLinking((prev) => ({ ...prev, [mail.emailId as string]: e.target.value }))}
+                                                placeholder="№ заказа"
+                                                className="w-24 border border-gray-300 px-2 py-1 text-xs"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => void linkToOrder(mail.emailId as string)}
+                                                className="border border-blue-600 px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-50"
+                                            >
+                                                Привязать
+                                            </button>
+                                        </span>
+                                    ) : (
+                                        <span className="text-gray-400">—</span>
+                                    )}
                                 </td>
                                 <td className="px-3 py-2 whitespace-nowrap text-gray-600">{formatDate(mail.date)}</td>
                                 <td className="px-3 py-2">
