@@ -29,9 +29,15 @@ export async function GET() {
     const session = await enrichSessionWithManagerIdentity(await getSession());
     if (!session?.user) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
 
-    // Руководитель, ОКК и администратор видят звонки всего отдела — им нужна
-    // картина целиком (решение владельца 05.10.2026).
-    const seeAll = hasAnyRole(session, ['admin', 'okk', 'rop']);
+    /**
+     * Окно звонка — тому, у кого звонит телефон.
+     *
+     * Руководителю и ОКК показываем звонки всего отдела: им нужна картина
+     * целиком (решение владельца 05.10.2026). Владельцу — нет: он просил
+     * убрать всплывающие звонки отдела (09.10.2026), а свой телефон у него
+     * по добавочному и так увидит.
+     */
+    const seeAll = hasAnyRole(session, ['okk', 'rop']);
 
     let extension: string | null = null;
     const managerId = session.user.retail_crm_manager_id;

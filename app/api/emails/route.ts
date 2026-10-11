@@ -32,6 +32,15 @@ const TYPE_LABELS: Record<string, string> = {
 /** Служебное и мусор: в «Разборе» их быть не должно, иначе лента мертва (ТЗ §8). */
 const SERVICE_TYPES = new Set(['spam', 'noreply', 'blocked', 'not_request']);
 
+/**
+ * Чего в «Разборе» быть не должно сверх мусора.
+ *
+ * «Закупки» — предложения поставщиков: реклама тренажёров, шнуров и складских
+ * услуг. К заказам они не относятся никогда, а в разборе их больше, чем
+ * работы (увидел при проверке 11.10.2026). Нужны — есть фильтр по типу.
+ */
+const NOT_FOR_TRIAGE = new Set(['spam', 'noreply', 'blocked', 'not_request', 'procurement']);
+
 const textFromHtml = (html: unknown): string =>
     String(html ?? '')
         .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
@@ -265,7 +274,7 @@ export async function GET(req: Request) {
             .gt('received_at', since)
             .limit(3000);
 
-        const work = ((recent ?? []) as any[]).filter((row) => !SERVICE_TYPES.has(String(row.email_type ?? '')));
+        const work = ((recent ?? []) as any[]).filter((row) => !NOT_FOR_TRIAGE.has(String(row.email_type ?? '')));
         const linked = work.filter((row) => row.created_crm_order_number).length;
         stats = {
             period: 'за две недели',
@@ -303,7 +312,7 @@ export async function GET(req: Request) {
             if (row.direction !== 'Входящее') return false;
             if (row.orderNumber) return false;
             // Спам и служебные в разбор не кладём: иначе за ними не видно работы.
-            return !SERVICE_TYPES.has(String(row.rawType ?? ''));
+            return !NOT_FOR_TRIAGE.has(String(row.rawType ?? ''));
         }
 
         return true;

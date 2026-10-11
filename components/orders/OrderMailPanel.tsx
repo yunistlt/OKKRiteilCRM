@@ -436,11 +436,12 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                                         ответить
                                     </button>
 
-                                    {/* «Ответить всем» — когда со стороны клиента в
-                                        письме несколько человек: снабженец,
-                                        бухгалтер, начальник. Иначе разговор
-                                        разваливается на два. */}
-                                    {othersInConversation(message).length > 0 && (
+                                    {/* «Ответить всем» — когда в ПИСЬМЕ КЛИЕНТА
+                                        несколько человек: снабженец, бухгалтер,
+                                        начальник. Иначе разговор разваливается
+                                        на два. На своём письме кнопки нет: там
+                                        отвечать некому (проверка 11.10.2026). */}
+                                    {message.direction === 'in' && othersInConversation(message).length > 0 && (
                                         <button
                                             onClick={() => {
                                                 setReplyTo({
