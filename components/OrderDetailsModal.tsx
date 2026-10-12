@@ -1228,7 +1228,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     </CardSection>
 
                     <CardSection id="order-control" title="Контроль">
-                        <div className="grid md:grid-cols-3 gap-2">
+                        {/* Дата следующего контакта переехала к комментарию
+                            менеджера: её ставят в конце разговора, когда уже
+                            написали, о чём договорились (Ирина Гордеева
+                            12.10.2026). */}
+                        <div className="grid md:grid-cols-2 gap-2">
                             <EditField fieldKey="cf.typ_castomer"
                                 label="Категория товара"
                                 required
@@ -1236,7 +1240,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 options={names.fieldOptions('typ_castomer')}
                                 onChange={(v) => setField('cf.typ_castomer', v)}
                             />
-                            <EditField fieldKey="cf.data_kontakta" label="Дата следующего контакта" type="date" value={fieldValue('cf.data_kontakta', String(customFields.data_kontakta || '').slice(0, 10))} onChange={(v) => setField('cf.data_kontakta', v)} />
                             <EditField fieldKey="cf.typ_customer_margin"
                                 label="Форма закупки"
                                 value={fieldValue('cf.typ_customer_margin', customFields.typ_customer_margin || '')}
@@ -1847,6 +1850,17 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 placeholder="Договорённости, обещания, что делать дальше"
                                 className="mt-3 w-full border border-gray-200 bg-white p-3 text-sm text-gray-800"
                             />
+                            {/* Дата следующего шага — здесь же: её назначают,
+                                дописав разговор, а не в шапке карточки. */}
+                            <div className="mt-3">
+                                <EditField
+                                    fieldKey="cf.data_kontakta"
+                                    label="Дата следующего контакта"
+                                    type="date"
+                                    value={fieldValue('cf.data_kontakta', String(customFields.data_kontakta || '').slice(0, 10))}
+                                    onChange={(v) => setField('cf.data_kontakta', v)}
+                                />
+                            </div>
                         </div>
                         {/* Советы бота-РОПа — своим окном рядом (решение владельца
                             05.10.2026). Раньше они дописывались в комментарий
@@ -3055,6 +3069,25 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
             role="dialog"
             aria-modal="true"
             data-ui-audit="order-modal"
+            /**
+             * Enter сохраняет карточку, кнопка «Сохранить» остаётся на месте
+             * (просьба Ирины Гордеевой 12.10.2026).
+             *
+             * В обычном поле достаточно Enter. В многострочных (комментарии,
+             * новая запись) Enter обязан переносить строку, поэтому там
+             * сохраняет Ctrl/Cmd + Enter.
+             */
+            onKeyDown={(event) => {
+                if (event.key !== 'Enter' || event.shiftKey || savingOrder) return;
+                const target = event.target as HTMLElement;
+                const tag = target.tagName;
+                if (tag === 'BUTTON' || tag === 'A') return;
+                const multiline = tag === 'TEXTAREA';
+                if (multiline && !(event.ctrlKey || event.metaKey)) return;
+                if (!multiline && (tag !== 'INPUT' && tag !== 'SELECT')) return;
+                event.preventDefault();
+                void saveOrder();
+            }}
             // Цвет — от статуса заказа, еле заметный; размеры — по рабочей области.
             style={{
                 backgroundColor: tintFromColor(data?.statusColor, 0.07) || '#ffffff',
@@ -3366,6 +3399,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         </button>
                         {saveNote && <span className="text-[11px] text-gray-600">{saveNote}</span>}
                         {dirty && !saveNote && <span className="text-[11px] text-amber-700">Есть несохранённые изменения</span>}
+                        <span className="text-[11px] text-gray-500">Enter тоже сохраняет; в комментарии — Ctrl + Enter</span>
                     </div>
                     <button onClick={onClose} className="border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50">Закрыть</button>
                 </footer>
