@@ -169,10 +169,17 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                     if (draftData.draft.subject) setSubject(draftData.draft.subject);
                     if (draftData.draft.body) setBody(draftData.draft.body);
                     setDraftSavedAt(draftData.draft.savedAt || null);
+                    if (draftData.draft.orderFileIds?.length) setAttachedFileIds(draftData.draft.orderFileIds.map(Number));
+                    if (draftData.draft.documents?.length) setDocuments(draftData.draft.documents);
+                    const kept = (draftData.draft.orderFileIds || []).length + (draftData.draft.documents || []).length;
+                    const oldNames = (draftData.draft.attachments || []);
                     setDraftNote(
-                        (draftData.draft.attachments || []).length
-                            ? `Черновик восстановлен. К нему прикладывали: ${(draftData.draft.attachments || []).join(', ')} — вложения нужно приложить заново.`
-                            : 'Черновик восстановлен.',
+                        kept
+                            ? `Черновик восстановлен вместе с вложениями (${kept}).`
+                            : oldNames.length
+                                // Старые черновики помнили только названия — у них вложений нет.
+                                ? `Черновик восстановлен. К нему прикладывали: ${oldNames.join(', ')} — эти файлы приложите заново.`
+                                : 'Черновик восстановлен.',
                     );
                 }
             } catch (e) {
@@ -226,6 +233,32 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
         setError(null);
         setSavingDraft(true);
         try {
+            /**
+             * Файлы с компьютера кладём в заказ прямо сейчас и запоминаем их
+             * номерами. Раньше черновик держал только названия, и, вернувшись
+             * к письму, человек читал «вложения нужно приложить заново» —
+             * приложенное один раз отваливаться не должно (решение владельца
+             * 12.10.2026).
+             */
+            const keptIds = [...attachedFileIds];
+            for (const file of files) {
+                const form = new FormData();
+                form.append('file', file);
+                const up = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files/upload`, { method: 'POST', body: form });
+                const payload = await up.json().catch(() => null);
+                if (!up.ok || !payload?.file?.id) {
+                    throw new Error(payload?.error || `Файл «${file.name}» не загрузился — попробуйте ещё раз`);
+                }
+                keptIds.push(Number(payload.file.id));
+            }
+
+            // Файлы уехали в заказ: в списке «с компьютера» им больше не место.
+            if (files.length) {
+                setAttachedFileIds(keptIds);
+                setFiles([]);
+                void loadOrderFiles();
+            }
+
             const res = await fetch(`/api/orders/${orderNumber}/email-draft`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -234,6 +267,8 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                     subject: subject.trim(),
                     body,
                     attachments: files.map((f) => f.name),
+                    orderFileIds: keptIds,
+                    documents,
                 }),
             });
             const data = await res.json().catch(() => null);
