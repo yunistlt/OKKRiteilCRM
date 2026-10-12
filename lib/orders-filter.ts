@@ -11,6 +11,19 @@
  */
 import { resolveDate } from './relative-date';
 
+/**
+ * Коды справочников, из которых берутся ЗНАЧЕНИЯ этих полей.
+ *
+ * У «категории товара» имя поля и имя справочника разные: поле зовётся
+ * `typ_castomer`, а список значений лежит в `kategoriya_klienta` (см.
+ * `lib/retailcrm/NAMING.md`). Фильтр спрашивал справочник по имени поля,
+ * находил пусто — и выбрать категорию было нельзя (Лена Парфёнова 12.10.2026).
+ */
+export const CUSTOM_FIELD_DICTIONARIES = {
+    category: 'kategoriya_klienta',
+    sfera: 'sfera_deiatelnosti',
+} as const;
+
 export const CUSTOM_FIELD_CODES = {
     category: 'typ_castomer',
     sfera: 'sfera_deiatelnosti',
