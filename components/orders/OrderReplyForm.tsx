@@ -95,6 +95,8 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
     const [foreignWarning, setForeignWarning] = useState<string | null>(null);
     const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const cancelled = useRef(false);
+    /** Вложения уже выгружаются — второй раз не начинаем. */
+    const preparing = useRef(false);
 
     const [to, setTo] = useState('');
     const [subject, setSubject] = useState('');
@@ -283,7 +285,16 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
     };
 
     /** Сколько секунд письмо ждёт перед отправкой. */
-    const HOLD_SECONDS = 8;
+    /**
+     * Сколько секунд письмо можно вернуть.
+     *
+     * Было восемь, и Ирина Гордеева 12.10.2026: «можно убрать это время
+     * ожидания? потом идёт отправка — ещё ожидание». Ждать дважды незачем:
+     * пять секунд хватает, чтобы спохватиться, а тяжёлую часть — выгрузку
+     * вложений — делаем прямо во время отсчёта, чтобы после него оставалась
+     * только сама отправка.
+     */
+    const HOLD_SECONDS = 5;
 
     /** Нажали «Отправить»: запускаем обратный отсчёт, а не отправку. */
     const startSend = () => {
@@ -295,6 +306,38 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
 
         cancelled.current = false;
         setHoldLeft(HOLD_SECONDS);
+        // Пока человек может передумать, молча готовим вложения.
+        void prepareAttachments();
+    };
+
+    /**
+     * Выгрузить файлы с компьютера в заказ заранее.
+     *
+     * Это самая долгая часть отправки: паспорт на пять мегабайт едет секунды.
+     * Делаем её во время отсчёта — к моменту отправки остаётся лёгкий запрос.
+     * Ошибку здесь не показываем: если что-то не выгрузилось, отправка
+     * попробует ещё раз и скажет сама.
+     */
+    const prepareAttachments = async () => {
+        if (!files.length || preparing.current) return;
+        preparing.current = true;
+
+        try {
+            const ids = [...attachedFileIds];
+            for (const file of files) {
+                const form = new FormData();
+                form.append('file', file);
+                const up = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files/upload`, { method: 'POST', body: form });
+                const payload = await up.json().catch(() => null);
+                if (!up.ok || !payload?.file?.id) return;
+                ids.push(Number(payload.file.id));
+            }
+
+            setAttachedFileIds(ids);
+            setFiles([]);
+        } finally {
+            preparing.current = false;
+        }
     };
 
     /** Передумали — письмо остаётся в композере, как его и писали. */
@@ -701,12 +744,15 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                         {sending ? 'Отправляем…' : sendAt ? 'Поставить в очередь' : 'Отправить'}
                     </button>
                 ) : (
-                    /* Письмо на руках ещё несколько секунд — можно вернуть. */
+                    /* Письмо уже уходит — эти секунды даны на «ой, не то».
+                       Говорим именно так: раньше кнопка читалась как «ждите»
+                       (Ирина Гордеева 12.10.2026). */
                     <button
                         onClick={cancelSend}
                         className="flex items-center gap-1.5 border border-amber-600 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-800 hover:bg-amber-100"
+                        title="Письмо уйдёт само через несколько секунд. Нажмите, если передумали."
                     >
-                        Отменить отправку · {holdLeft}
+                        Уходит… вернуть? · {holdLeft}
                     </button>
                 )}
                 <span className="text-[11px] text-gray-500">Уйдёт с общего ящика компании rop@zmktlt.ru</span>
