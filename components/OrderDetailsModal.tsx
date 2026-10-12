@@ -875,6 +875,16 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         setSavingOrder(true);
         setSaveNote(null);
         setFieldErrors({});
+        /**
+         * Новая запись уезжает вместе с остальным по кнопке «Сохранить».
+         *
+         * Кнопок было две — «Добавить запись» и «Сохранить», — и запись без
+         * второй пропадала (Ирина Гордеева 12.10.2026: «если мы эту не нажмём,
+         * комменты не сохраняются, не удобно»). Одна операция — одна дверь.
+         */
+        const managerComment = newComment.trim()
+            ? prependComment(draftManagerComment, newComment, commentAuthor)
+            : draftManagerComment;
         try {
             const res = await fetch(`/api/orders/${orderId}/edit`, {
                 method: 'POST',
@@ -894,7 +904,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     discountAmount: draftOrderDiscount.amount || 0,
                     discountPercent: draftOrderDiscount.percent || 0,
                     customerComment: draftClientComment,
-                    managerComment: draftManagerComment,
+                    managerComment,
                     // Правка остальных полей: раскладываем ключи по местам заказа.
                     contact: {
                         ...Object.fromEntries(
@@ -947,6 +957,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                 throw new Error(payload.error || 'Не удалось сохранить');
             }
             setSaveNote(payload.changed?.length ? `Сохранено: ${payload.changed.join(', ')}` : 'Изменений не было');
+            setDraftManagerComment(managerComment);
+            setNewComment('');
             setDirty(false);
             void fetchDetails();
         } catch (e: any) {
@@ -1820,29 +1832,13 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 писал «05.10» руками и терялся, где свежее. */}
                             <textarea
                                 value={newComment}
-                                onChange={(e) => setNewComment(e.target.value)}
+                                onChange={(e) => { setNewComment(e.target.value); setDirty(true); }}
                                 rows={3}
                                 placeholder="Новая запись: что сделали, о чём договорились"
                                 className="w-full border border-gray-300 bg-white p-3 text-sm text-gray-800"
                             />
-                            <div className="mt-2 flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    disabled={!newComment.trim()}
-                                    onClick={() => {
-                                        setDraftManagerComment(
-                                            prependComment(draftManagerComment, newComment, commentAuthor),
-                                        );
-                                        setNewComment('');
-                                        setDirty(true);
-                                    }}
-                                    className="bg-blue-600 px-3 py-1 text-xs font-semibold text-white disabled:bg-gray-300"
-                                >
-                                    Добавить запись
-                                </button>
-                                <span className="text-[11px] text-gray-500">
-                                    Дату, время и фамилию подставит система — писать их не нужно
-                                </span>
+                            <div className="mt-2 text-[11px] text-gray-500">
+                                Запись ляжет наверх по кнопке «Сохранить». Дату, время и фамилию подставит система — писать их не нужно.
                             </div>
                             <textarea
                                 value={draftManagerComment}
