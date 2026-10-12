@@ -368,10 +368,19 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                     ? 'Письмо слишком тяжёлое — уберите часть вложений и отправьте отдельным письмом'
                     : `Сервер ответил ошибкой (${res.status}) — письмо не ушло`);
             }
+            /**
+             * Адрес не числится за клиентом заказа — это развилка для человека,
+             * а не ошибка: показываем предупреждение и ждём второго нажатия.
+             * Раньше в поле ошибки стоял код `foreign_recipient` — человеку он
+             * не говорит ничего (жалоба Евгении Матвеевой 12.10.2026).
+             */
+            if (res.status === 409 && data.error === 'foreign_recipient') {
+                setForeignWarning(data.message || 'Адрес не числится за клиентом этого заказа.');
+                return;
+            }
+
             if (!res.ok || !data.ok) {
-                throw new Error(data.error === 'smtp_not_configured'
-                    ? 'Почта не настроена на сервере — письмо не отправлено.'
-                    : (data.error || 'Письмо не ушло'));
+                throw new Error(humanError(data, res.status));
             }
 
             // Письмо ушло — черновик больше не нужен, иначе он всплывёт снова.
@@ -767,6 +776,31 @@ function addressList(value: string): string[] {
             .map((item) => item.trim().toLowerCase())
             .filter((item) => item.includes('@')),
     ));
+}
+
+/**
+ * Ответ сервера человеческим языком.
+ *
+ * Сервер отвечает кодом (`smtp_not_configured`, `foreign_recipient`) и
+ * отдельным пояснением. Показывать код нельзя: менеджер видит
+ * «ETIMEDOUT 77.88.21.158:465» или «foreign_recipient» и идёт к разработчику
+ * вместо того, чтобы понять, что делать (жалоба 12.10.2026).
+ */
+function humanError(data: any, status: number): string {
+    const code = String(data?.error ?? '');
+    const text = String(data?.message ?? '').trim();
+
+    if (code === 'smtp_not_configured') return 'Почта не настроена на сервере — письмо не отправлено.';
+    if (/ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ECONNRESET|socket close/i.test(code)) {
+        return 'Почтовый сервер не отвечает — письмо не ушло. Нажмите «Отправить» ещё раз через минуту; '
+            + 'если повторится, скажите мне: это сбой почты, а не ваша ошибка.';
+    }
+    if (status === 413) return 'Письмо слишком тяжёлое — уберите часть вложений и отправьте отдельным письмом.';
+
+    // Понятное пояснение от сервера лучше кода; кода человеку не показываем.
+    if (text) return text;
+    if (code && /^[a-z_]+$/.test(code)) return `Письмо не ушло: сбой на сервере (${code}). Скажите мне — разберусь.`;
+    return code || 'Письмо не ушло';
 }
 
 /** Ключ письма: одно нажатие «Отправить» — один ключ. */
