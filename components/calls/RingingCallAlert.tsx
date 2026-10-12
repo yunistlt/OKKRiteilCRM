@@ -31,6 +31,8 @@ type Ringing = {
     extensions: string[] | null;
     /** Звонок на очередь — телефон звонит у нескольких, окно видят все. */
     is_queue: boolean | null;
+    /** Заказы этого клиента, когда звонок ни к одному не привязан. */
+    client_orders?: Array<{ orderId: number; number: string }>;
 };
 
 /** Как часто спрашиваем о звонках. Звонок звонит 20–30 секунд. */
@@ -136,9 +138,26 @@ export default function RingingCallAlert() {
                             </>
                         ) : (
                             <div className="mt-1">
-                                <div className="text-sm text-gray-700">
-                                    {call.client_name ? 'Заказов не найдено' : 'Заказа нет'}
-                                </div>
+                                {/* Честно: заказы у клиента есть, просто какой из
+                                    них — решает человек. Раньше тут стояло
+                                    «Заказов не найдено», и менеджер звонил по
+                                    заказу, которого будто бы нет. */}
+                                {call.client_orders?.length ? (
+                                    <div className="text-sm text-gray-700">
+                                        Заказы клиента:{' '}
+                                        {call.client_orders.map((order, index) => (
+                                            <span key={order.orderId}>
+                                                {index > 0 && ', '}
+                                                <OrderNumberLink number={order.number} />
+                                            </span>
+                                        ))}
+                                        {' — какой именно, укажите:'}
+                                    </div>
+                                ) : (
+                                    <div className="text-sm text-gray-700">
+                                        {call.client_name ? 'Заказов у клиента не нашли' : 'Заказа нет'}
+                                    </div>
+                                )}
                                 <CallOrderPicker
                                     callId={call.telphin_call_id}
                                     onBound={(orderNumber) => setCalls((current) => current.map((item) =>

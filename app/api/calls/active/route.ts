@@ -22,8 +22,32 @@ import { getSession } from '@/lib/auth';
 import { enrichSessionWithManagerIdentity } from '@/lib/manager-identity';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
+import { ordersByPhone } from '@/lib/call-binding';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * Заказы клиента по номеру — ненадолго в памяти.
+ *
+ * Окно звонка спрашивает нас раз в две секунды, а пока телефон звонит, ответ
+ * не меняется: держим минуту, чтобы не гонять один и тот же запрос полтора
+ * десятка раз за звонок.
+ */
+const ordersCache = new Map<string, { at: number; orders: Array<{ orderId: number; number: string }> }>();
+const ORDERS_CACHE_MS = 60_000;
+
+async function clientOrders(phone: string): Promise<Array<{ orderId: number; number: string }>> {
+    const key = phone.replace(/\D/g, '').slice(-10);
+    if (!key) return [];
+
+    const hit = ordersCache.get(key);
+    if (hit && Date.now() - hit.at < ORDERS_CACHE_MS) return hit.orders;
+
+    const found = await ordersByPhone(phone, 3).catch(() => []);
+    const orders = found.map((order) => ({ orderId: order.orderId, number: order.number }));
+    ordersCache.set(key, { at: Date.now(), orders });
+    return orders;
+}
 
 export async function GET() {
     const session = await enrichSessionWithManagerIdentity(await getSession());
@@ -68,5 +92,23 @@ export async function GET() {
         return all.includes(extension) || call.extension_number === extension;
     });
 
-    return NextResponse.json({ calls, extension, seeAll });
+    /**
+     * Заказы клиента, если звонок ни к одному не привязан.
+     *
+     * Автопривязка срабатывает, только когда заказ один: у постоянного клиента
+     * их семь, и окно писало «Заказов не найдено» — хотя заказы есть, просто
+     * выбрать должен человек (Лена Парфёнова 12.10.2026, звонила по заказу
+     * 54607). Берём несколько последних, чтобы менеджер ткнул в нужный, не
+     * открывая список.
+     */
+    const withOrders = await Promise.all(calls.map(async (call: any) => {
+        if (call.order_number) return call;
+
+        const phone = String(call.from_number ?? '').trim();
+        if (!phone) return call;
+
+        return { ...call, client_orders: await clientOrders(phone) };
+    }));
+
+    return NextResponse.json({ calls: withOrders, extension, seeAll });
 }
