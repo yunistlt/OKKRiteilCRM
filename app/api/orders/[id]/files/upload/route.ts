@@ -83,7 +83,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ ok: true, file: data });
 }
 
-/** Убрать свой файл из заказа: приложили не то. Файл помечаем удалённым. */
+/** Убрать файл из списка заказа: приложили не то. Файл уходит в архив. */
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const session = await getSession();
     if (!session?.user) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
@@ -121,4 +121,44 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     return NextResponse.json({ ok: true, archived: true });
+}
+
+/**
+ * Вернуть файл из архива в заказ.
+ *
+ * Обратная дверь к архивации: раз удалять нельзя, человек должен уметь и
+ * передумать, не прося об этом разработчика.
+ */
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+    const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
+
+    const { id } = await params;
+    const fileId = Number(new URL(request.url).searchParams.get('fileId'));
+    if (!Number.isFinite(fileId)) {
+        return NextResponse.json({ error: 'Не указан файл' }, { status: 400 });
+    }
+
+    const { data: row } = await supabase
+        .from('order_files')
+        .select('id, order_number, deleted_at')
+        .eq('id', fileId)
+        .maybeSingle();
+
+    if (!row || String((row as any).order_number) !== decodeURIComponent(String(id))) {
+        return NextResponse.json({ error: 'Файл не найден в этом заказе' }, { status: 404 });
+    }
+
+    // Файлы, стёртые до закона 12.10.2026, вернуть невозможно: в хранилище их нет.
+    if ((row as any).deleted_at) {
+        return NextResponse.json({ error: 'Этот файл был стёрт до правила — возвращать нечего' }, { status: 409 });
+    }
+
+    const { error } = await supabase
+        .from('order_files')
+        .update({ archived_at: null, archived_by: null })
+        .eq('id', fileId);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    return NextResponse.json({ ok: true, restored: true });
 }

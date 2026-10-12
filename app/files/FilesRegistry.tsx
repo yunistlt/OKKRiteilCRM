@@ -573,7 +573,13 @@ export default function FilesRegistry() {
                 </div>
             </div>
 
-            {preview && <FilePreview file={preview} onClose={() => setPreview(null)} />}
+            {preview && (
+                <FilePreview
+                    file={preview}
+                    onClose={() => setPreview(null)}
+                    onRestored={() => { setPreview(null); load(); }}
+                />
+            )}
 
             {columnsOpen && (
                 <ViewSettingsModal
@@ -608,7 +614,26 @@ export default function FilesRegistry() {
  * Список с отбором и страницей остаётся на месте: человек смотрит файл,
  * закрывает панель и продолжает с того же места.
  */
-function FilePreview({ file, onClose }: { file: FileRow; onClose: () => void }) {
+function FilePreview({ file, onClose, onRestored }: { file: FileRow; onClose: () => void; onRestored: () => void }) {
+    const [busy, setBusy] = useState(false);
+    const [problem, setProblem] = useState<string | null>(null);
+
+    /** Вернуть файл из архива в заказ — обратная дверь к кнопке «в архив». */
+    const restore = async () => {
+        setBusy(true);
+        setProblem(null);
+        try {
+            const res = await fetch(`/api/orders/${encodeURIComponent(file.orderNumber)}/files/upload?fileId=${file.id}`, { method: 'PATCH' });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось вернуть файл');
+            onRestored();
+        } catch (e: any) {
+            setProblem(e.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+
     const href = orderFileHref({ orderNumber: file.orderNumber, fileId: file.id });
     const type = (file.contentType || '').toLowerCase();
     const isImage = type.startsWith('image/');
@@ -661,10 +686,22 @@ function FilePreview({ file, onClose }: { file: FileRow; onClose: () => void }) 
                 </div>
             </div>
 
+            {problem && <div className="border-t border-red-200 bg-red-50 px-4 py-2 text-red-700">{problem}</div>}
+
             <div className="flex items-center gap-2 border-t border-gray-200 px-4 py-3">
                 <a href={href} target="_blank" rel="noreferrer" className="bg-gray-900 px-3 py-1 font-semibold text-white hover:bg-gray-700">
                     Открыть файл
                 </a>
+                {file.archivedAt && !file.lost && (
+                    <button
+                        type="button"
+                        onClick={restore}
+                        disabled={busy}
+                        className="border border-gray-900 px-3 py-1 font-semibold text-gray-900 hover:bg-gray-100 disabled:border-gray-300 disabled:text-gray-400"
+                    >
+                        {busy ? 'Возвращаю…' : 'Вернуть из архива'}
+                    </button>
+                )}
                 <a href={href} download={file.name} className="border border-gray-300 px-3 py-1 font-semibold text-gray-700 hover:bg-gray-100">
                     Скачать
                 </a>
