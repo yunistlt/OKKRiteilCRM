@@ -57,3 +57,12 @@ describe('должность в родительном падеже', () => {
         expect(titleToGenitive(null)).toBe('');
     });
 });
+
+describe('должность в родительном падеже', () => {
+    it('мягкий знак меняется на «я», а не добавляет «а»', () => {
+        expect(titleToGenitive('Руководитель филиала')).toBe('Руководителя филиала');
+        expect(titleToGenitive('Директор')).toBe('Директора');
+        expect(titleToGenitive('Генеральный директор')).toBe('Генерального директора');
+        expect(titleToGenitive('Заведующий')).toBe('Заведующего');
+    });
+});

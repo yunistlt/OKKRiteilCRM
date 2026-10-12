@@ -335,7 +335,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
      * Парфёнова 09.10.2026 «тут не открывает, в файлах нет». Теперь кнопка
      * честно говорит, что идёт сборка, и сама открывает готовый файл.
      */
-    const [documentBusy, setDocumentBusy] = useState<'contract' | 'kit' | null>(null);
     const [documentNote, setDocumentNote] = useState<string | null>(null);
     // Карточка заказа редактируемая сразу: режима «только просмотр» у нас нет.
     // Правка копится в состоянии и уходит в CRM одной кнопкой сверху.
@@ -510,36 +509,28 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
      * новой вкладке, а если браузер её заблокировал — отдаём файлом. Ошибку
      * показываем словами сервера, а не молчим.
      */
-    const openOrderDocument = useCallback(async (kind: 'contract' | 'kit', url: string) => {
-        setDocumentBusy(kind);
+    /**
+     * Документ открываем ПРЯМОЙ ссылкой в новой вкладке, а не через blob.
+     *
+     * Было: ждали ответ, собирали blob и только потом звали window.open —
+     * Safari такое всплывающее окно считает непрошенным и глушит. Менеджер
+     * нажимал «Открыть договор (PDF)», вкладка не появлялась, и выглядело это
+     * как «нет возможности взять договор» (Ирина Гордеева 12.10.2026).
+     *
+     * Теперь вкладка открывается в самом щелчке — браузер её пропускает, —
+     * а сервер отдаёт в неё готовый PDF (он же ложится в «Файлы» заказа).
+     */
+    const openOrderDocument = useCallback((kind: 'contract' | 'kit', url: string) => {
         setDocumentNote(null);
-        try {
-            const res = await fetch(url);
-            if (!res.ok) {
-                const payload = await res.json().catch(() => null);
-                throw new Error(payload?.error || 'Документ не собрался');
-            }
-
-            const blob = await res.blob();
-            const href = URL.createObjectURL(blob);
-            const opened = window.open(href, '_blank');
-            if (!opened) {
-                // Всплывающее окно заблокировано — тогда просто скачиваем.
-                const link = document.createElement('a');
-                link.href = href;
-                link.download = kind === 'kit' ? 'Счёт, договор и спецификация.pdf' : 'Договор.pdf';
-                link.click();
-            }
-            // Ссылку держим минуту: вкладка успевает прочитать файл.
-            setTimeout(() => URL.revokeObjectURL(href), 60_000);
-            setDocumentNote(kind === 'kit'
-                ? 'Комплект готов и лежит во вкладке «Файлы» этого заказа.'
-                : 'Договор открыт. Он же лежит во вкладке «Файлы».');
-        } catch (e: any) {
-            setDocumentNote(e?.message ?? 'Документ не открылся');
-        } finally {
-            setDocumentBusy(null);
+        const tab = window.open(url, '_blank');
+        if (!tab) {
+            // Всплывающие окна запрещены настройками браузера — даём ссылку.
+            setDocumentNote('Браузер не пропустил новую вкладку. Файл лежит во вкладке «Файлы» этого заказа.');
+            return;
         }
+        setDocumentNote(kind === 'kit'
+            ? 'Комплект собирается в соседней вкладке (5–10 секунд). Он же ляжет в «Файлы» заказа.'
+            : 'Договор открыт в соседней вкладке. Он же лежит во вкладке «Файлы».');
     }, []);
 
     const fetchQualityScore = useCallback(async () => {
@@ -2199,30 +2190,26 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                             замечания ИИ и спрашивал, где взять файл
                                             (08.10.2026). Файл с подписью и печатью лежит
                                             и во вкладке «Файлы» этого заказа. */}
-                                        {contractId && (
+                                        {Number(contractId) > 0 && (
                                             <button
                                                 type="button"
-                                                disabled={documentBusy !== null}
                                                 onClick={() => openOrderDocument('contract', `/api/orders/${encodeURIComponent(String(data.order?.number ?? orderId))}/contract/file?id=${contractId}`)}
                                                 className="text-sm font-semibold text-blue-700 hover:underline disabled:text-gray-400"
                                             >
-                                                {documentBusy === 'contract' ? 'Открываем договор…' : 'Открыть договор (PDF)'}
+                                                Открыть договор (PDF)
                                             </button>
                                         )}
                                         {/* Комплект как в RetailCRM: счёт, договор и
                                             спецификация одним файлом (эталон — заказ
                                             54729). Файл ложится в «Файлы» заказа, и
                                             его можно приложить к письму галочкой. */}
-                                        {contractId && (
+                                        {Number(contractId) > 0 && (
                                             <button
                                                 type="button"
-                                                disabled={documentBusy !== null}
                                                 onClick={() => openOrderDocument('kit', `/api/orders/${encodeURIComponent(String(data.order?.number ?? orderId))}/contract/kit?id=${contractId}`)}
                                                 className="text-sm font-semibold text-blue-700 hover:underline disabled:text-gray-400"
                                             >
-                                                {documentBusy === 'kit'
-                                                    ? 'Собираем комплект, 5–10 секунд…'
-                                                    : 'Счёт + договор + спецификация (PDF)'}
+                                                Счёт + договор + спецификация (PDF)
                                             </button>
                                         )}
                                         {documentNote && (

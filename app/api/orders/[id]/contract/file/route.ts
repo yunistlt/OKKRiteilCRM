@@ -19,7 +19,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const { id: orderNumber } = await params;
     const contractId = new URL(req.url).searchParams.get('id') || '';
-    if (!contractId) return NextResponse.json({ error: 'Нужен номер договора' }, { status: 400 });
+    if (!contractId) return NextResponse.json({ error: 'Договор по этому заказу ещё не составлен' }, { status: 400 });
 
     const { data } = await supabase
         .from('order_contracts')

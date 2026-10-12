@@ -102,11 +102,19 @@ export function titleToGenitive(title: string | null | undefined): string {
     return words
         .map((word) => {
             if (/^(ип|оао|ооо|зао|пао)$/i.test(word)) return word;
-            if (/(ый|ий)$/i.test(word)) return `${word.slice(0, -2)}ого`;
+            // После шипящих и «ц» — «его»: заведующий → заведующего.
+            if (/(ый|ий)$/i.test(word)) {
+                const stem = word.slice(0, -2);
+                return `${stem}${/[жчшщц]$/i.test(stem) ? 'его' : 'ого'}`;
+            }
             if (/(ая)$/i.test(word)) return `${word.slice(0, -2)}ой`;
             // Уже родительный — второй раз не склоняем.
             if (/(ого|ой|а|я)$/i.test(word)) return word;
-            if (/(ор|ель|ик|ник|ент|ор|арь)$/i.test(word)) return `${word}а`;
+            // Мягкий знак в родительном меняется на «я»: руководитель →
+            // руководителя, а не «руководительа» (договор по заказу 900074,
+            // 12.10.2026).
+            if (/ь$/i.test(word)) return `${word.slice(0, -1)}я`;
+            if (/(ор|ик|ник|ент|ат|ёр|ер)$/i.test(word)) return `${word}а`;
             return word;
         })
         .join(' ');

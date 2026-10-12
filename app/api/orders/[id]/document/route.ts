@@ -10,6 +10,7 @@ import { getSession } from '@/lib/auth';
 import { orderDocumentData } from '@/lib/own-crm/documents';
 import { supabase } from '@/utils/supabase';
 import { buildOrderDocumentPdf } from '@/lib/own-crm/order-document-pdf';
+import { keepOrderDocument } from '@/lib/orders/keep-document';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -69,6 +70,25 @@ export async function GET(request: Request, { params }: { params: { id: string }
     }
 
     const built = await buildOrderDocumentPdf(data, kind);
+
+    /**
+     * Показали документ — он же остаётся в файлах заказа.
+     *
+     * Раньше счёт ложился в заказ, только если уходил письмом: менеджер
+     * выставлял счёт, а в «Файлах» его не было (Ирина Гордеева 12.10.2026).
+     * Сохранение не должно мешать показу, поэтому его отказ только пишется
+     * в журнал (это внутри keepOrderDocument).
+     */
+    await keepOrderDocument(
+        String(data.orderNumber ?? decodeURIComponent(String(params.id))),
+        kind,
+        {
+            filename: built.fileName,
+            content: Buffer.from(new Uint8Array(built.content)),
+            contentType: built.contentType ?? 'application/pdf',
+        },
+        session.user.email || session.user.username || null,
+    );
 
     return new NextResponse(new Uint8Array(built.content), {
         headers: {
