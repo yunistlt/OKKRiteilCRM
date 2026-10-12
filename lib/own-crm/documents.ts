@@ -381,8 +381,17 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
             : 5,
         managerName: await managerNameOf((order as any).manager_id),
         ...(await sellerSealOf(seller)),
-        shippingTerms: await shippingTermsText(delivery, seller?.address ?? null),
-        ...(await signerOf(sellerCode || (order as any).site, seller)),
+        ...(await (async () => {
+            const signer = await signerOf(sellerCode || (order as any).site, seller);
+            return {
+                ...signer,
+                /**
+                 * Самовывоз печатается адресом СКЛАДА, а не юридическим: с
+                 * Революционной товар не выдают (Ирина Гордеева 12.10.2026).
+                 */
+                shippingTerms: await shippingTermsText(delivery, signer.shippingAddress),
+            };
+        })()),
         total: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
     };
 }
@@ -476,13 +485,26 @@ async function shippingTermsText(delivery: any, sellerAddress?: string | null): 
      * подставляется сам, и поле доставки можно не трогать.
      */
     const selfPickup = /^(self-delivery|pickup)$/i.test(code);
-    const pickupFrom = selfPickup && !oneLine ? String(sellerAddress ?? '').replace(/\s+/g, ' ').trim() : '';
+    const managerText = oneLine && oneLine !== '[object Object]' ? oneLine : '';
+    const pickupFrom = String(sellerAddress ?? '').replace(/\s+/g, ' ').trim();
 
-    const parts = [
-        name || null,
-        oneLine && oneLine !== '[object Object]' ? oneLine : null,
-        pickupFrom || null,
-    ].filter(Boolean);
+    /**
+     * Менеджер в том же поле пишет транспортные габариты — их печатаем
+     * следом за адресом. Если он вписал адрес склада руками (так делали
+     * раньше), второй раз не повторяем.
+     */
+    const sameAddress = (left: string, right: string) => {
+        const plain = (v: string) => v.toLowerCase().replace(/[^a-zа-я0-9]/gi, '');
+        return Boolean(left && right) && plain(left).includes(plain(right));
+    };
+
+    const parts = selfPickup
+        ? [
+            name || 'Самовывоз',
+            pickupFrom && !sameAddress(managerText, pickupFrom) ? pickupFrom : null,
+            managerText || null,
+        ].filter(Boolean)
+        : [name || null, managerText || null].filter(Boolean);
     if (!parts.length) return null;
     return parts.join(', ');
 }
@@ -497,15 +519,17 @@ async function signerOf(siteCode: string | null | undefined, seller: Seller | nu
     sellerPhone: string | null;
     sellerEmail: string | null;
     sellerSite: string | null;
+    /** Склад, откуда забирают товар. Не юридический адрес. */
+    shippingAddress: string | null;
 }> {
-    const empty = { signerName: null, signerTitle: null, sellerPhone: null, sellerEmail: null, sellerSite: null };
+    const empty = { signerName: null, signerTitle: null, sellerPhone: null, sellerEmail: null, sellerSite: null, shippingAddress: null };
     const inn = seller?.inn?.trim();
     const code = String(siteCode ?? '').trim();
     if (!inn && !code) return empty;
 
     const { data } = await supabase
         .from('legal_entities')
-        .select('inn, site_code, signer_name, signer_title, phone, email, site_url')
+        .select('inn, site_code, signer_name, signer_title, phone, email, site_url, shipping_address')
         .or([inn ? `inn.eq.${inn}` : null, code ? `site_code.eq.${code}` : null].filter(Boolean).join(','))
         .limit(1)
         .maybeSingle();
@@ -519,6 +543,7 @@ async function signerOf(siteCode: string | null | undefined, seller: Seller | nu
         sellerPhone: row?.phone || null,
         sellerEmail: row?.email || null,
         sellerSite: row?.site_url || null,
+        shippingAddress: row?.shipping_address || null,
     };
 }
 
