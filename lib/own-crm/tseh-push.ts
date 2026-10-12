@@ -17,6 +17,7 @@
  * приложение. Решение владельца 05.10.2026: в Vercel ничего не добавляем.
  */
 import type { Sql } from 'postgres';
+import { productionItems } from './tseh-outbox';
 
 export type PushResult = {
     /** Сколько строк взяли из очереди в этот проход. */
@@ -56,6 +57,41 @@ type OutboxRow = {
  */
 const BATCH = 20;
 
+/** Отправка одной строки очереди: тело запроса у отдачи и у досылки одно и то же. */
+async function sendOrder(url: string, key: string, row: OutboxRow): Promise<Response> {
+    return fetch(`${url.replace(/\/$/, '')}/api/external/okk/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': key },
+        body: JSON.stringify({
+            orderNumber: row.order_number,
+            // Драйвер отдаёт bigint СТРОКОЙ — отправляем числом, иначе приёмная
+            // сторона не разбирает заказ («The JSON value could not be converted»).
+            orderId: row.order_id === null ? null : Number(row.order_id),
+            customerName: row.customer_name,
+            customerInn: row.customer_inn,
+            managerName: row.manager_name,
+            productionDays: row.production_days,
+            // В каких днях назван срок: 'kalendarnye' или 'rabochie'. Без этого
+            // ЦехУспех считал срок рабочими днями, а менеджер называл клиенту
+            // календарные — на 40 днях расхождение в две недели (06.10.2026).
+            productionDaysUnit: row.production_days_unit || 'kalendarnye',
+            shippingTerms: row.shipping_terms,
+            // Наше юрлицо: поставщик в карточке ЦехУспеха и реквизиты, на которые
+            // пришла оплата. Раньше не передавались, и поле оставалось пустым.
+            sellerName: row.seller_name,
+            sellerInn: row.seller_inn,
+            sellerAccount: row.seller_account,
+            sellerBank: row.seller_bank,
+            // Позиции уезжают как лежат в очереди: название, количество, цена и
+            // адреса фото/карточки товара (`imageUrl`, `productUrl` — ТЗ 12.10.2026).
+            items: Array.isArray(row.items) ? row.items : [],
+            totalSumm: row.total_summ === null ? null : Number(row.total_summ),
+            managerComment: row.manager_comment,
+        }),
+        signal: AbortSignal.timeout(30_000),
+    });
+}
+
 export async function pushProductionQueue(sql: Sql, limit = BATCH): Promise<PushResult> {
     const url = process.env.TSEH_API_URL;
     const key = process.env.TSEH_API_KEY;
@@ -81,37 +117,7 @@ export async function pushProductionQueue(sql: Sql, limit = BATCH): Promise<Push
         await sql`UPDATE tseh_production_outbox SET taken_at = now() WHERE id = ${row.id}`;
 
         try {
-            const res = await fetch(`${url.replace(/\/$/, '')}/api/external/okk/orders`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Api-Key': key },
-                body: JSON.stringify({
-                    orderNumber: row.order_number,
-                    // Драйвер отдаёт bigint СТРОКОЙ — отправляем числом, иначе приёмная
-                    // сторона не разбирает заказ («The JSON value could not be converted»).
-                    orderId: row.order_id === null ? null : Number(row.order_id),
-                    customerName: row.customer_name,
-                    customerInn: row.customer_inn,
-                    managerName: row.manager_name,
-                    productionDays: row.production_days,
-                    // В каких днях назван срок: 'kalendarnye' или 'rabochie'. Без этого
-                    // ЦехУспех считал срок рабочими днями, а менеджер называл клиенту
-                    // календарные — на 40 днях расхождение в две недели (06.10.2026).
-                    productionDaysUnit: row.production_days_unit || 'kalendarnye',
-                    shippingTerms: row.shipping_terms,
-                    // Наше юрлицо: поставщик в карточке ЦехУспеха и реквизиты, на которые
-                    // пришла оплата. Раньше не передавались, и поле оставалось пустым.
-                    sellerName: row.seller_name,
-                    sellerInn: row.seller_inn,
-                    sellerAccount: row.seller_account,
-                    sellerBank: row.seller_bank,
-                    // Позиции уезжают как лежат в очереди: название, количество, цена и
-                    // адреса фото/карточки товара (`imageUrl`, `productUrl` — ТЗ 12.10.2026).
-                    items: Array.isArray(row.items) ? row.items : [],
-                    totalSumm: row.total_summ === null ? null : Number(row.total_summ),
-                    managerComment: row.manager_comment,
-                }),
-                signal: AbortSignal.timeout(30_000),
-            });
+            const res = await sendOrder(url, key, row);
 
             const body = await res.json().catch(() => ({}) as Record<string, unknown>);
 
@@ -146,6 +152,95 @@ export async function pushProductionQueue(sql: Sql, limit = BATCH): Promise<Push
         } catch (e) {
             const reason = e instanceof Error ? e.message : String(e);
             await sql`UPDATE tseh_production_outbox SET error = ${`связь с ЦехУспехом: ${reason}`} WHERE id = ${row.id}`;
+            out.failed++;
+        }
+    }
+
+    return out;
+}
+
+export type BackfillResult = {
+    /** Сколько заказов взяли в этот проход. */
+    taken: number;
+    /** Сколько обновили: ЦехУспех принял адреса. */
+    updated: number;
+    /** У скольких заказов адресов не нашлось — у этих товаров нет карточки на сайте. */
+    withoutUrls: number;
+    /** Сколько не доехало из-за связи — попадут в следующий проход. */
+    failed: number;
+    skipped?: string;
+};
+
+/**
+ * Досылка фото товара и ссылки на карточку по УЖЕ заведённым заказам.
+ *
+ * Состав в очереди — снимок на момент постановки, и у заказов, уехавших до 12.10.2026,
+ * в позициях нет ни `imageUrl`, ни `productUrl`: в перечне заказа ЦехУспеха у них пусто.
+ * Повторная отправка того же заказа дубля там не создаёт — ЦехУспех сверяется по номеру
+ * и обновляет адреса в карточке номенклатуры, поэтому заказ достаточно переотправить.
+ *
+ * Берём только заказы, которые у них ЗАВЕЛИСЬ (`tseh_order_no IS NOT NULL`): отказанные
+ * повторять нечего, их причина сама не исправится.
+ *
+ * Отличаем «ещё не досылали» по самим позициям: как только в первой появился ключ
+ * `imageUrl`, заказ в выборку больше не попадает. Отдельного признака в очереди для
+ * этого не нужно, и адрес у позиции без карточки на сайте остаётся пустым (`null`) —
+ * пустое поле у ЦехУспеха ничего не затирает.
+ */
+export async function backfillProductionImages(sql: Sql, limit = BATCH): Promise<BackfillResult> {
+    const url = process.env.TSEH_API_URL;
+    const key = process.env.TSEH_API_KEY;
+    if (!url || !key) return { taken: 0, updated: 0, withoutUrls: 0, failed: 0, skipped: 'нет TSEH_API_URL/TSEH_API_KEY' };
+
+    const rows = (await sql`
+        SELECT id, order_number, order_id, customer_name, customer_inn, manager_name,
+               production_days, production_days_unit, shipping_terms,
+               seller_name, seller_inn, seller_account, seller_bank,
+               items, total_summ, manager_comment
+        FROM tseh_production_outbox
+        WHERE tseh_order_no IS NOT NULL
+          AND jsonb_typeof(items) = 'array'
+          AND jsonb_array_length(items) > 0
+          AND NOT (items -> 0 ? 'imageUrl')
+        ORDER BY created_at DESC
+        LIMIT ${Math.max(1, Math.min(limit, BATCH))}
+    `) as unknown as OutboxRow[];
+
+    const out: BackfillResult = { taken: rows.length, updated: 0, withoutUrls: 0, failed: 0 };
+
+    for (const row of rows) {
+        try {
+            // Состав пересобираем тем же кодом, что готовит счёт: адреса фото и карточки
+            // приходят оттуда вместе с составом, отдельного запроса в каталог не нужно.
+            const items = row.order_id === null ? [] : await productionItems(Number(row.order_id));
+            if (!items.length) {
+                out.failed++;
+                await sql`UPDATE tseh_production_outbox SET error = ${'досылка картинок: состав заказа не собрался'} WHERE id = ${row.id}`;
+                continue;
+            }
+
+            const res = await sendOrder(url, key, { ...row, items });
+            const body = await res.json().catch(() => ({}) as Record<string, unknown>);
+
+            if (!res.ok || !(body as { tsehOrderNo?: string }).tsehOrderNo) {
+                const reason = String((body as { error?: string }).error || `ЦехУспех ответил ${res.status}`);
+                await sql`UPDATE tseh_production_outbox SET error = ${`досылка картинок: ${reason}`} WHERE id = ${row.id}`;
+                out.failed++;
+                continue;
+            }
+
+            // Пишем новый состав в очередь: по нему видно, что досылка прошла, и повторно
+            // этот заказ уже не возьмётся.
+            await sql`
+                UPDATE tseh_production_outbox
+                SET items = ${sql.json(items)}, error = NULL
+                WHERE id = ${row.id}
+            `;
+            out.updated++;
+            if (!items.some((item) => item.imageUrl || item.productUrl)) out.withoutUrls++;
+        } catch (e) {
+            const reason = e instanceof Error ? e.message : String(e);
+            await sql`UPDATE tseh_production_outbox SET error = ${`досылка картинок: ${reason}`} WHERE id = ${row.id}`;
             out.failed++;
         }
     }

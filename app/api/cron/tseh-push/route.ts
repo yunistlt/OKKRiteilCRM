@@ -1,7 +1,7 @@
 import { isCronAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import postgres from 'postgres';
-import { pushProductionQueue } from '@/lib/own-crm/tseh-push';
+import { backfillProductionImages, pushProductionQueue } from '@/lib/own-crm/tseh-push';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -32,6 +32,13 @@ export async function GET(req: NextRequest) {
     try {
         // ?limit=N — прогнать ограниченную партию вручную (первый заказ при включении связи).
         const limit = Number(req.nextUrl.searchParams.get('limit')) || undefined;
+        // ?images=1 — досылка фото и ссылок по уже заведённым заказам вместо обычной отдачи
+        // очереди. Разовая работа по хвосту: заказы, уехавшие до 12.10.2026, стоят в
+        // ЦехУспехе без картинок. Гонять партиями, пока `taken` не станет нулём.
+        if (req.nextUrl.searchParams.get('images') === '1') {
+            const images = await backfillProductionImages(sql, limit);
+            return NextResponse.json({ ok: true, ...images });
+        }
         const report = await pushProductionQueue(sql, limit);
         return NextResponse.json({ ok: true, ...report });
     } catch (e) {

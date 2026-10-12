@@ -45,6 +45,39 @@ export function tsehUrl(raw: string | null | undefined, maxLength: number): stri
     return value;
 }
 
+/** Позиция заказа в том виде, в каком её принимает ЦехУспех. */
+export type ProductionItem = {
+    name: string;
+    quantity: number;
+    price: number;
+    /** Прямой адрес файла картинки товара, до 255 символов. */
+    imageUrl: string | null;
+    /** Адрес карточки товара на сайте, до 512 символов. */
+    productUrl: string | null;
+};
+
+/**
+ * Состав заказа для производства.
+ *
+ * Собираем тем же кодом, что готовит счёт — чтобы производство видело ровно то, что
+ * видит клиент в документах. Фото товара и ссылку на его карточку каталог сайта отдаёт
+ * вместе с составом (ТЗ 12.10.2026): в перечне заказа ЦехУспеха рядом с названием
+ * позиции показывается миниатюра, по клику открывается сайт.
+ *
+ * Одно место на двоих: и постановка в очередь, и досылка картинок по уже заведённым
+ * заказам (`backfillProductionImages`) считают состав здесь.
+ */
+export async function productionItems(orderId: number): Promise<ProductionItem[]> {
+    const data = await orderDocumentData(orderId, null);
+    return (data?.items || []).map((item) => ({
+        name: item.name,
+        quantity: item.quantity,
+        price: item.price,
+        imageUrl: tsehUrl(item.image, 255),
+        productUrl: tsehUrl(item.url, 512),
+    }));
+}
+
 /** Кладёт заказ в очередь на производство. Не бросает: сбой не должен ломать смену статуса. */
 export async function queueOrderForProduction(orderId: number): Promise<OutboxResult> {
     try {
@@ -106,17 +139,7 @@ export async function queueOrderForProduction(orderId: number): Promise<OutboxRe
             seller_inn: data?.seller?.inn || null,
             seller_account: data?.seller?.rs || null,
             seller_bank: data?.seller?.bank || null,
-            items: (data?.items || []).map((item) => ({
-                name: item.name,
-                quantity: item.quantity,
-                price: item.price,
-                // Фото товара и ссылка на его карточку на сайте: в перечне заказа ЦехУспеха
-                // рядом с названием позиции показывается миниатюра, по клику открывается
-                // сайт (ТЗ 12.10.2026). Адреса мы уже знаем — каталог отдаёт их вместе с
-                // составом для счёта, но до производства они не доходили.
-                imageUrl: tsehUrl(item.image, 255),
-                productUrl: tsehUrl(item.url, 512),
-            })),
+            items: await productionItems(Number((order as any).order_id)),
             total_summ: payload.totalSumm ?? null,
             // В цех уходит ТОЛЬКО то, что менеджер написал во вкладке «Для производства»
             // (решение владельца 04.10.2026). Комментарий менеджера по заказу туда больше не
