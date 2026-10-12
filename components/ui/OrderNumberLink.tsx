@@ -23,15 +23,21 @@ type Props = {
      * новой вкладке — закон «номер заказа всегда ссылка» не нарушен.
      */
     onOpen?: (number: string) => void;
+    /**
+     * Откуда пришли. «Мой день» передаёт `my-day`, и карточка после закрытия
+     * возвращает человека в план дня, а не в общий список заказов (просьба
+     * Ирины Гордеевой 12.10.2026).
+     */
+    from?: string;
 };
 
-export default function OrderNumberLink({ number, className, fallback = '—', onOpen }: Props) {
+export default function OrderNumberLink({ number, className, fallback = '—', onOpen, from }: Props) {
     const value = number === null || number === undefined ? '' : String(number).trim();
     if (!value) return <span className="text-gray-400">{fallback}</span>;
 
     return (
         <Link
-            href={`/orders?order=${encodeURIComponent(value)}`}
+            href={`/orders?order=${encodeURIComponent(value)}${from ? `&from=${encodeURIComponent(from)}` : ''}`}
             className={className ?? 'font-semibold text-blue-700 hover:underline'}
             onClick={(event) => {
                 // Щелчок с Ctrl/Cmd или колесом — человек хочет новую вкладку,

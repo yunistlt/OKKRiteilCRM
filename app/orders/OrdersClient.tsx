@@ -11,7 +11,7 @@ import StatusIcon from '@/components/orders/StatusIcon';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import CommentCell from '@/components/orders/CommentCell';
 import BulkEmailModal from '@/components/orders/BulkEmailModal';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { formatRub } from '@/lib/format';
 
 interface OrderRow {
@@ -76,6 +76,19 @@ export default function OrdersClient() {
     // из «Моего дня» в заказ попадают одним кликом, а не через фильтр списка
     // (требование владельца 01.10.2026).
     const searchParams = useSearchParams();
+    const router = useRouter();
+    /**
+     * Пришли из «Моего дня»? Запоминаем в самом начале: адрес потом
+     * переписывается (номер заказа, адресат письма), и метка из него уходит.
+     * Закрыли карточку — возвращаемся в план дня, а не в общий список
+     * (Ирина Гордеева 12.10.2026).
+     */
+    const [cameFromMyDay, setCameFromMyDay] = useState(false);
+    useEffect(() => {
+        // На сервере адреса ещё нет, поэтому метку читаем после монтирования.
+        if (typeof window === 'undefined') return;
+        if (new URL(window.location.href).searchParams.get('from') === 'my-day') setCameFromMyDay(true);
+    }, []);
 
     const [filter, setFilter] = useState<OrdersFilter>(EMPTY_FILTER);
     const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -338,6 +351,7 @@ export default function OrdersClient() {
         url.searchParams.delete('replyTo');
         url.searchParams.delete('replySubject');
 
+
         window.history.replaceState(null, '', `${url.pathname}${url.search}`);
     }, [openOrderNumber]);
 
@@ -381,7 +395,7 @@ export default function OrdersClient() {
                         className="font-bold text-blue-700 hover:underline"
                         // В своём же списке карточку открываем на месте: переход
                         // по ссылке стирал фильтры (Ирина 08.10.2026).
-                        onOpen={(value) => { setOpenOrderNumber(value); setOpenOrderId(order.orderId ?? null); }}
+                        onOpen={(value) => { setCameFromMyDay(false); setOpenOrderNumber(value); setOpenOrderId(order.orderId ?? null); }}
                     />
                 );
             case 'customer':
@@ -567,7 +581,7 @@ export default function OrdersClient() {
                                     <tr
                                         key={order.orderId}
                                         data-ui-audit="order-row"
-                                        onClick={() => setOpenOrderNumber(order.number)}
+                                        onClick={() => { setCameFromMyDay(false); setOpenOrderNumber(order.number); }}
                                         className={`cursor-pointer border-b border-gray-200 align-top hover:bg-blue-50 ${order.overdue ? 'bg-red-50' : ''}`}
                                     >
                                         <td className="w-8 px-2 py-4" onClick={(e) => e.stopPropagation()}>
@@ -708,7 +722,27 @@ export default function OrdersClient() {
                     // Ответ подставляем только тому заказу, с которым пришла ссылка из списка писем.
                     replyTo={searchParams.get('order') === openOrderNumber ? searchParams.get('replyTo') : null}
                     replySubject={searchParams.get('order') === openOrderNumber ? searchParams.get('replySubject') : null}
-                    onClose={() => { setOpenOrderNumber(null); void load(); }}
+                    /**
+                     * Пришли из «Моего дня» — туда и возвращаемся.
+                     *
+                     * «Сохранить и выйти» выкидывало в общий список заказов, и
+                     * человек заново искал свой план (Ирина Гордеева
+                     * 12.10.2026). Возврат виден по метке `from=my-day` в
+                     * адресе — её ставит сам «Мой день».
+                     */
+                    onClose={() => {
+                        /**
+                         * Сначала уходим, потом закрываем. Если сбросить номер
+                         * заказа раньше, синхронизация адреса перепишет его на
+                         * `/orders` и отменит переход.
+                         */
+                        if (cameFromMyDay) {
+                            router.push('/analytics');
+                            return;
+                        }
+                        setOpenOrderNumber(null);
+                        void load();
+                    }}
                 />
             )}
         </div>
