@@ -161,6 +161,10 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
     // Приложить файл руками (просьба Евгении 02.10.2026: счёт выставлен в
     // RetailCRM, а нужен при заказе в ОКК).
     const [busy, setBusy] = useState(false);
+    /** Поиск файла по всем заказам: паспорт изделия нужен чаще, чем файл заказа. */
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searching, setSearching] = useState(false);
+    const [found, setFound] = useState<Array<{ id: number; orderNumber: string; name: string }> | null>(null);
     const [note, setNote] = useState<string | null>(null);
 
     const load = useCallback(() => {
@@ -171,6 +175,53 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
     }, [orderNumber]);
 
     useEffect(() => { load(); }, [load]);
+
+    /** Найти файл по названию во всех заказах. */
+    const searchFiles = async () => {
+        if (searchQuery.trim().length < 3) {
+            setNote('Введите хотя бы три буквы названия');
+            return;
+        }
+
+        setSearching(true);
+        setNote(null);
+        try {
+            const res = await fetch(`/api/files/search?q=${encodeURIComponent(searchQuery.trim())}`);
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Поиск не отработал');
+            setFound(payload.files ?? []);
+        } catch (e: any) {
+            setNote(e.message);
+        } finally {
+            setSearching(false);
+        }
+    };
+
+    /**
+     * Взять найденный файл в этот заказ.
+     *
+     * Копируем только запись: сам файл уже лежит в хранилище, второй раз его
+     * заливать незачем.
+     */
+    const attachFound = async (fileId: number) => {
+        setBusy(true);
+        setNote(null);
+        try {
+            const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'copy', fileId }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось приложить файл');
+            setNote(payload.message || 'Файл приложен к заказу');
+            await load();
+        } catch (e: any) {
+            setNote(e.message);
+        } finally {
+            setBusy(false);
+        }
+    };
 
     const upload = async (file: File) => {
         setBusy(true);
@@ -230,6 +281,66 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
                 </label>
                 <span className="text-[11px] text-gray-500">до 25 МБ; видно всем, кто работает с заказом</span>
                 {note && <span className="text-[11px] text-gray-700">{note}</span>}
+            </div>
+
+            {/**
+             * Поиск файла по всем заказам.
+             *
+             * Женя Матвеева 12.10.2026: «нужен паспорт на шкаф ШСО-22М, он точно
+             * есть в заказах, но найти не могу». Паспорта на месте, просто
+             * лежат каждый в своём заказе — и добраться до них можно было,
+             * только помня номер.
+             */}
+            <div className="mb-3 border border-gray-200 bg-gray-50 p-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    <input
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') void searchFiles(); }}
+                        placeholder="Найти файл во всех заказах: «ШСО-22М», «паспорт»"
+                        className="min-w-[14rem] flex-1 border border-gray-300 px-2 py-1 text-xs"
+                    />
+                    <button
+                        onClick={() => void searchFiles()}
+                        disabled={searching}
+                        className="border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                    >
+                        {searching ? 'Ищем…' : 'Найти'}
+                    </button>
+                </div>
+
+                {found !== null && (
+                    found.length ? (
+                        <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto">
+                            {found.map((file) => (
+                                <li key={file.id} className="flex items-baseline justify-between gap-2 text-xs">
+                                    <a
+                                        href={orderFileHref({ orderNumber: file.orderNumber, fileId: file.id })}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="truncate font-semibold text-blue-700 hover:underline"
+                                        title={file.name}
+                                    >
+                                        {file.name}
+                                    </a>
+                                    <span className="shrink-0 text-gray-500">
+                                        заказ {file.orderNumber}
+                                        {' · '}
+                                        <button
+                                            onClick={() => void attachFound(file.id)}
+                                            disabled={busy}
+                                            className="font-semibold text-blue-700 hover:underline disabled:text-gray-300"
+                                        >
+                                            приложить сюда
+                                        </button>
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="mt-2 text-xs text-gray-500">Ничего не нашли — попробуйте часть названия изделия.</p>
+                    )
+                )}
             </div>
 
             {files === null ? (

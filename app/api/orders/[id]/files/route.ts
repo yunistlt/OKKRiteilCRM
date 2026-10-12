@@ -80,3 +80,64 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         imapConfigured: isImapConfigured(),
     });
 }
+
+/**
+ * Взять файл из другого заказа.
+ *
+ * Паспорта изделий лежат в тех заказах, где их когда-то прикладывали, а нужны
+ * они в каждом новом (Женя Матвеева 12.10.2026). Копируем только запись: сам
+ * файл уже в хранилище, второй раз его заливать незачем.
+ */
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
+
+    const { id } = await params;
+    const orderNumber = decodeURIComponent(String(id));
+
+    const body = await req.json().catch(() => null);
+    const fileId = Number(body?.fileId);
+    if (String(body?.action) !== 'copy' || !Number.isFinite(fileId)) {
+        return NextResponse.json({ error: 'Непонятно, что приложить' }, { status: 400 });
+    }
+
+    const { data: source } = await supabase
+        .from('order_files')
+        .select('order_number, file_name, content_type, size_bytes, storage_bucket, storage_path')
+        .eq('id', fileId)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+    if (!source) return NextResponse.json({ error: 'Файл не найден' }, { status: 404 });
+
+    const file = source as any;
+    if (String(file.order_number) === orderNumber) {
+        return NextResponse.json({ ok: true, message: 'Этот файл уже в заказе' });
+    }
+
+    // Второй раз тот же файл в заказ не кладём.
+    const { data: already } = await supabase
+        .from('order_files')
+        .select('id')
+        .eq('order_number', orderNumber)
+        .eq('storage_path', file.storage_path)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+    if (already) return NextResponse.json({ ok: true, message: 'Этот файл уже в заказе' });
+
+    const { error } = await supabase.from('order_files').insert({
+        order_number: orderNumber,
+        file_name: file.file_name,
+        content_type: file.content_type,
+        size_bytes: file.size_bytes,
+        storage_bucket: file.storage_bucket,
+        storage_path: file.storage_path,
+        uploaded_by: session.user.email || session.user.username || null,
+        note: `Взят из заказа №${file.order_number}`,
+    });
+
+    if (error) return NextResponse.json({ error: `Не удалось приложить: ${error.message}` }, { status: 500 });
+
+    return NextResponse.json({ ok: true, message: `Файл приложен — взят из заказа №${file.order_number}` });
+}
