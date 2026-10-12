@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { editOrder } from '@/lib/own-crm/edit-order';
 import { queueOrderForProduction } from '@/lib/own-crm/tseh-outbox';
 
 // Перевод заказа в «Передано в производство» после поступления оплаты.
@@ -70,12 +71,17 @@ export async function moveOrderToProductionAfterPayment(
       return { moved: false, notMovedReason: `уже в статусе «${names[current] || current}»` };
     }
 
-    const { error } = await supabase
-      .from('orders')
-      .update({ status: PRODUCTION_STATUS, updated_at: new Date().toISOString() })
-      .eq('id', (row as any).id);
-    if (error) {
-      return { moved: false, notMovedReason: `статус не записался: ${error.message}` };
+    /**
+     * Статус меняем ОДНОЙ дверью — через `editOrder`.
+     *
+     * Прямой `update` писал только колонку: без записи в историю и без даты
+     * входа в статус. Поэтому расчёт зарплаты не видел такие заказы вовсе —
+     * он ищет вход в производство по истории (владелец 12.10.2026: «почему не
+     * актуальные данные»). Три заказа октября так и повисли невидимыми.
+     */
+    const moved = await editOrder(Number((row as any).id), { statusCode: PRODUCTION_STATUS });
+    if (!moved.ok) {
+      return { moved: false, notMovedReason: `статус не записался: ${moved.reason}` };
     }
 
     // Заказ встал в очередь, из которой ЦехУспех забирает его сам.
