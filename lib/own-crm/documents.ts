@@ -67,6 +67,16 @@ export type OrderDocumentData = {
     payerSignerName: string | null;
     payerSignerTitle: string | null;
     payerSignerBasis: string | null;
+    /**
+     * Банковские реквизиты покупателя. Нужны спецификации и договору: раздел
+     * «Реквизиты Покупателя» состоял из одних ИНН и КПП (Лена Парфёнова
+     * 12.10.2026). Берутся из карточки клиента — там их хозяин.
+     */
+    payerBank: string | null;
+    payerBik: string | null;
+    payerRs: string | null;
+    payerKs: string | null;
+    payerOgrn: string | null;
     seller: Seller | null;
     /**
      * Срок изготовления в днях — «Срок изготовления в днях*» из заказа. Женя
@@ -321,6 +331,11 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
     const payerSignerName = clientRequisites?.signerName || null;
     const payerSignerTitle = clientRequisites?.signerTitle || null;
     const payerSignerBasis = clientRequisites?.signerBasis || null;
+    const payerBank = contragent.bank || clientRequisites?.bank || null;
+    const payerBik = contragent.BIK || clientRequisites?.bik || null;
+    const payerRs = contragent.bankAccount || clientRequisites?.bankAccount || null;
+    const payerKs = contragent.corrAccount || clientRequisites?.corrAccount || null;
+    const payerOgrn = contragent.OGRN || clientRequisites?.ogrn || clientRequisites?.ogrnip || null;
 
     const seller = await sellerFromSite(sellerCode || (order as any).site);
 
@@ -336,6 +351,11 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
         payerSignerName,
         payerSignerTitle,
         payerSignerBasis,
+        payerBank,
+        payerBik,
+        payerRs,
+        payerKs,
+        payerOgrn,
         // Юрлицо: по умолчанию то, чьему магазину принадлежит заказ, но счёт
         // можно выставить и от другого — юрлиц у компании несколько.
         seller,

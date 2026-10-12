@@ -2,7 +2,6 @@ import { PDFDocument } from 'pdf-lib';
 import { supabase } from '@/utils/supabase';
 import { orderDocumentData, type OrderDocumentData } from '@/lib/own-crm/documents';
 import { buildOrderDocumentPdf } from '@/lib/own-crm/order-document-pdf';
-import { KP_ABOUT_PAGE_PDF_BASE64 } from '@/lib/own-crm/kp-about-page';
 import { buildContractPdf } from '@/lib/legal/contract-pdf';
 import { buildSpecificationPdf, type SpecificationData } from '@/lib/legal/specification-pdf';
 import { safeStorageSegment } from '@/lib/storage-path';
@@ -81,10 +80,12 @@ export function specificationFrom(data: OrderDocumentData, date: Date = new Date
             name: data.payerCompany || data.payerName,
             inn: data.payerInn,
             kpp: data.payerKpp,
-            bank: null,
-            bik: null,
-            rs: null,
-            ks: null,
+            // Банк покупателя — из его карточки: раньше тут стояли пустые поля,
+            // и в спецификации у покупателя были только ИНН и КПП.
+            bank: data.payerBank,
+            bik: data.payerBik,
+            rs: data.payerRs,
+            ks: data.payerKs,
             address: data.payerAddress,
             signerTitle: data.payerSignerTitle,
         },
@@ -130,12 +131,14 @@ export async function buildContractKit(params: {
         const specification = await buildSpecificationPdf(specificationFrom(data));
 
         /**
-         * Страница о компании идёт сразу за счётом — так её ставила RetailCRM
-         * (эталон, лист 2). Не нашлась — комплект всё равно собираем.
+         * Страницы «о компании» здесь нет намеренно.
+         *
+         * Она уместна в коммерческом предложении, где мы себя представляем. В
+         * комплекте на подпись — счёт, договор и спецификация — реклама лишняя
+         * (Лена Парфёнова 12.10.2026: «тут это ни к чему, нужно рекламу
+         * убрать»).
          */
-        const about = KP_ABOUT_PAGE_PDF_BASE64 ? [Buffer.from(KP_ABOUT_PAGE_PDF_BASE64, 'base64')] : [];
-
-        const merged = await mergePdfs([Buffer.from(invoice.content), ...about, contract, specification]);
+        const merged = await mergePdfs([Buffer.from(invoice.content), contract, specification]);
         const pages = (await PDFDocument.load(merged)).getPageCount();
 
         const fileName = `Счёт, договор и спецификация №${params.orderNumber}.pdf`;
