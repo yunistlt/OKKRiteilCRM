@@ -2150,41 +2150,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                 ? 'Составляю…'
                                                 : contractTermCode ? 'Составить договор' : 'Составить и отправить юристу'}
                                         </button>
-                                        {/* Стандартный договор обычно юристу не нужен, но
-                                            иногда клиент просит проверить — тогда этой
-                                            кнопкой (решение владельца 07.10.2026). */}
-                                        {contractTermCode && (
-                                            <button
-                                                disabled={contractSaving}
-                                                onClick={async () => {
-                                                    setContractSaving(true);
-                                                    setContractNote(null);
-                                                    try {
-                                                        const term = STANDARD_CONTRACT_TERMS.find((t) => t.code === contractTermCode);
-                                                        const res = await fetch(`/api/orders/${encodeURIComponent(String(data.order?.number ?? orderId))}/contract`, {
-                                                            method: 'POST',
-                                                            headers: { 'Content-Type': 'application/json' },
-                                                            body: JSON.stringify({
-                                                                terms: term?.text || 'стандартные условия',
-                                                                seller: sellerCode || null,
-                                                                orderId: Number(orderId),
-                                                            }),
-                                                        });
-                                                        const payload = await res.json();
-                                                        if (!res.ok) throw new Error(payload.error || 'Договор не составился');
-                                                        setContractNote(payload.note || 'Договор отправлен юристу.');
-                                                        setContractReview(payload.review ?? null);
-                                                    } catch (e: any) {
-                                                        setContractNote(e.message);
-                                                    } finally {
-                                                        setContractSaving(false);
-                                                    }
-                                                }}
-                                                className="border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-100 disabled:opacity-50"
-                                            >
-                                                Отправить на согласование юристу
-                                            </button>
-                                        )}
                                         {contractNote && <span className="text-sm text-gray-700">{contractNote}</span>}
                                         {/* Сам документ: без ссылки менеджер видел только
                                             замечания ИИ и спрашивал, где взять файл

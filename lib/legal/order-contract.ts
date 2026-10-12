@@ -19,6 +19,13 @@ export const CONTRACT_STATUS_LABELS: Record<string, string> = {
     on_review: 'На согласовании',
     approved: 'Согласован',
     rework: 'На доработку',
+    /**
+     * Договор по нашей стандартной форме. Согласовывать нечего — менеджер
+     * отправляет его клиенту сам, — но в реестре юротдела он виден наравне с
+     * остальными (решение владельца 12.10.2026: «договор должен автоматом
+     * ложиться в реестр договоров у юриста, не оповещая об этом девочек»).
+     */
+    standard: 'По стандартной форме',
 };
 
 export type ContractRow = {
@@ -200,7 +207,7 @@ export async function createOrderContract(params: {
             body_text: built.text,
             // Стандартный договор готов к отправке клиенту сразу; свои условия
             // ждут юриста.
-            status: params.toLawyer === false ? 'approved' : 'on_review',
+            status: params.toLawyer === false ? 'standard' : 'on_review',
             submitted_at: params.toLawyer === false ? null : new Date().toISOString(),
             reviewed_at: params.toLawyer === false ? new Date().toISOString() : null,
             review_comment: params.toLawyer === false

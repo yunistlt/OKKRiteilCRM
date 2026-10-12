@@ -26,7 +26,12 @@ const formatDate = (value: string | null) =>
 export default function ApprovalsClient() {
     const [contracts, setContracts] = useState<Contract[]>([]);
     const [statuses, setStatuses] = useState<Array<{ code: string; label: string }>>([]);
-    const [status, setStatus] = useState('on_review');
+    /**
+     * Реестр открывается на ВСЕХ договорах: стандартные ложатся сюда сами и
+     * согласования не требуют, но видеть их юрист должен (решение владельца
+     * 12.10.2026). Нужен только разбор — фильтр «На согласовании» рядом.
+     */
+    const [status, setStatus] = useState('all');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [openId, setOpenId] = useState<number | null>(null);
