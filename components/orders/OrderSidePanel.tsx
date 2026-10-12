@@ -242,12 +242,14 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
     };
 
     const remove = async (fileId: number, name: string) => {
-        if (!confirm(`Убрать «${name}» из заказа?`)) return;
+        // Файл не удаляется — уходит в архив и остаётся в разделе «Файлы»
+        // (ЗАКОН владельца 12.10.2026).
+        if (!confirm(`Отправить «${name}» в архив? Файл останется в системе, но уйдёт из списка заказа.`)) return;
         setBusy(true);
         try {
             const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files/upload?fileId=${fileId}`, { method: 'DELETE' });
             const payload = await res.json();
-            if (!res.ok) throw new Error(payload.error || 'Не удалось убрать файл');
+            if (!res.ok) throw new Error(payload.error || 'Не удалось отправить файл в архив');
             load();
         } catch (e: any) {
             setNote(e.message);
@@ -370,8 +372,9 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
                                         onClick={() => remove(f.fileId, f.filename)}
                                         disabled={busy}
                                         className="text-[11px] font-semibold text-gray-500 hover:underline disabled:text-gray-300"
+                                        title="Файл уйдёт в архив и останется в разделе «Файлы»"
                                     >
-                                        убрать
+                                        в архив
                                     </button>
                                 </div>
                             ) : f.downloadable !== false && f.emailId ? (

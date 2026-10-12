@@ -44,6 +44,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         .select('id, file_name, content_type, size_bytes, note, uploaded_by, created_at')
         .eq('order_number', orderNumber)
         .is('deleted_at', null)
+        // Архивные в рабочем списке не показываем: они остаются в разделе «Файлы».
+        .is('archived_at', null)
         .order('created_at', { ascending: false });
 
     const manualFiles = ((manual as any[]) ?? []).map((row) => ({

@@ -32,6 +32,7 @@ export async function GET(req: Request) {
         .select('id, order_number, file_name, size_bytes, created_at')
         .ilike('file_name', `%${safe}%`)
         .is('deleted_at', null)
+        .is('archived_at', null)
         .order('created_at', { ascending: false })
         .limit(40);
 

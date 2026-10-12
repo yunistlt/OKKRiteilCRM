@@ -51,10 +51,26 @@ export async function GET(req: Request) {
     const sortColumn = COLUMNS[sortKey] ?? COLUMNS.at;
     const ascending = params.get('dir') === 'asc';
 
+    /**
+     * Архивные показываем по требованию.
+     *
+     * Удалять файлы нельзя — их только помечают архивными (ЗАКОН владельца
+     * 12.10.2026), поэтому архив должен быть виден и открываться, а не
+     * пропадать из системы.
+     */
+    const archive = params.get('archive') === '1';
+
     let request = supabase
         .from('order_files')
-        .select('id, order_number, file_name, content_type, size_bytes, uploaded_by, note, for_production, created_at', { count: 'exact' })
-        .is('deleted_at', null);
+        .select('id, order_number, file_name, content_type, size_bytes, uploaded_by, note, for_production, created_at, archived_at, archived_by, deleted_at', { count: 'exact' });
+
+    if (archive) {
+        // В архиве показываем и то, что удаляли до введения правила: сам файл
+        // оттуда уже стёрт, но след остаётся — видно, что он был.
+        request = request.or('archived_at.not.is.null,deleted_at.not.is.null');
+    } else {
+        request = request.is('deleted_at', null).is('archived_at', null);
+    }
 
     // Общий поиск сверху: и по названию файла, и по номеру заказа — человек
     // набирает то, что помнит.
@@ -99,6 +115,10 @@ export async function GET(req: Request) {
         note: row.note ?? null,
         forProduction: Boolean(row.for_production),
         at: row.created_at,
+        archivedAt: row.archived_at ?? row.deleted_at ?? null,
+        archivedBy: row.archived_by ?? null,
+        /** Файл стёрли до закона 12.10.2026 — открыть его уже нельзя. */
+        lost: Boolean(row.deleted_at),
     }));
 
     return NextResponse.json({ files, total: count ?? 0, page, pageSize, sortable: Object.keys(COLUMNS) });

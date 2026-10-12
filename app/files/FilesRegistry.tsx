@@ -22,6 +22,9 @@ type FileRow = {
     note: string | null;
     forProduction: boolean;
     at: string;
+    archivedAt: string | null;
+    archivedBy: string | null;
+    lost?: boolean;
 };
 
 type ColumnKey = 'name' | 'order' | 'size' | 'uploadedBy' | 'at' | 'note';
@@ -101,6 +104,10 @@ export default function FilesRegistry() {
     const [zoom, setZoom] = useState(100);
     const [presets, setPresets] = useState<Preset[]>([]);
     const [activePreset, setActivePreset] = useState<string | null>(null);
+    /** Быстрый просмотр: строка открывается сбоку, список под ней остаётся. */
+    const [preview, setPreview] = useState<FileRow | null>(null);
+    /** Архив — по переключателю: удалять файлы нельзя, их только архивируют. */
+    const [archive, setArchive] = useState(false);
     const [dragKey, setDragKey] = useState<ColumnKey | null>(null);
     const [overKey, setOverKey] = useState<ColumnKey | null>(null);
     const [loading, setLoading] = useState(true);
@@ -234,6 +241,7 @@ export default function FilesRegistry() {
                 dir: sort.dir,
             });
             if (applied) params.set('q', applied);
+            if (archive) params.set('archive', '1');
             for (const [key, value] of Object.entries(appliedFilters)) {
                 if (value) params.set(`f_${key}`, value);
             }
@@ -248,7 +256,7 @@ export default function FilesRegistry() {
         } finally {
             setLoading(false);
         }
-    }, [page, pageSize, applied, appliedFilters, sort]);
+    }, [page, pageSize, applied, appliedFilters, sort, archive]);
 
     useEffect(() => {
         load();
@@ -331,6 +339,14 @@ export default function FilesRegistry() {
 
     const cell = (key: ColumnKey, row: FileRow) => {
         if (key === 'name') {
+            if (row.lost) {
+                return (
+                    <>
+                        <span className="font-semibold text-gray-400 line-through">{row.name}</span>
+                        <span className="ml-2 border border-red-200 bg-red-50 px-1 py-0.5 text-[10px] font-semibold text-red-700">файл стёрт до 12.10.2026</span>
+                    </>
+                );
+            }
             return (
                 <>
                     <a
@@ -343,6 +359,9 @@ export default function FilesRegistry() {
                     </a>
                     {row.forProduction && (
                         <span className="ml-2 bg-gray-900 px-1 py-0.5 text-[10px] font-semibold text-white">в производство</span>
+                    )}
+                    {row.archivedAt && (
+                        <span className="ml-2 border border-gray-300 px-1 py-0.5 text-[10px] font-semibold text-gray-500">в архиве</span>
                     )}
                 </>
             );
@@ -362,6 +381,17 @@ export default function FilesRegistry() {
                 <div className="flex items-baseline gap-3">
                     <h1 className="text-xl font-bold text-gray-900">Файлы</h1>
                     <span className="text-xs text-gray-500">{filtersOn ? 'найдено' : 'всего'} {formatIntRu(total)}</span>
+                    {/* Файлы не удаляются — только уходят в архив (закон владельца
+                        12.10.2026). Здесь их видно и отсюда они открываются. */}
+                    <label className="flex items-center gap-1 text-xs text-gray-600">
+                        <input
+                            type="checkbox"
+                            checked={archive}
+                            onChange={(e) => { setArchive(e.target.checked); setPage(1); }}
+                            className="h-3.5 w-3.5"
+                        />
+                        показать архивные
+                    </label>
                 </div>
                 <form
                     className="flex items-center gap-2"
@@ -484,7 +514,15 @@ export default function FilesRegistry() {
                             <tr><td colSpan={visible.length} className="px-4 py-6 text-center text-gray-500">Ничего не нашлось</td></tr>
                         )}
                         {!loading && rows.map((row, index) => (
-                            <tr key={row.id} className={`border-b border-gray-100 hover:bg-amber-50 ${index % 2 ? 'bg-gray-50' : ''}`}>
+                            <tr
+                                key={row.id}
+                                onClick={(e) => {
+                                    // Щелчок по ссылке — это ссылка, а не просмотр.
+                                    if ((e.target as HTMLElement).closest('a')) return;
+                                    setPreview(row);
+                                }}
+                                className={`cursor-pointer border-b border-gray-100 hover:bg-amber-50 ${preview?.id === row.id ? 'bg-amber-100' : index % 2 ? 'bg-gray-50' : ''}`}
+                            >
                                 {visible.map((key) => (
                                     <td key={key} className={`px-4 py-3 ${key === 'size' ? 'text-right' : ''} ${key === 'name' || key === 'order' ? '' : 'text-gray-600'}`}>
                                         {cell(key, row)}
@@ -535,6 +573,8 @@ export default function FilesRegistry() {
                 </div>
             </div>
 
+            {preview && <FilePreview file={preview} onClose={() => setPreview(null)} />}
+
             {columnsOpen && (
                 <ViewSettingsModal
                     title="Колонки"
@@ -559,5 +599,79 @@ export default function FilesRegistry() {
                 />
             )}
         </div>
+    );
+}
+
+/**
+ * Быстрый просмотр — боковая панель вместо ухода со страницы (золото §6).
+ *
+ * Список с отбором и страницей остаётся на месте: человек смотрит файл,
+ * закрывает панель и продолжает с того же места.
+ */
+function FilePreview({ file, onClose }: { file: FileRow; onClose: () => void }) {
+    const href = orderFileHref({ orderNumber: file.orderNumber, fileId: file.id });
+    const type = (file.contentType || '').toLowerCase();
+    const isImage = type.startsWith('image/');
+    const isPdf = type.includes('pdf');
+
+    // Закрываем клавишей Esc — как все наши окна.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [onClose]);
+
+    const row = (label: string, value: React.ReactNode) => (
+        <div className="flex gap-2 border-b border-gray-100 py-1.5">
+            <span className="w-28 shrink-0 text-[11px] uppercase tracking-wide text-gray-500">{label}</span>
+            <span className="min-w-0 break-words text-gray-900">{value}</span>
+        </div>
+    );
+
+    return (
+        <aside className="fixed right-0 top-0 z-[120] flex h-screen w-[460px] max-w-full flex-col border-l border-gray-300 bg-white text-xs shadow-xl">
+            <div className="flex items-start justify-between gap-3 border-b border-gray-200 bg-gray-100 px-4 py-3">
+                <div className="min-w-0">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500">Файл</div>
+                    <div className="break-words text-sm font-semibold text-gray-900">{file.name}</div>
+                </div>
+                <button type="button" onClick={onClose} aria-label="Закрыть" className="px-2 text-xl leading-none text-gray-400 hover:text-gray-900">×</button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-auto">
+                <div className="border-b border-gray-200 bg-gray-50 p-3">
+                    {isImage && <img src={href} alt={file.name} className="max-h-[340px] w-full object-contain" />}
+                    {isPdf && <iframe src={href} title={file.name} className="h-[340px] w-full border border-gray-200 bg-white" />}
+                    {!isImage && !isPdf && (
+                        <div className="py-8 text-center text-gray-500">
+                            Такой файл показать прямо здесь нельзя — откройте его кнопкой ниже.
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-4">
+                    {row('Заказ', <OrderNumberLink number={file.orderNumber} />)}
+                    {row('Размер', formatSize(file.size))}
+                    {row('Тип', file.contentType || <span className="text-gray-300">—</span>)}
+                    {row('Приложил', file.uploadedBy || <span className="text-gray-300">—</span>)}
+                    {row('Когда', formatMoment(file.at))}
+                    {row('Примечание', file.note || <span className="text-gray-300">—</span>)}
+                    {row('В производство', file.forProduction ? 'да' : 'нет')}
+                    {file.archivedAt && row('В архиве с', `${formatMoment(file.archivedAt)}${file.archivedBy ? ` · ${file.archivedBy}` : ''}`)}
+                </div>
+            </div>
+
+            <div className="flex items-center gap-2 border-t border-gray-200 px-4 py-3">
+                <a href={href} target="_blank" rel="noreferrer" className="bg-gray-900 px-3 py-1 font-semibold text-white hover:bg-gray-700">
+                    Открыть файл
+                </a>
+                <a href={href} download={file.name} className="border border-gray-300 px-3 py-1 font-semibold text-gray-700 hover:bg-gray-100">
+                    Скачать
+                </a>
+                <a href={`/orders?order=${encodeURIComponent(file.orderNumber)}`} className="ml-auto font-semibold text-blue-700 hover:underline">
+                    Перейти в заказ →
+                </a>
+            </div>
+        </aside>
     );
 }

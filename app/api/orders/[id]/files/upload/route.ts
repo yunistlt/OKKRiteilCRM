@@ -104,14 +104,21 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
         return NextResponse.json({ error: 'Файл не найден в этом заказе' }, { status: 404 });
     }
 
+    /**
+     * Файл не удаляем — помечаем архивным (ЗАКОН владельца 12.10.2026:
+     * «никакие файлы нельзя удалять, можно только пометить как архивные»).
+     *
+     * Раньше здесь же стирался сам файл из хранилища, и вернуть его было
+     * нельзя. Теперь он остаётся на месте и открывается из архива.
+     */
     const { error } = await supabase
         .from('order_files')
-        .update({ deleted_at: new Date().toISOString() })
+        .update({
+            archived_at: new Date().toISOString(),
+            archived_by: session.user.email || session.user.username || null,
+        })
         .eq('id', fileId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // Сам файл из хранилища убираем: держать мусор незачем.
-    await supabase.storage.from((row as any).storage_bucket).remove([(row as any).storage_path]);
-
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, archived: true });
 }
