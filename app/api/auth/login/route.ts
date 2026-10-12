@@ -116,11 +116,21 @@ export async function POST(req: Request) {
             }
         }
 
-        const { data: user, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('username', identifier)
-            .single();
+        /**
+         * Запасной вход — по логину ИЛИ по почте.
+         *
+         * В форме написано «Логин или email», но здесь искали только по
+         * логину: человек вводил свою почту со старым паролем и получал
+         * «Неверный логин или пароль» (Лариса Хоменко и Екатерина Симонова
+         * 12.10.2026 — «не можем войти»).
+         */
+        // Запятые и скобки ломают фильтр PostgREST — такой логин ищем только по имени.
+        const safeIdentifier = /[,()]/.test(identifier) ? null : identifier;
+        const lookup = supabase.from('users').select('*');
+        const { data: user, error } = await (safeIdentifier
+            ? lookup.or(`username.eq.${safeIdentifier},email.eq.${safeIdentifier}`)
+            : lookup.eq('username', identifier)
+        ).maybeSingle();
 
         if (error || !user) {
             return NextResponse.json({ error: 'Неверный логин или пароль' }, { status: 401 });

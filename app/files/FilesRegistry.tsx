@@ -1,12 +1,16 @@
 'use client';
 
-// Все файлы заказов одним списком: поиск, фильтр по каждой колонке и порядок
-// строк по любой колонке — золотой стандарт таблиц (golds/GOLD_UI_TABLES.md).
-// Ширина колонок и раскладка запоминаются за человеком на сервере.
-import { useCallback, useEffect, useRef, useState } from 'react';
+// Все файлы заказов одним списком по золотому стандарту таблиц
+// (golds/GOLD_UI_TABLES.md): поиск, фильтр по каждой колонке, порядок строк,
+// состав и порядок колонок, ширина, масштаб и сохранённые наборы фильтров.
+// Всё это запоминается за человеком на сервере и переезжает с ним на любой
+// компьютер.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
+import ViewSettingsModal from '@/components/orders/ViewSettingsModal';
 import { orderFileHref } from '@/lib/orders/file-href';
 import { formatIntRu } from '@/lib/format';
+import type { ViewItem } from '@/lib/orders-view';
 
 type FileRow = {
     id: number;
@@ -20,16 +24,28 @@ type FileRow = {
     at: string;
 };
 
-type SortKey = 'name' | 'order' | 'size' | 'uploadedBy' | 'at' | 'note';
+type ColumnKey = 'name' | 'order' | 'size' | 'uploadedBy' | 'at' | 'note';
 
-const COLUMNS: { key: SortKey; title: string; align?: 'right' }[] = [
-    { key: 'name', title: 'Файл' },
-    { key: 'order', title: 'Заказ' },
-    { key: 'size', title: 'Размер', align: 'right' },
-    { key: 'uploadedBy', title: 'Приложил' },
-    { key: 'at', title: 'Когда' },
-    { key: 'note', title: 'Примечание' },
+const COLUMN_TITLES: Record<ColumnKey, string> = {
+    name: 'Файл',
+    order: 'Заказ',
+    size: 'Размер',
+    uploadedBy: 'Приложил',
+    at: 'Когда',
+    note: 'Примечание',
+};
+
+/** Реестр для окна «Колонки»: что можно показать и что снять нельзя. */
+const COLUMN_REGISTRY: ViewItem[] = [
+    { key: 'name', label: 'Файл', group: 'Основное', locked: true },
+    { key: 'order', label: 'Заказ', group: 'Основное', locked: true },
+    { key: 'size', label: 'Размер', group: 'Основное' },
+    { key: 'uploadedBy', label: 'Приложил', group: 'Кто и когда' },
+    { key: 'at', label: 'Когда', group: 'Кто и когда' },
+    { key: 'note', label: 'Примечание', group: 'Основное' },
 ];
+
+const DEFAULT_COLUMNS: ColumnKey[] = ['name', 'order', 'size', 'uploadedBy', 'at', 'note'];
 
 /** Что набрано в строке фильтров под шапкой таблицы. */
 type Filters = {
@@ -47,9 +63,14 @@ const EMPTY_FILTERS: Filters = {
     name: '', order: '', sizeFrom: '', sizeTo: '', dateFrom: '', dateTo: '', uploadedBy: '', note: '',
 };
 
-const VIEW_KEY = 'files.layout';
+/** Сохранённый набор фильтров — «вкладка» над таблицей (золото §6). */
+type Preset = { name: string; filters: Filters; query: string };
 
+const VIEW_KEY = 'files.layout';
 const PAGE_SIZES = [20, 50, 100];
+const ZOOM_MIN = 50;
+const ZOOM_MAX = 130;
+const ZOOM_STEP = 10;
 
 function formatSize(bytes: number | null) {
     if (!bytes && bytes !== 0) return '—';
@@ -73,8 +94,15 @@ export default function FilesRegistry() {
     const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
     /** Применённые фильтры: набор в полях не дёргает сервер на каждую букву. */
     const [appliedFilters, setAppliedFilters] = useState<Filters>(EMPTY_FILTERS);
-    const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'at', dir: 'desc' });
+    const [sort, setSort] = useState<{ key: ColumnKey; dir: 'asc' | 'desc' }>({ key: 'at', dir: 'desc' });
     const [widths, setWidths] = useState<Record<string, number>>({});
+    const [columns, setColumns] = useState<ColumnKey[]>(DEFAULT_COLUMNS);
+    const [columnsOpen, setColumnsOpen] = useState(false);
+    const [zoom, setZoom] = useState(100);
+    const [presets, setPresets] = useState<Preset[]>([]);
+    const [activePreset, setActivePreset] = useState<string | null>(null);
+    const [dragKey, setDragKey] = useState<ColumnKey | null>(null);
+    const [overKey, setOverKey] = useState<ColumnKey | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -90,7 +118,7 @@ export default function FilesRegistry() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filters]);
 
-    // Раскладка (ширины и порядок строк) — за человеком на сервере, закон §7.
+    // Раскладка — за человеком на сервере, закон §7.
     useEffect(() => {
         fetch(`/api/settings/view?viewKey=${VIEW_KEY}`)
             .then((r) => (r.ok ? r.json() : null))
@@ -100,11 +128,26 @@ export default function FilesRegistry() {
                 if (saved.widths && typeof saved.widths === 'object') setWidths(saved.widths);
                 if (saved.sort?.key) setSort({ key: saved.sort.key, dir: saved.sort.dir === 'asc' ? 'asc' : 'desc' });
                 if (PAGE_SIZES.includes(Number(saved.pageSize))) setPageSize(Number(saved.pageSize));
+                if (Array.isArray(saved.columns) && saved.columns.length) {
+                    const known = saved.columns.filter((key: string): key is ColumnKey => key in COLUMN_TITLES);
+                    if (known.length) setColumns(known);
+                }
+                if (Number.isFinite(Number(saved.zoom))) setZoom(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(saved.zoom))));
+                if (Array.isArray(saved.presets)) setPresets(saved.presets);
             })
             .catch(() => undefined);
     }, []);
 
-    const saveLayout = useCallback((next: { widths?: Record<string, number>; sort?: typeof sort; pageSize?: number }) => {
+    type Layout = {
+        widths?: Record<string, number>;
+        sort?: { key: ColumnKey; dir: 'asc' | 'desc' };
+        pageSize?: number;
+        columns?: ColumnKey[];
+        zoom?: number;
+        presets?: Preset[];
+    };
+
+    const saveLayout = useCallback((next: Layout) => {
         fetch('/api/settings/view', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -114,13 +157,16 @@ export default function FilesRegistry() {
                     widths: next.widths ?? widths,
                     sort: next.sort ?? sort,
                     pageSize: next.pageSize ?? pageSize,
+                    columns: next.columns ?? columns,
+                    zoom: next.zoom ?? zoom,
+                    presets: next.presets ?? presets,
                 },
             }),
         }).catch(() => undefined);
-    }, [widths, sort, pageSize]);
+    }, [widths, sort, pageSize, columns, zoom, presets]);
 
-    const toggleSort = (key: SortKey) => {
-        const next: { key: SortKey; dir: 'asc' | 'desc' } = sort.key === key
+    const toggleSort = (key: ColumnKey) => {
+        const next: { key: ColumnKey; dir: 'asc' | 'desc' } = sort.key === key
             ? { key, dir: sort.dir === 'asc' ? 'desc' : 'asc' }
             : { key, dir: 'asc' };
         setSort(next);
@@ -148,6 +194,35 @@ export default function FilesRegistry() {
         document.addEventListener('mousemove', move);
         document.addEventListener('mouseup', up);
     };
+
+    /** Перетащили заголовок — колонка встала на место того, над которым отпустили. */
+    const dropColumn = (target: ColumnKey) => {
+        if (!dragKey || dragKey === target) { setDragKey(null); setOverKey(null); return; }
+        const next = columns.filter((key) => key !== dragKey);
+        next.splice(next.indexOf(target), 0, dragKey);
+        setColumns(next);
+        saveLayout({ columns: next });
+        setDragKey(null);
+        setOverKey(null);
+    };
+
+    const changeZoom = useCallback((value: number) => {
+        const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value));
+        setZoom(next);
+        saveLayout({ zoom: next });
+    }, [saveLayout]);
+
+    // Ctrl/Cmd + «=» / «−» / «0» — как в Google Таблицах; системный зум перехватываем.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (!e.ctrlKey && !e.metaKey) return;
+            if (e.key === '=' || e.key === '+') { e.preventDefault(); changeZoom(zoom + ZOOM_STEP); }
+            else if (e.key === '-' || e.key === '_') { e.preventDefault(); changeZoom(zoom - ZOOM_STEP); }
+            else if (e.key === '0') { e.preventDefault(); changeZoom(100); }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [zoom, changeZoom]);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -182,6 +257,40 @@ export default function FilesRegistry() {
     const pages = Math.max(1, Math.ceil(total / pageSize));
     const filtersOn = Object.values(appliedFilters).some(Boolean) || Boolean(applied);
 
+    const resetAll = () => {
+        setQuery('');
+        setApplied('');
+        setFilters(EMPTY_FILTERS);
+        setAppliedFilters(EMPTY_FILTERS);
+        setActivePreset(null);
+        setPage(1);
+    };
+
+    const applyPreset = (preset: Preset) => {
+        setFilters(preset.filters);
+        setAppliedFilters(preset.filters);
+        setQuery(preset.query);
+        setApplied(preset.query);
+        setActivePreset(preset.name);
+        setPage(1);
+    };
+
+    const savePreset = () => {
+        const name = window.prompt('Как назвать этот набор отборов?')?.trim();
+        if (!name) return;
+        const next = [...presets.filter((p) => p.name !== name), { name, filters, query }];
+        setPresets(next);
+        setActivePreset(name);
+        saveLayout({ presets: next });
+    };
+
+    const removePreset = (name: string) => {
+        const next = presets.filter((p) => p.name !== name);
+        setPresets(next);
+        if (activePreset === name) setActivePreset(null);
+        saveLayout({ presets: next });
+    };
+
     const filterInput = (key: keyof Filters, placeholder: string, type: 'text' | 'date' | 'number' = 'text') => (
         <input
             type={type}
@@ -192,29 +301,60 @@ export default function FilesRegistry() {
         />
     );
 
-    const headerCell = (column: typeof COLUMNS[number], filterCell: React.ReactNode) => (
-        <th
-            key={column.key}
-            className="relative px-4 py-2 align-top font-normal"
-            style={widths[column.key] ? { width: widths[column.key], minWidth: widths[column.key] } : undefined}
-        >
-            <button
-                type="button"
-                onClick={() => toggleSort(column.key)}
-                className={`flex w-full items-center gap-1 ${column.align === 'right' ? 'justify-end' : ''} text-left hover:text-gray-900`}
-                title="Упорядочить по этой колонке"
-            >
-                <span className="min-w-0 truncate">{column.title}</span>
-                <span className="shrink-0 text-gray-400">{sort.key === column.key ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
-            </button>
-            <div className="mt-1 font-normal">{filterCell}</div>
-            {/* Ширину тянут за правый край заголовка — закон §7.0. */}
-            <span
-                onMouseDown={(e) => startResize(e, column.key)}
-                className="absolute right-0 top-0 h-full w-1 cursor-col-resize select-none hover:bg-blue-400"
-            />
-        </th>
-    );
+    /** Поле (или пара полей) отбора под заголовком конкретной колонки. */
+    const filterFor = (key: ColumnKey) => {
+        if (key === 'name') return filterInput('name', 'часть названия');
+        if (key === 'order') return filterInput('order', 'номер');
+        if (key === 'uploadedBy') return filterInput('uploadedBy', 'кто');
+        if (key === 'note') return filterInput('note', 'часть примечания');
+        if (key === 'size') {
+            return (
+                <div className="flex gap-1">
+                    {filterInput('sizeFrom', 'от, КБ', 'number')}
+                    {filterInput('sizeTo', 'до, КБ', 'number')}
+                </div>
+            );
+        }
+        return (
+            <div className="flex gap-1">
+                {filterInput('dateFrom', '', 'date')}
+                {filterInput('dateTo', '', 'date')}
+            </div>
+        );
+    };
+
+    const columnFiltered = (key: ColumnKey) => {
+        if (key === 'size') return Boolean(appliedFilters.sizeFrom || appliedFilters.sizeTo);
+        if (key === 'at') return Boolean(appliedFilters.dateFrom || appliedFilters.dateTo);
+        return Boolean(appliedFilters[key as keyof Filters]);
+    };
+
+    const cell = (key: ColumnKey, row: FileRow) => {
+        if (key === 'name') {
+            return (
+                <>
+                    <a
+                        href={orderFileHref({ orderNumber: row.orderNumber, fileId: row.id })}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-blue-700 hover:underline"
+                    >
+                        {row.name}
+                    </a>
+                    {row.forProduction && (
+                        <span className="ml-2 bg-gray-900 px-1 py-0.5 text-[10px] font-semibold text-white">в производство</span>
+                    )}
+                </>
+            );
+        }
+        if (key === 'order') return <OrderNumberLink number={row.orderNumber} />;
+        if (key === 'size') return formatSize(row.size);
+        if (key === 'uploadedBy') return row.uploadedBy || <span className="text-gray-300">—</span>;
+        if (key === 'at') return formatMoment(row.at);
+        return row.note || <span className="text-gray-300">—</span>;
+    };
+
+    const visible = useMemo(() => columns.filter((key) => key in COLUMN_TITLES), [columns]);
 
     return (
         <div className="flex h-screen flex-col bg-gray-50 p-4">
@@ -241,22 +381,43 @@ export default function FilesRegistry() {
                         Найти
                     </button>
                     {filtersOn && (
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setQuery('');
-                                setApplied('');
-                                setFilters(EMPTY_FILTERS);
-                                setAppliedFilters(EMPTY_FILTERS);
-                                setPage(1);
-                            }}
-                            className="px-2 py-1 text-xs font-semibold text-gray-500 hover:text-gray-900"
-                        >
-                            Сбросить всё
-                        </button>
+                        <>
+                            <button
+                                type="button"
+                                onClick={savePreset}
+                                className="px-2 py-1 text-xs font-semibold text-blue-700 hover:underline"
+                                title="Запомнить этот набор отборов вкладкой"
+                            >
+                                Сохранить отбор
+                            </button>
+                            <button type="button" onClick={resetAll} className="px-2 py-1 text-xs font-semibold text-gray-500 hover:text-gray-900">
+                                Сбросить всё
+                            </button>
+                        </>
                     )}
+                    {/* Масштаб таблицы — золото §6. */}
+                    <span className="ml-2 flex items-center border border-gray-300 text-xs">
+                        <button type="button" onClick={() => changeZoom(zoom - ZOOM_STEP)} disabled={zoom <= ZOOM_MIN} className="px-2 py-1 font-semibold disabled:text-gray-300 hover:bg-gray-200">−</button>
+                        <button type="button" onClick={() => changeZoom(100)} className="px-1 py-1 tabular-nums" title="Вернуть 100%">{zoom}%</button>
+                        <button type="button" onClick={() => changeZoom(zoom + ZOOM_STEP)} disabled={zoom >= ZOOM_MAX} className="px-2 py-1 font-semibold disabled:text-gray-300 hover:bg-gray-200">+</button>
+                    </span>
                 </form>
             </div>
+
+            {/* Сохранённые наборы отборов — вкладками над таблицей. */}
+            {presets.length > 0 && (
+                <div className="mb-2 flex flex-wrap items-center gap-1">
+                    {presets.map((preset) => (
+                        <span
+                            key={preset.name}
+                            className={`flex items-center border text-xs ${activePreset === preset.name ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-300 bg-white text-gray-700'}`}
+                        >
+                            <button type="button" onClick={() => applyPreset(preset)} className="px-2 py-1 font-semibold">{preset.name}</button>
+                            <button type="button" onClick={() => removePreset(preset.name)} title="Убрать набор" className="px-1 py-1 opacity-60 hover:opacity-100">×</button>
+                        </span>
+                    ))}
+                </div>
+            )}
 
             {/* Закон «заглушки видны»: честно говорим, чего в списке нет. */}
             <div className="mb-2 text-[11px] text-gray-500">
@@ -266,54 +427,69 @@ export default function FilesRegistry() {
             {error && <div className="mb-3 border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
 
             <div className="min-h-0 flex-1 overflow-auto bg-white">
-                <table className="min-w-full text-xs">
+                {/* Масштаб вешаем на саму таблицу: иначе ломается прилипшая шапка. */}
+                <table className="min-w-full text-xs" style={{ zoom: `${zoom}%` }}>
                     <thead className="sticky top-0 z-10 bg-gray-100 text-left text-gray-600">
                         <tr>
-                            {headerCell(COLUMNS[0], filterInput('name', 'часть названия'))}
-                            {headerCell(COLUMNS[1], filterInput('order', 'номер'))}
-                            {headerCell(COLUMNS[2], (
-                                <div className="flex gap-1">
-                                    {filterInput('sizeFrom', 'от, КБ', 'number')}
-                                    {filterInput('sizeTo', 'до, КБ', 'number')}
-                                </div>
+                            {visible.map((key, index) => (
+                                <th
+                                    key={key}
+                                    draggable
+                                    onDragStart={() => setDragKey(key)}
+                                    onDragOver={(e) => { e.preventDefault(); setOverKey(key); }}
+                                    onDrop={() => dropColumn(key)}
+                                    onDragEnd={() => { setDragKey(null); setOverKey(null); }}
+                                    className={`relative cursor-move px-4 py-2 align-top font-normal ${overKey === key && dragKey && dragKey !== key ? 'border-l-2 border-blue-500' : ''}`}
+                                    style={widths[key] ? { width: widths[key], minWidth: widths[key] } : undefined}
+                                >
+                                    <span className="flex items-start justify-between gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleSort(key)}
+                                            className={`flex min-w-0 items-center gap-1 ${key === 'size' ? 'justify-end' : ''} text-left hover:text-gray-900`}
+                                            title="Упорядочить по этой колонке"
+                                        >
+                                            <span className="min-w-0 truncate">{COLUMN_TITLES[key]}</span>
+                                            <span className="shrink-0 text-gray-400">{sort.key === key ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+                                            {/* Отбор по колонке применён — видно по значку. */}
+                                            {columnFiltered(key) && <span className="shrink-0 text-blue-600">⦿</span>}
+                                        </button>
+                                        {index === visible.length - 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setColumnsOpen(true)}
+                                                title="Настроить колонки"
+                                                aria-label="Настроить колонки"
+                                                className="shrink-0 text-gray-500 hover:text-gray-900"
+                                            >
+                                                ⚙
+                                            </button>
+                                        )}
+                                    </span>
+                                    <div className="mt-1 font-normal">{filterFor(key)}</div>
+                                    {/* Ширину тянут за правый край заголовка — закон §7.0. */}
+                                    <span
+                                        onMouseDown={(e) => startResize(e, key)}
+                                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize select-none hover:bg-blue-400"
+                                    />
+                                </th>
                             ))}
-                            {headerCell(COLUMNS[3], filterInput('uploadedBy', 'кто'))}
-                            {headerCell(COLUMNS[4], (
-                                <div className="flex gap-1">
-                                    {filterInput('dateFrom', '', 'date')}
-                                    {filterInput('dateTo', '', 'date')}
-                                </div>
-                            ))}
-                            {headerCell(COLUMNS[5], filterInput('note', 'часть примечания'))}
                         </tr>
                     </thead>
                     <tbody>
                         {loading && (
-                            <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500">Загружаю…</td></tr>
+                            <tr><td colSpan={visible.length} className="px-4 py-6 text-center text-gray-500">Загружаю…</td></tr>
                         )}
                         {!loading && rows.length === 0 && (
-                            <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500">Ничего не нашлось</td></tr>
+                            <tr><td colSpan={visible.length} className="px-4 py-6 text-center text-gray-500">Ничего не нашлось</td></tr>
                         )}
                         {!loading && rows.map((row, index) => (
                             <tr key={row.id} className={`border-b border-gray-100 hover:bg-amber-50 ${index % 2 ? 'bg-gray-50' : ''}`}>
-                                <td className="px-4 py-3">
-                                    <a
-                                        href={orderFileHref({ orderNumber: row.orderNumber, fileId: row.id })}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="font-semibold text-blue-700 hover:underline"
-                                    >
-                                        {row.name}
-                                    </a>
-                                    {row.forProduction && (
-                                        <span className="ml-2 bg-gray-900 px-1 py-0.5 text-[10px] font-semibold text-white">в производство</span>
-                                    )}
-                                </td>
-                                <td className="px-4 py-3"><OrderNumberLink number={row.orderNumber} /></td>
-                                <td className="px-4 py-3 text-right text-gray-600">{formatSize(row.size)}</td>
-                                <td className="px-4 py-3 text-gray-600">{row.uploadedBy || '—'}</td>
-                                <td className="px-4 py-3 text-gray-600">{formatMoment(row.at)}</td>
-                                <td className="px-4 py-3 text-gray-600">{row.note || '—'}</td>
+                                {visible.map((key) => (
+                                    <td key={key} className={`px-4 py-3 ${key === 'size' ? 'text-right' : ''} ${key === 'name' || key === 'order' ? '' : 'text-gray-600'}`}>
+                                        {cell(key, row)}
+                                    </td>
+                                ))}
                             </tr>
                         ))}
                     </tbody>
@@ -337,18 +513,6 @@ export default function FilesRegistry() {
                             {size}
                         </button>
                     ))}
-                    <button
-                        type="button"
-                        onClick={() => {
-                            const base = { key: 'at' as SortKey, dir: 'desc' as const };
-                            setWidths({});
-                            setSort(base);
-                            saveLayout({ widths: {}, sort: base });
-                        }}
-                        className="ml-2 px-2 py-1 font-semibold text-gray-500 hover:text-gray-900"
-                    >
-                        Сбросить раскладку
-                    </button>
                 </div>
                 <div className="flex items-center gap-2">
                     <button
@@ -370,6 +534,30 @@ export default function FilesRegistry() {
                     </button>
                 </div>
             </div>
+
+            {columnsOpen && (
+                <ViewSettingsModal
+                    title="Колонки"
+                    registry={COLUMN_REGISTRY}
+                    selected={columns}
+                    defaults={DEFAULT_COLUMNS}
+                    onSave={(next) => {
+                        const known = next.filter((key): key is ColumnKey => key in COLUMN_TITLES);
+                        setColumns(known);
+                        saveLayout({ columns: known });
+                        setColumnsOpen(false);
+                    }}
+                    onResetLayout={() => {
+                        const base = { key: 'at' as ColumnKey, dir: 'desc' as const };
+                        setSort(base);
+                        setWidths({});
+                        setColumns(DEFAULT_COLUMNS);
+                        setZoom(100);
+                        saveLayout({ sort: base, widths: {}, columns: DEFAULT_COLUMNS, zoom: 100 });
+                    }}
+                    onClose={() => setColumnsOpen(false)}
+                />
+            )}
         </div>
     );
 }
