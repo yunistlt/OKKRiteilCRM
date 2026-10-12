@@ -36,7 +36,13 @@ export async function GET(req: NextRequest) {
         // очереди. Разовая работа по хвосту: заказы, уехавшие до 12.10.2026, стоят в
         // ЦехУспехе без картинок. Гонять партиями, пока `taken` не станет нулём.
         if (req.nextUrl.searchParams.get('images') === '1') {
-            const images = await backfillProductionImages(sql, limit);
+            // ?order=54776,54855 — переотправить названные заказы, даже если их уже досылали:
+            // отметка говорит, что слали мы, а не что у них записалось.
+            const orderNumbers = (req.nextUrl.searchParams.get('order') || '')
+                .split(',')
+                .map((value) => value.trim())
+                .filter(Boolean);
+            const images = await backfillProductionImages(sql, limit, orderNumbers);
             return NextResponse.json({ ok: true, ...images });
         }
         const report = await pushProductionQueue(sql, limit);

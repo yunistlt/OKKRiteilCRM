@@ -187,24 +187,46 @@ export type BackfillResult = {
  * этого не нужно, и адрес у позиции без карточки на сайте остаётся пустым (`null`) —
  * пустое поле у ЦехУспеха ничего не затирает.
  */
-export async function backfillProductionImages(sql: Sql, limit = BATCH): Promise<BackfillResult> {
+export async function backfillProductionImages(
+    sql: Sql,
+    limit = BATCH,
+    orderNumbers: string[] = [],
+): Promise<BackfillResult> {
     const url = process.env.TSEH_API_URL;
     const key = process.env.TSEH_API_KEY;
     if (!url || !key) return { taken: 0, updated: 0, withoutUrls: 0, failed: 0, skipped: 'нет TSEH_API_URL/TSEH_API_KEY' };
 
-    const rows = (await sql`
-        SELECT id, order_number, order_id, customer_name, customer_inn, manager_name,
-               production_days, production_days_unit, shipping_terms,
-               seller_name, seller_inn, seller_account, seller_bank,
-               items, total_summ, manager_comment
-        FROM tseh_production_outbox
-        WHERE tseh_order_no IS NOT NULL
-          AND jsonb_typeof(items) = 'array'
-          AND jsonb_array_length(items) > 0
-          AND NOT (items -> 0 ? 'imageUrl')
-        ORDER BY created_at DESC
-        LIMIT ${Math.max(1, Math.min(limit, BATCH))}
-    `) as unknown as OutboxRow[];
+    const take = Math.max(1, Math.min(limit, BATCH));
+
+    // Названы конкретные заказы — шлём их независимо от отметки. Отметка говорит, что мы
+    // досылали, а не что у них записалось: 12.10.2026 ЦехУспех принимал повторный заказ,
+    // но до позиций не доходил, и адреса у него оставались пустыми. После починки на их
+    // стороне такие заказы надо переотправить поимённо.
+    const rows = (orderNumbers.length
+        ? await sql`
+            SELECT id, order_number, order_id, customer_name, customer_inn, manager_name,
+                   production_days, production_days_unit, shipping_terms,
+                   seller_name, seller_inn, seller_account, seller_bank,
+                   items, total_summ, manager_comment
+            FROM tseh_production_outbox
+            WHERE tseh_order_no IS NOT NULL
+              AND order_number = ANY(${orderNumbers})
+            ORDER BY created_at DESC
+            LIMIT ${take}
+        `
+        : await sql`
+            SELECT id, order_number, order_id, customer_name, customer_inn, manager_name,
+                   production_days, production_days_unit, shipping_terms,
+                   seller_name, seller_inn, seller_account, seller_bank,
+                   items, total_summ, manager_comment
+            FROM tseh_production_outbox
+            WHERE tseh_order_no IS NOT NULL
+              AND jsonb_typeof(items) = 'array'
+              AND jsonb_array_length(items) > 0
+              AND NOT (items -> 0 ? 'imageUrl')
+            ORDER BY created_at DESC
+            LIMIT ${take}
+        `) as unknown as OutboxRow[];
 
     const out: BackfillResult = { taken: rows.length, updated: 0, withoutUrls: 0, failed: 0 };
 
