@@ -1,4 +1,5 @@
 import { normalizePhone } from './phone-utils';
+import { callExtension } from '@/lib/calls/extension';
 import { supabase } from '@/utils/supabase';
 import { loadLegacyCallContext } from './telphin-legacy-compat';
 import { resolveTranscriptionStatus } from '@/lib/telphin-call-outcome';
@@ -160,6 +161,14 @@ export async function upsertCanonicalTelphinCall(
     duration_sec: durationSec,
     recording_url: recordingUrl,
     raw_payload: rawPayload,
+    /**
+     * Чей добавочный — считаем здесь, один раз.
+     *
+     * В ногах разговора их до девяти, и разбирать их при каждом показе списка
+     * дорого: двести строк тянулись 7,5 секунды, экран висел на «Загружаю…»
+     * (12.10.2026).
+     */
+    manager_extension: callExtension({ direction, raw_payload: rawPayload }) || null,
     ingested_at: new Date().toISOString(),
   };
 

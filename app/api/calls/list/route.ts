@@ -9,13 +9,18 @@ export const dynamic = 'force-dynamic';
 /**
  * Общий список звонков — для раздела «Звонки».
  *
- * Источник — `retailcrm_calls`: привязку звонка к заказу и менеджеру сделала сама
- * RetailCRM, там же, где работает человек. Наш матчинг по номеру телефона
- * (`call_order_matches`) ошибается примерно в трети случаев и в общий список не
- * идёт — закон проекта, см. `lib/calls-of-order.ts`.
+ * Источник — НАШИ звонки из Телфина (`raw_telphin_calls`). Раньше список
+ * строился по `retailcrm_calls`: привязку к заказу делала сама RetailCRM. С
+ * 09.10.2026 синхронизация с ней снята (живём в ОКК), и список встал — 12.10
+ * менеджеры увидели «Звонков не найдено» за сегодняшний день при живой
+ * телефонии.
  *
- * Запись разговора и расшифровку добираем из `raw_telphin_calls` по
- * идентификатору записи.
+ * Привязку к заказу и менеджера берём, в порядке надёжности:
+ *  1. `retailcrm_calls` — для старых звонков, где это уже посчитала CRM;
+ *  2. наш матчинг `call_order_matches` — для новых;
+ *  3. добавочный номер из записи звонка → менеджер из справочника.
+ *
+ * Запись разговора и расшифровка лежат в той же строке Телфина.
  */
 export async function GET(req: Request) {
     const session = await getSession();
@@ -33,33 +38,40 @@ export async function GET(req: Request) {
     const maxSec = parseInt(searchParams.get('maxSec') || '', 10);
 
     let query = supabase
-        .from('retailcrm_calls')
-        .select('rc_call_id, external_id, call_type, call_date, manager_name, manager_rc_id, phone, order_number, is_missed, duration_sec')
-        .order('call_date', { ascending: false })
+        .from('raw_telphin_calls')
+        .select('telphin_call_id, direction, from_number, to_number, from_number_normalized, to_number_normalized, started_at, duration_sec, recording_url, transcript, record_uuids, manager_extension')
+        .order('started_at', { ascending: false })
         .limit(limit);
 
-    if (directionParam === 'in') query = query.eq('call_type', 'in');
-    if (directionParam === 'out') query = query.eq('call_type', 'out');
-    if (missed === '1') query = query.eq('is_missed', true);
-    if (from) query = query.gte('call_date', `${from}T00:00:00+03:00`);
-    if (to) query = query.lte('call_date', `${to}T23:59:59+03:00`);
+    if (directionParam === 'in') query = query.eq('direction', 'incoming');
+    if (directionParam === 'out') query = query.eq('direction', 'outgoing');
+    // «Без ответа» — разговора не было: нулевая длительность.
+    if (missed === '1') query = query.eq('duration_sec', 0);
+    if (from) query = query.gte('started_at', `${from}T00:00:00+03:00`);
+    if (to) query = query.lte('started_at', `${to}T23:59:59+03:00`);
     if (Number.isFinite(minSec)) query = query.gte('duration_sec', minSec);
     if (Number.isFinite(maxSec)) query = query.lte('duration_sec', maxSec);
+
     if (search) {
         /**
-         * Ищем ещё и по наименованию клиента — как в RetailCRM (просьба Евгении
-         * 05.10.2026). Названия у звонка нет, поэтому по нему сначала находим
-         * клиентов, а затем их заказы, контактных лиц и телефоны.
+         * Ищем и по наименованию клиента: названия у звонка нет, поэтому по
+         * нему сначала находим клиентов, а затем их телефоны (просьба Евгении
+         * 05.10.2026).
          */
         const keys = await clientCallKeys(search);
+        const digits = search.replace(/\D/g, '');
         const parts = [
-            `phone.ilike.%${search}%`,
-            `order_number.ilike.%${search}%`,
-            `manager_name.ilike.%${search}%`,
+            `from_number.ilike.%${search}%`,
+            `to_number.ilike.%${search}%`,
         ];
-        if (keys.orderNumbers.length) parts.push(`order_number.in.(${keys.orderNumbers.join(',')})`);
-        if (keys.customerIds.length) parts.push(`customer_rc_id.in.(${keys.customerIds.join(',')})`);
-        if (keys.phones.length) parts.push(`phone_normalized.in.(${keys.phones.join(',')})`);
+        if (digits.length >= 4) {
+            parts.push(`from_number_normalized.ilike.%${digits}%`);
+            parts.push(`to_number_normalized.ilike.%${digits}%`);
+        }
+        if (keys.phones.length) {
+            parts.push(`from_number_normalized.in.(${keys.phones.join(',')})`);
+            parts.push(`to_number_normalized.in.(${keys.phones.join(',')})`);
+        }
         query = query.or(parts.join(','));
     }
 
@@ -70,54 +82,87 @@ export async function GET(req: Request) {
     }
 
     const rows = (data || []) as any[];
-    const uuids = rows.map((r) => r.external_id).filter(Boolean);
 
-    // Запись и расшифровка лежат у Телфина. Связь идёт по `external_id` из CRM
-    // («469589-7b6e…»): именно он лежит в массиве `record_uuids`, а поле
-    // `record_uuid` — только его хвост, по нему ничего не сходится.
-    const extras = new Map<string, { recordingUrl: string | null; transcript: string | null; callId: string | null }>();
-    const callIds: string[] = [];
+    /** Номер собеседника: у входящего звонит он, у исходящего звоним мы. */
+    const partyPhone = (row: any): string =>
+        String((row.direction === 'incoming' ? row.from_number : row.to_number) ?? '');
+
+    /**
+     * Добавочный сотрудника лежит колонкой: ноги разговора разбираются один
+     * раз при приёме звонка. Разбирать их на каждом показе значило тянуть
+     * мегабайты — список собирался 7,5 секунды (12.10.2026).
+     */
+    const extensionOf = (row: any): string => String(row.manager_extension ?? '').trim();
+
+    const callIds = rows.map((row) => String(row.telphin_call_id));
+    const uuids = rows.flatMap((row) => (Array.isArray(row.record_uuids) ? row.record_uuids : [])).filter(Boolean);
+
+    /**
+     * Что знает про эти звонки RetailCRM: для старых звонков привязка к заказу
+     * и менеджер там уже посчитаны, и это надёжнее нашего матчинга.
+     */
+    const fromCrm = new Map<string, { orderNumber: string | null; managerName: string | null }>();
     if (uuids.length) {
-        const { data: telphin } = await supabase
-            .from('raw_telphin_calls')
-            .select('telphin_call_id, record_uuids, recording_url, transcript')
-            .overlaps('record_uuids', uuids);
-        for (const row of ((telphin || []) as any[])) {
-            callIds.push(String(row.telphin_call_id));
-            for (const uuid of row.record_uuids || []) {
-                extras.set(String(uuid), {
-                    recordingUrl: row.recording_url ?? null,
-                    transcript: row.transcript ?? null,
-                    callId: String(row.telphin_call_id),
-                });
+        const { data: crm } = await supabase
+            .from('retailcrm_calls')
+            .select('external_id, order_number, manager_name')
+            .in('external_id', uuids);
+
+        const byUuid = new Map(((crm ?? []) as any[]).map((r) => [String(r.external_id), r]));
+        for (const row of rows) {
+            for (const uuid of (row.record_uuids ?? [])) {
+                const hit = byUuid.get(String(uuid));
+                if (hit) {
+                    fromCrm.set(String(row.telphin_call_id), {
+                        orderNumber: hit.order_number ? String(hit.order_number) : null,
+                        managerName: hit.manager_name ?? null,
+                    });
+                    break;
+                }
             }
         }
     }
 
-    /**
-     * Подсказанные заказы: разбор разговора нашёл в тексте номер заказа, но
-     * привязкой это станет только после подтверждения человеком (решение
-     * владельца 05.10.2026 — угадывать мы перестали).
-     */
+    /** Наши привязки: подтверждённые — это заказ звонка, «подсказка» — только подсказка. */
+    const matched = new Map<string, { orderId: number; number: string }>();
     const suggested = new Map<string, { orderId: number; number: string }>();
     if (callIds.length) {
-        const { data: hints } = await supabase
+        const { data: links } = await supabase
             .from('call_order_matches')
-            .select('telphin_call_id, retailcrm_order_id')
-            .eq('match_type', 'ai_suggested')
+            .select('telphin_call_id, retailcrm_order_id, match_type')
             .in('telphin_call_id', callIds);
 
-        const hintRows = (hints || []) as any[];
-        if (hintRows.length) {
+        const linkRows = (links ?? []) as any[];
+        if (linkRows.length) {
             const { data: orderRows } = await supabase
                 .from('orders')
                 .select('id, number')
-                .in('id', hintRows.map((h) => h.retailcrm_order_id));
-            const numbers = new Map(((orderRows || []) as any[]).map((o) => [Number(o.id), String(o.number)]));
-            for (const hint of hintRows) {
-                const number = numbers.get(Number(hint.retailcrm_order_id));
-                if (number) suggested.set(String(hint.telphin_call_id), { orderId: Number(hint.retailcrm_order_id), number });
+                .in('id', Array.from(new Set(linkRows.map((l) => l.retailcrm_order_id))));
+
+            const numbers = new Map(((orderRows ?? []) as any[]).map((o) => [Number(o.id), String(o.number)]));
+            for (const link of linkRows) {
+                const number = numbers.get(Number(link.retailcrm_order_id));
+                if (!number) continue;
+                const target = String(link.match_type) === 'ai_suggested' ? suggested : matched;
+                target.set(String(link.telphin_call_id), { orderId: Number(link.retailcrm_order_id), number });
             }
+        }
+    }
+
+    /** Кто говорил: по добавочному из записи звонка. */
+    const byExtension = new Map<string, string>();
+    const extensions = Array.from(new Set(rows.map(extensionOf).filter(Boolean)));
+    if (extensions.length) {
+        const { data: managers } = await supabase
+            .from('managers')
+            .select('first_name, last_name, telphin_extension')
+            .in('telphin_extension', extensions);
+
+        for (const manager of ((managers ?? []) as any[])) {
+            byExtension.set(
+                String(manager.telphin_extension).trim(),
+                [manager.last_name, manager.first_name].filter(Boolean).join(' '),
+            );
         }
     }
 
@@ -126,31 +171,34 @@ export async function GET(req: Request) {
      * карточек клиентов (решение владельца 08.10.2026): в реестре полно
      * автоответчиков, переадресаций и чужих номеров.
      */
-    const known = await knownClientPhones(rows.map((r: any) => r.phone)).catch(() => new Map());
+    const known = await knownClientPhones(rows.map(partyPhone)).catch(() => new Map());
 
     return NextResponse.json({
         calls: rows.map((row) => {
-            const extra = row.external_id ? extras.get(String(row.external_id)) : undefined;
+            const id = String(row.telphin_call_id);
+            const phone = partyPhone(row);
+            const crm = fromCrm.get(id);
+            const ourOrder = matched.get(id);
+
             return {
-                id: row.rc_call_id,
-                date: row.call_date,
-                direction: row.call_type === 'in' ? 'Входящий' : 'Исходящий',
-                phone: row.phone,
-                managerName: row.manager_name,
-                orderNumber: row.order_number,
-                missed: !!row.is_missed,
+                id,
+                date: row.started_at,
+                direction: row.direction === 'incoming' ? 'Входящий' : 'Исходящий',
+                phone,
+                managerName: crm?.managerName ?? byExtension.get(extensionOf(row)) ?? null,
+                orderNumber: crm?.orderNumber ?? ourOrder?.number ?? null,
+                missed: Number(row.duration_sec ?? 0) === 0,
                 durationSec: row.duration_sec ?? 0,
-                recordingUrl: extra?.recordingUrl ?? null,
-                hasTranscript: !!extra?.transcript,
-                transcript: extra?.transcript ?? null,
-                callId: extra?.callId ?? null,
-                suggestedOrder: extra?.callId ? (suggested.get(extra.callId) ?? null) : null,
+                recordingUrl: row.recording_url ?? null,
+                hasTranscript: !!row.transcript,
+                transcript: row.transcript ?? null,
+                callId: id,
+                suggestedOrder: suggested.get(id) ?? null,
                 // Номер есть в карточке клиента — значит, кнопка «позвонить»
                 // и ссылка на саму карточку.
-                knownClientId: known.get(phoneKey(row.phone) ?? '')?.clientId ?? null,
-                clientName: known.get(phoneKey(row.phone) ?? '')?.name ?? null,
-                // Номер известен системе (карточка или заказ) — можно звонить.
-                knownPhone: known.has(phoneKey(row.phone) ?? ''),
+                knownClientId: known.get(phoneKey(phone) ?? '')?.clientId ?? null,
+                clientName: known.get(phoneKey(phone) ?? '')?.name ?? null,
+                knownPhone: known.has(phoneKey(phone) ?? ''),
             };
         }),
     });

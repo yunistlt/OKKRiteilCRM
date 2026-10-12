@@ -143,7 +143,7 @@ export default function CallsClient() {
                 <h1 className="text-xl font-semibold text-gray-900">Звонки</h1>
                 <p className="mt-1 text-sm text-gray-500">
                     Разговоры отдела продаж: кто звонил, по какому заказу, с записью и расшифровкой.
-                    Привязка к заказу — из RetailCRM.
+                    Привязка к заказу — из нашей базы; у старых звонков она осталась из RetailCRM.
                 </p>
             </div>
 
