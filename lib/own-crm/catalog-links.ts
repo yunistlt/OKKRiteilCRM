@@ -33,6 +33,18 @@ function client() {
 export type CatalogLink = {
     /** Ключ, по которому позиция узнаёт свою ссылку: `id:<id сайта>` или `art:<артикул>`. */
     key: string;
+    /**
+     * Идентификатор товара в каталоге сайта (`marketing_products.id`) — тот самый номер,
+     * что виден в адресе картинки: `…/products/13/68/16813/images/…`.
+     *
+     * Производству он нужен отдельным полем (просьба ЦехУспеха 12.10.2026): названия товара
+     * на сайте и в цехе никогда не совпадают, а у одной модели до 10–15 исполнений — по
+     * названию их не различить. Технолог один раз подбирает товар, код запоминается в
+     * карточке, и дальше позиция опознаётся сама, даже если товар на сайте переименуют.
+     * Раньше ЦехУспех выковыривал этот номер из адреса картинки — ломалось бы при смене
+     * хранилища картинок и у товаров без фото.
+     */
+    productId: string;
     url: string;
     /** Название в каталоге — по нему видно, тот ли это товар. */
     name: string;
@@ -97,6 +109,7 @@ export async function catalogLinks(params: {
                 if (!row.id_1c) continue;
                 found.push({
                     key: `1c:${row.id_1c}`,
+                    productId: String(row.id ?? ''),
                     url: String(row.full_url ?? ''),
                     name: decodeEntities(String(row.name ?? '')),
                     image: firstImage(row.images),
@@ -111,19 +124,19 @@ export async function catalogLinks(params: {
                 .in('id', ids);
             if (error) throw new Error(error.message);
             for (const row of ((data ?? []) as any[])) {
-                if (row.full_url) found.push({ key: `id:${row.id}`, url: String(row.full_url), name: decodeEntities(String(row.name ?? '')), image: firstImage(row.images) });
+                if (row.full_url) found.push({ key: `id:${row.id}`, productId: String(row.id ?? ''), url: String(row.full_url), name: decodeEntities(String(row.name ?? '')), image: firstImage(row.images) });
             }
         }
 
         if (articles.length) {
             const { data, error } = await db
                 .from('marketing_products')
-                .select('sku, name, full_url, images')
+                .select('id, sku, name, full_url, images')
                 .in('sku', articles);
             if (error) throw new Error(error.message);
             for (const row of ((data ?? []) as any[])) {
                 if (row.sku && row.full_url) {
-                    found.push({ key: `art:${clean(row.sku)}`, url: String(row.full_url), name: decodeEntities(String(row.name ?? '')), image: firstImage(row.images) });
+                    found.push({ key: `art:${clean(row.sku)}`, productId: String(row.id ?? ''), url: String(row.full_url), name: decodeEntities(String(row.name ?? '')), image: firstImage(row.images) });
                 }
             }
         }

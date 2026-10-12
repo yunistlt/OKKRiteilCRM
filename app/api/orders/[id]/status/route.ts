@@ -237,6 +237,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // Статус менять не мешаем, но причину говорим сразу: иначе менеджер
         // узнает об отказе только когда ЦехУспех вернёт ошибку.
         if (!queued.queued) productionNote = queued.reason;
+        // Заказ ушёл, но часть позиций производство не опознает — об этом тоже говорим.
+        else if (queued.warning) productionNote = queued.warning;
     }
 
     return NextResponse.json({ ok: true, status: body.status, own: Boolean((order as any).is_own), productionNote });

@@ -33,6 +33,12 @@ export type DocumentItem = {
      * приходит из каталога вместе с фото, но до документа не доходила.
      */
     url: string | null;
+    /**
+     * Код товара в каталоге сайта (`marketing_products.id`). В документах не печатается —
+     * он нужен производству, чтобы опознать позицию не по названию (просьба ЦехУспеха
+     * 12.10.2026); см. `productId` в CatalogLink.
+     */
+    productId: string | null;
 };
 
 export type Seller = {
@@ -300,6 +306,7 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
         discount: Number(row.discountTotal || 0) * Number(row.quantity || 0),
         image: catalogOf(catalog, row)?.image ?? null,
         url: catalogOf(catalog, row)?.url ?? null,
+        productId: catalogOf(catalog, row)?.productId ?? null,
     }));
 
     const contragent = (order as any).contragent || (order as any).raw_payload?.contragent || {};
@@ -399,7 +406,7 @@ export function productionTermText(days: number | null, unit: unknown): string |
     return `${days} ${form}`;
 }
 
-type CatalogEntry = { image: string | null; url: string | null };
+type CatalogEntry = { image: string | null; url: string | null; productId: string | null };
 
 /** Карточки товаров сайта по позициям заказа: ключ — id в 1С, id сайта, артикул. */
 async function catalogByItem(rows: any[]): Promise<Map<string, CatalogEntry>> {
@@ -416,6 +423,7 @@ async function catalogByItem(rows: any[]): Promise<Map<string, CatalogEntry>> {
             map.set(key, {
                 image: current?.image ?? link.image ?? null,
                 url: current?.url ?? link.url ?? null,
+                productId: current?.productId || link.productId || null,
             });
         }
     } catch {

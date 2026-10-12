@@ -14,8 +14,22 @@ import { orderInn } from '@/lib/own-crm/inn-gate';
 import { productionComment } from '@/lib/own-crm/tseh-production-notes';
 
 export type OutboxResult =
-    | { queued: true; alreadyQueued: boolean }
+    | { queued: true; alreadyQueued: boolean; warning?: string }
     | { queued: false; reason: string };
+
+/**
+ * Позиции, которые производство не опознает: товар не нашёлся в каталоге сайта, значит
+ * нет ни кода, ни фото, ни ссылки — технологу придётся подбирать изделие руками, а у
+ * одной модели до 10–15 исполнений, и ошибка означает собранный не тот шкаф
+ * (письмо ЦехУспеха 12.10.2026).
+ *
+ * Чаще всего причина простая: товар архивный или в заказе выбран не из каталога. Говорим
+ * об этом менеджеру сразу — он поправит привязку, пока заказ ещё у него в руках. Передачу
+ * при этом не блокируем: заказ в цех нужен, даже если одну позицию опознают вручную.
+ */
+function itemsWithoutCode(items: ProductionItem[]): string[] {
+    return items.filter((item) => !item.productId).map((item) => item.name);
+}
 
 /**
  * ИНН заказчика — 10 цифр у организации, 12 у предпринимателя.
@@ -54,6 +68,12 @@ export type ProductionItem = {
     imageUrl: string | null;
     /** Адрес карточки товара на сайте, до 512 символов. */
     productUrl: string | null;
+    /**
+     * Код товара в каталоге сайта — постоянный ключ опознания позиции в производстве
+     * (просьба ЦехУспеха 12.10.2026). Раньше они выковыривали его из адреса картинки,
+     * что ломалось у товаров без фото и сломалось бы при смене хранилища картинок.
+     */
+    productId: string | null;
 };
 
 /**
@@ -75,6 +95,9 @@ export async function productionItems(orderId: number): Promise<ProductionItem[]
         price: item.price,
         imageUrl: tsehUrl(item.image, 255),
         productUrl: tsehUrl(item.url, 512),
+        // Код товара на сайте — главный ключ опознания позиции в производстве.
+        // Названия у нас и в цехе не совпадают, а исполнений одной модели до 10–15.
+        productId: item.productId || null,
     }));
 }
 
@@ -113,6 +136,8 @@ export async function queueOrderForProduction(orderId: number): Promise<OutboxRe
             managerName = [(manager as any)?.last_name, (manager as any)?.first_name].filter(Boolean).join(' ') || null;
         }
 
+        const items = await productionItems(Number((order as any).order_id));
+
         // ИНН спрашиваем там же, где его правит менеджер — в карточке клиента.
         const customerInn = (await orderInn(Number((order as any).order_id))) || data?.payerInn || null;
         const problem = innProblem(customerInn);
@@ -139,7 +164,7 @@ export async function queueOrderForProduction(orderId: number): Promise<OutboxRe
             seller_inn: data?.seller?.inn || null,
             seller_account: data?.seller?.rs || null,
             seller_bank: data?.seller?.bank || null,
-            items: await productionItems(Number((order as any).order_id)),
+            items: items,
             total_summ: payload.totalSumm ?? null,
             // В цех уходит ТОЛЬКО то, что менеджер написал во вкладке «Для производства»
             // (решение владельца 04.10.2026). Комментарий менеджера по заказу туда больше не
@@ -152,7 +177,15 @@ export async function queueOrderForProduction(orderId: number): Promise<OutboxRe
             return { queued: false, reason: error.message };
         }
 
-        return { queued: true, alreadyQueued: false };
+        const noCode = itemsWithoutCode(items);
+        const warning = noCode.length
+            ? `Производство не опознает ${noCode.length} ${noCode.length === 1 ? 'позицию' : 'позиции'}: `
+              + `${noCode.slice(0, 3).join('; ')}${noCode.length > 3 ? '…' : ''}. `
+              + 'Товара нет в каталоге сайта — технолог будет подбирать изделие вручную. '
+              + 'Проверьте, что в заказе выбран товар из каталога, а не архивный.'
+            : undefined;
+
+        return { queued: true, alreadyQueued: false, warning };
     } catch (e: any) {
         console.error('[tseh-outbox] ошибка постановки в очередь:', e?.message || e);
         return { queued: false, reason: String(e?.message || e) };
