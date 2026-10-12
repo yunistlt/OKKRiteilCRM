@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import OrderReplyForm from '@/components/orders/OrderReplyForm';
 import { othersInConversation } from '@/lib/order-mail/recipients';
 import { orderFileHref } from '@/lib/orders/file-href';
+import TextWithOrderLinks from '@/components/ui/TextWithOrderLinks';
 
 type Attachment = { name: string; size: number | null };
 
@@ -473,8 +474,13 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                                         <p className="text-[10px] text-gray-500">Копия: {message.cc.join(', ')}</p>
                                     )}
 
+                                    {/* Номера заказов и адреса в письме — ссылками:
+                                        ссылка на каталог выглядела неработающей
+                                        (Лена Парфёнова 12.10.2026). */}
                                     <p className="mt-1 whitespace-pre-wrap text-[13px] leading-snug text-gray-800">
-                                        {message.text || '— пусто —'}
+                                        {message.text
+                                            ? <TextWithOrderLinks text={message.text} />
+                                            : '— пусто —'}
                                     </p>
 
                                     {message.quoted && (

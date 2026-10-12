@@ -1,15 +1,21 @@
 'use client';
 
 /**
- * Текст, в котором номера заказов сами становятся ссылками.
+ * Текст, в котором номера заказов и адреса сами становятся ссылками.
  *
  * Закон владельца 02.10.2026: номер заказа кликабелен везде, где человек его
  * видит. В теме письма он лежит внутри строки — «[#2/54776] Ирина Валерьевна
  * по заказу № 54776», — и до карточки приходилось добираться поиском
  * (замечание Жени Матвеевой 05.10.2026).
+ *
+ * Адреса сайтов и почты — туда же: в письме, которое мы показываем, ссылка на
+ * каталог оставалась простым текстом, и менеджер считал, что она не работает
+ * (Лена Парфёнова 12.10.2026). В самом письме у клиента она кликабельна —
+ * непохоже должно быть только у нас на экране.
  */
 import { Fragment } from 'react';
 import OrderNumberLink from './OrderNumberLink';
+import { splitLinks } from '@/lib/text-links';
 
 /**
  * Что считаем номером заказа:
@@ -24,6 +30,27 @@ import OrderNumberLink from './OrderNumberLink';
  * молча не совпадало бы (известная грабля проекта).
  */
 const PATTERN = /\[#\d+\/(\d{4,6})\]|(?:заказ[а-яё]*\s*№?\s*)(\d{4,6})|\b(9\d{5})\b/gi;
+
+/** Кусок текста со ссылками: номера заказов тут уже разобраны. */
+function withLinks(text: string, keyPrefix: string) {
+    const parts = splitLinks(text);
+    if (parts.length === 1 && typeof parts[0] === 'string') return parts[0];
+
+    return parts.map((part, i) =>
+        typeof part === 'string'
+            ? <Fragment key={`${keyPrefix}-${i}`}>{part}</Fragment>
+            : (
+                <a
+                    key={`${keyPrefix}-${i}`}
+                    href={part.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-700 underline"
+                >
+                    {part.label}
+                </a>
+            ));
+}
 
 export default function TextWithOrderLinks({ text, className }: { text: string | null | undefined; className?: string }) {
     const value = String(text ?? '');
@@ -49,14 +76,14 @@ export default function TextWithOrderLinks({ text, className }: { text: string |
     }
 
 
-    if (!parts.length) return <span className={className}>{value}</span>;
+    if (!parts.length) return <span className={className}>{withLinks(value, 'l')}</span>;
     if (last < value.length) parts.push(value.slice(last));
 
     return (
         <span className={className}>
             {parts.map((part, i) =>
                 typeof part === 'string'
-                    ? <Fragment key={i}>{part}</Fragment>
+                    ? <Fragment key={i}>{withLinks(part, String(i))}</Fragment>
                     : <OrderNumberLink key={i} number={part.number} />)}
         </span>
     );
