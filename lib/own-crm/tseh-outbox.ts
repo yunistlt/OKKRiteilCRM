@@ -31,6 +31,20 @@ function innProblem(raw: unknown): string | null {
         + 'заполните ИНН в карточке клиента и передайте заказ заново.';
 }
 
+/**
+ * Адрес фото или карточки товара в том виде, в каком его принимает ЦехУспех.
+ *
+ * Берём только абсолютный `https://` — картинку тянет браузер сотрудника завода, а не
+ * сервер, поэтому относительный путь у него не раскроется. Слишком длинный адрес не
+ * обрезаем: обрезанная ссылка ведёт в никуда, а пустое поле у них ничего не затирает.
+ */
+export function tsehUrl(raw: string | null | undefined, maxLength: number): string | null {
+    const value = String(raw ?? '').trim();
+    if (!value.startsWith('https://')) return null;
+    if (value.length > maxLength) return null;
+    return value;
+}
+
 /** Кладёт заказ в очередь на производство. Не бросает: сбой не должен ломать смену статуса. */
 export async function queueOrderForProduction(orderId: number): Promise<OutboxResult> {
     try {
@@ -96,6 +110,12 @@ export async function queueOrderForProduction(orderId: number): Promise<OutboxRe
                 name: item.name,
                 quantity: item.quantity,
                 price: item.price,
+                // Фото товара и ссылка на его карточку на сайте: в перечне заказа ЦехУспеха
+                // рядом с названием позиции показывается миниатюра, по клику открывается
+                // сайт (ТЗ 12.10.2026). Адреса мы уже знаем — каталог отдаёт их вместе с
+                // составом для счёта, но до производства они не доходили.
+                imageUrl: tsehUrl(item.image, 255),
+                productUrl: tsehUrl(item.url, 512),
             })),
             total_summ: payload.totalSumm ?? null,
             // В цех уходит ТОЛЬКО то, что менеджер написал во вкладке «Для производства»

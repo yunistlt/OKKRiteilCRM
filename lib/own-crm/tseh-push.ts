@@ -104,6 +104,8 @@ export async function pushProductionQueue(sql: Sql, limit = BATCH): Promise<Push
                     sellerInn: row.seller_inn,
                     sellerAccount: row.seller_account,
                     sellerBank: row.seller_bank,
+                    // Позиции уезжают как лежат в очереди: название, количество, цена и
+                    // адреса фото/карточки товара (`imageUrl`, `productUrl` — ТЗ 12.10.2026).
                     items: Array.isArray(row.items) ? row.items : [],
                     totalSumm: row.total_summ === null ? null : Number(row.total_summ),
                     managerComment: row.manager_comment,
