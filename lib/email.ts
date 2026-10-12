@@ -14,15 +14,36 @@ export function isEmailConfigured(): boolean {
     return Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
+/**
+ * Соединение с почтовым сервером.
+ *
+ * Адрес берём из окружения, а не из кода: 12.10.2026 Яндекс перестал пускать
+ * наш сервер к `smtp.yandex.ru` (таймаут с Vercel, при этом gmail и mail.ru с
+ * той же машины отвечают за миллисекунды). Запасной путь — отправка через наш
+ * российский VPS: там же стоит обратный прокси. Переключается переменными
+ * `SMTP_HOST`/`SMTP_PORT`, перекладывать код для этого не придётся.
+ *
+ * `servername` пиним на настоящее имя почтового сервера: соединение идёт
+ * сквозным TLS до Яндекса, даже когда адрес — наш VPS, и пароль по дороге
+ * никто не видит.
+ */
 function createTransporter() {
+    const host = process.env.SMTP_HOST || 'smtp.yandex.ru';
+    const port = Number(process.env.SMTP_PORT || 465);
+    const servername = process.env.SMTP_SERVERNAME || 'smtp.yandex.ru';
+
     return nodemailer.createTransport({
-        host: 'smtp.yandex.ru',
-        port: 465,
-        secure: true,
+        host,
+        port,
+        secure: port === 465,
         auth: {
             user: process.env.SMTP_USER, // rop@zmktlt.ru
             pass: process.env.SMTP_PASS, // пароль приложения Яндекс 360
         },
+        tls: { servername },
+        // Не ждём минуту на мёртвом соединении: человек стоит над письмом.
+        connectionTimeout: 15_000,
+        greetingTimeout: 15_000,
     });
 }
 
