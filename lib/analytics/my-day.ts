@@ -39,6 +39,8 @@ export type NextAction = {
     /** Сколько минут осталось по SLA, если это новый лид. */
     slaLeftMinutes: number | null;
     done: boolean;
+    /** Чем задача закрыта сегодня: звонок, письмо, смена статуса… */
+    doneBy?: string | null;
 };
 
 export type MyDay = {
@@ -351,6 +353,31 @@ async function loadQueue(managerId: number, today: Date): Promise<NextAction[]> 
             advice: null,
             done: false,
         });
+    }
+
+    /**
+     * Что уже сделано сегодня — считаем на лету, а не ждём ночной сверки.
+     *
+     * Ирина Гордеева 12.10.2026: «задачи не уходят, даже если они выполнены,
+     * так и висят списком на день». Отметку `touched` в плане ставил вечерний
+     * прогон бота-РОПа, поэтому днём список не менялся.
+     *
+     * Касания считает та же функция базы, что и у бота (`sales_rop_touches`):
+     * звонок, письмо, смена статуса, перенос даты с объяснением, правка,
+     * комментарий. «Перенос даты без причины» отработкой не считается — иначе
+     * задачу можно бесконечно отодвигать.
+     */
+    const { data: touchRows } = await supabase.rpc('sales_rop_touches', { p_date: date });
+    const touched = new Map<number, string>(
+        ((touchRows ?? []) as any[]).map((r) => [Number(r.order_id), String(r.touch_kind)]),
+    );
+
+    for (const action of actions) {
+        const kind = touched.get(action.orderId);
+        if (kind && kind !== 'перенос даты без причины') {
+            action.done = true;
+            action.doneBy = kind;
+        }
     }
 
     return actions.sort((a, b) => Number(a.done) - Number(b.done) || b.weight - a.weight);
