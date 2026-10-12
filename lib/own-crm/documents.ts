@@ -374,7 +374,7 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
             : 5,
         managerName: await managerNameOf((order as any).manager_id),
         ...(await sellerSealOf(seller)),
-        shippingTerms: await shippingTermsText(delivery),
+        shippingTerms: await shippingTermsText(delivery, seller?.address ?? null),
         ...(await signerOf(sellerCode || (order as any).site, seller)),
         total: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
     };
@@ -437,7 +437,7 @@ function catalogOf(map: Map<string, CatalogEntry>, row: any): CatalogEntry | nul
  * «Доставка Деловые Линии, адрес». Название способа — из справочника RetailCRM
  * (закон «имена из RetailCRM»), адрес — тот, что менеджер ввёл в заказе.
  */
-async function shippingTermsText(delivery: any): Promise<string | null> {
+async function shippingTermsText(delivery: any, sellerAddress?: string | null): Promise<string | null> {
     const code = String(delivery?.code ?? '').trim();
     const address = String(delivery?.address?.text ?? delivery?.address?.building ?? delivery?.address ?? '').trim();
 
@@ -459,10 +459,28 @@ async function shippingTermsText(delivery: any): Promise<string | null> {
         .trim()
         .slice(0, 300);
 
-    const parts = [name || null, oneLine && oneLine !== '[object Object]' ? oneLine : null].filter(Boolean);
+    /**
+     * Самовывоз — пишем, ОТКУДА забирать.
+     *
+     * В КП адрес самовывоза не печатался, и менеджер вписывал наш адрес в
+     * «Адрес доставки» руками — а оттуда он уходил в «Адрес фактический»
+     * заказчика (Ирина Гордеева 12.10.2026). Теперь адрес нашего юрлица
+     * подставляется сам, и поле доставки можно не трогать.
+     */
+    const selfPickup = /^(self-delivery|pickup)$/i.test(code);
+    const pickupFrom = selfPickup && !oneLine ? String(sellerAddress ?? '').replace(/\s+/g, ' ').trim() : '';
+
+    const parts = [
+        name || null,
+        oneLine && oneLine !== '[object Object]' ? oneLine : null,
+        pickupFrom || null,
+    ].filter(Boolean);
     if (!parts.length) return null;
     return parts.join(', ');
 }
+
+/** Для теста: условия отгрузки отдельно от сборки всего документа. */
+export const shippingTermsForTest = shippingTermsText;
 
 /** Подписант счёта — из справочника наших юрлиц, по ИНН или коду магазина. */
 async function signerOf(siteCode: string | null | undefined, seller: Seller | null): Promise<{

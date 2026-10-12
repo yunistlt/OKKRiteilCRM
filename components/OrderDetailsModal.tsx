@@ -1398,7 +1398,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 value={fieldValue('cf.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete', customFields.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete || logisticBuyerType || '')}
                                 onChange={(v) => setField('cf.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete', v)}
                             />
-                            <EditField fieldKey="cf.adres_fakt" label="Адрес фактический" value={fieldValue('cf.adres_fakt', customFields.adres_fakt || logisticAddress || '')} onChange={(v) => setField('cf.adres_fakt', v)} />
+                            {/* Адрес доставки сюда НЕ подставляем: это разные вещи.
+                                При самовывозе менеджер писал в доставку наш адрес, и
+                                он показывался как фактический адрес заказчика (Ирина
+                                Гордеева 12.10.2026). Пусто — значит пусто. */}
+                            <EditField fieldKey="cf.adres_fakt" label="Адрес фактический" value={fieldValue('cf.adres_fakt', customFields.adres_fakt || '')} onChange={(v) => setField('cf.adres_fakt', v)} />
                         </div>
                     </CardSection>
                 </section>
