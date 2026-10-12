@@ -39,10 +39,18 @@ function probe(host: string, port: number, timeoutMs = 8000): Promise<string> {
 export async function GET() {
     const checks: Record<string, string> = {};
 
+    /**
+     * Чужие почтовые серверы — чтобы отличить «Яндекс нас не пускает» от
+     * «нашему серверу вообще закрыли отправку почты». Без этого спорить не о
+     * чем: симптом одинаковый.
+     */
     for (const [host, port] of [
         ['smtp.yandex.ru', 465],
         ['smtp.yandex.ru', 587],
         ['imap.yandex.ru', 993],
+        ['smtp.gmail.com', 465],
+        ['smtp.mail.ru', 465],
+        ['smtp.yandex.ru', 443],
     ] as Array<[string, number]>) {
         checks[`${host}:${port}`] = await probe(host, port);
     }
