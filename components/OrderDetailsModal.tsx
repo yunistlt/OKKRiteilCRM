@@ -613,6 +613,33 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         if (isOpen && orderId) loadRequisites();
     }, [isOpen, orderId, loadRequisites]);
 
+    /**
+     * Договор по заказу, если он уже составлен.
+     *
+     * Кнопки «Открыть договор» и «Счёт + договор + спецификация» появлялись
+     * только сразу после нажатия «Составить договор»: номер договора жил в
+     * памяти страницы. Открыл заказ заново — кнопок нет, и выглядит это как
+     * «комплект не составляется» (Лена Парфёнова 12.10.2026).
+     */
+    const loadContract = useCallback(async () => {
+        const number = String(data?.order?.number ?? orderId ?? '').trim();
+        if (!number) return;
+
+        try {
+            const res = await fetch(`/api/orders/${encodeURIComponent(number)}/contract`);
+            if (!res.ok) return;
+            const payload = await res.json();
+            const latest = (payload.contracts ?? [])[0];
+            if (latest?.id) setContractId(Number(latest.id));
+        } catch {
+            // Договора может не быть вовсе — это нормальный случай, молчим.
+        }
+    }, [data?.order?.number, orderId]);
+
+    useEffect(() => {
+        if (isOpen) void loadContract();
+    }, [isOpen, loadContract]);
+
 
     const searchCustomers = async (query: string) => {
         setCustomerQuery(query);
