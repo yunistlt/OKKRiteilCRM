@@ -110,6 +110,8 @@ export type SpecificationData = {
         ks: string | null;
         address: string | null;
         signerTitle: string | null;
+        /** Кто подписывает со стороны покупателя — фамилия, имя, отчество. */
+        signerName: string | null;
     };
 };
 
@@ -203,11 +205,14 @@ function SpecificationPage({ data }: { data: SpecificationData }) {
                     {buyer.address && <Text style={styles.partyLine}>Адрес: {buyer.address}</Text>}
                 </View>
 
-                {/* Покупатель подписывает от руки — его подписи у нас нет и быть не должно. */}
+                {/* Покупатель подписывает от руки — его подписи у нас нет и быть
+                    не должно. Слева должность, в косых чертах — ФИО, как в
+                    договоре: в спецификации должность стояла на месте имени
+                    (Лена Парфёнова 12.10.2026). */}
                 <View style={[styles.signRow, { marginTop: 34 }]}>
-                    <Text style={styles.signLabel}>Руководитель организации:</Text>
+                    <Text style={styles.signLabel}>{buyer.signerTitle || 'Руководитель организации'}:</Text>
                     <View style={styles.signLine} />
-                    <Text style={styles.signName}>/{buyer.signerTitle || ''}/</Text>
+                    <Text style={styles.signName}>/ {buyer.signerName || '—'} /</Text>
                 </View>
             </Page>
         </Document>

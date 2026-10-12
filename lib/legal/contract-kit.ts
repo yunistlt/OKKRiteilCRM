@@ -88,6 +88,7 @@ export function specificationFrom(data: OrderDocumentData, date: Date = new Date
             ks: data.payerKs,
             address: data.payerAddress,
             signerTitle: data.payerSignerTitle,
+            signerName: data.payerSignerName,
         },
     };
 }
