@@ -1572,22 +1572,23 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         </div>
 
                         <div className="overflow-x-auto p-6">
-                            {/* `min-w-max`: на узком экране состав не сжимается до
-                                нечитаемых полей, а прокручивается вбок. Поле скидки
-                                в рублях схлопывалось до двух символов именно из-за
-                                сжатия (Лена Парфёнова 12.10.2026). */}
-                            <table className="min-w-max text-sm md:min-w-full">
+                            {/* Поля в строке подстраиваются под своё содержимое
+                                (`fit-content-field`), поэтому таблица остаётся по
+                                ширине экрана и ничего не режет: скидка в рублях
+                                схлопывалась именно из-за дележа фиксированной
+                                ширины (Лена Парфёнова 12.10.2026). */}
+                            <table className="min-w-full text-sm">
                                 <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                                     <tr>
                                         {/* Номер позиции — узкой колонкой: места он не стоит. */}
                                         <th className="w-8 px-2 py-3 text-left">№</th>
                                         <th className="w-14 px-1 py-3 text-left">Фото</th>
                                         <th className="px-3 py-3 text-left">Товар / услуга</th>
-                                        <th className="w-24 min-w-[5rem] px-3 py-3 text-right">Кол-во</th>
-                                        <th className="w-32 min-w-[7rem] px-3 py-3 text-right">Цена</th>
+                                        <th className="w-20 px-3 py-3 text-right">Кол-во</th>
+                                        <th className="w-28 px-3 py-3 text-right">Цена</th>
                                         {/* Под рубли и проценты сразу: в 8 рем поле
                                             скидки схлопывалось (12.10.2026). */}
-                                        <th className="w-56 px-3 py-3 text-right">Скидка</th>
+                                        <th className="w-48 px-3 py-3 text-right">Скидка</th>
                                         <th className="w-36 px-3 py-3 text-right">Стоимость</th>
                                         <th className="w-10 px-3 py-3"></th>
                                     </tr>
@@ -1663,7 +1664,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                 <NumberInput
                                                     value={row.quantity}
                                                     onChange={(v: number | null) => changeItem(index, { quantity: Number(v) || 0 })}
-                                                    className="w-full border border-gray-300 px-2 py-1 text-right"
+                                                    className="fit-content-field w-full border border-gray-300 px-2 py-1 text-right"
                                                 />
                                             </td>
                                             <td className="px-3 py-2">
@@ -1674,7 +1675,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                     value={row.price}
                                                     maxFractionDigits={2}
                                                     onChange={(v: number | null) => changeItem(index, { price: Number(v) || 0 })}
-                                                    className="w-full border border-gray-300 px-2 py-1 text-right"
+                                                    className="fit-content-field w-full border border-gray-300 px-2 py-1 text-right"
                                                 />
                                             </td>
                                             {/* Скидка на единицу товара — рублями и процентом, как в
@@ -1686,19 +1687,19 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                 сумму не было видно (Лена Парфёнова
                                                 12.10.2026). Рубли шире процентов: там
                                                 шестизначные суммы. */}
-                                            <td className="min-w-[13rem] px-3 py-2">
-                                                <div className="flex items-center gap-1">
+                                            <td className="px-3 py-2">
+                                                <div className="flex flex-wrap items-center justify-end gap-1">
                                                     <NumberInput
                                                         value={row.discount}
                                                         maxFractionDigits={2}
                                                         onChange={(v: number | null) => changeItem(index, { discount: Math.max(0, Number(v) || 0) })}
-                                                        className="w-full min-w-[6.5rem] border border-gray-300 px-2 py-1 text-right"
+                                                        className="fit-content-field border border-gray-300 px-2 py-1 text-right"
                                                     />
                                                     <span className="text-xs text-gray-400">₽</span>
                                                     <NumberInput
                                                         value={row.discountPercent}
                                                         onChange={(v: number | null) => changeItem(index, { discountPercent: Math.min(100, Math.max(0, Number(v) || 0)) })}
-                                                        className="w-14 border border-gray-300 px-2 py-1 text-right"
+                                                        className="fit-content-field border border-gray-300 px-2 py-1 text-right"
                                                     />
                                                     <span className="text-xs text-gray-400">%</span>
                                                 </div>
