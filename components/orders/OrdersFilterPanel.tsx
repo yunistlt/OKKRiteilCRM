@@ -143,7 +143,7 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply, 
                             <Field label="Номер заказа"><Text value={draft.number} onChange={(v) => set({ number: v })} /></Field>
                         )}
                         {show('customer') && (
-                            <Field label="Покупатель"><Text value={draft.customer} onChange={(v) => set({ customer: v })} placeholder="ФИО или телефон или email" /></Field>
+                            <Field label="Покупатель"><Text value={draft.customer} onChange={(v) => set({ customer: v })} placeholder="ФИО, телефон, email или ИНН" /></Field>
                         )}
                         {show('managers') && (
                             <Field label="Менеджеры"><Multi options={managers} selected={draft.managers} onChange={(v) => set({ managers: v })} /></Field>

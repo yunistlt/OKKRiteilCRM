@@ -1228,17 +1228,24 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     </CardSection>
 
                     <CardSection id="order-control" title="Контроль">
-                        {/* Дата следующего контакта переехала к комментарию
-                            менеджера: её ставят в конце разговора, когда уже
-                            написали, о чём договорились (Ирина Гордеева
-                            12.10.2026). */}
-                        <div className="grid md:grid-cols-2 gap-2">
+                        {/* Дата следующего контакта стоит в двух местах: здесь и
+                            у комментария менеджера. Поле одно и то же — правка в
+                            любом из них одна и та же (Ирина Гордеева
+                            12.10.2026: «надо было оставить и там и там»). */}
+                        <div className="grid md:grid-cols-3 gap-2">
                             <EditField fieldKey="cf.typ_castomer"
                                 label="Категория товара"
                                 required
                                 value={fieldValue('cf.typ_castomer', customFields.typ_castomer || '')}
                                 options={names.fieldOptions('typ_castomer')}
                                 onChange={(v) => setField('cf.typ_castomer', v)}
+                            />
+                            <EditField
+                                fieldKey="cf.data_kontakta"
+                                label="Дата следующего контакта"
+                                type="date"
+                                value={fieldValue('cf.data_kontakta', String(customFields.data_kontakta || '').slice(0, 10))}
+                                onChange={(v) => setField('cf.data_kontakta', v)}
                             />
                             <EditField fieldKey="cf.typ_customer_margin"
                                 label="Форма закупки"
