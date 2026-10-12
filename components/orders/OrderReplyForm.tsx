@@ -386,7 +386,7 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
             // Письмо ушло — черновик больше не нужен, иначе он всплывёт снова.
             await fetch(`/api/orders/${orderNumber}/email-draft`, { method: 'DELETE' }).catch(() => undefined);
 
-            if (data.scheduled) {
+            if (data.scheduled || data.queuedAfterFailure) {
                 setError(null);
                 setScheduledNote(data.message || 'Письмо поставлено в очередь и уйдёт в назначенное время.');
             }

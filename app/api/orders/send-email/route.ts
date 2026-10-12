@@ -120,6 +120,12 @@ async function addressBelongsToOrder(orderNumber: string, email: string): Promis
 }
 
 
+/** Сбой связи с почтовым сервером: лечится повтором, а не правкой письма. */
+function isConnectionProblem(error: unknown): boolean {
+    return /ETIMEDOUT|ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|ESOCKET|socket close|timeout/i
+        .test(String(error ?? ''));
+}
+
 export async function POST(req: Request) {
     const session = await getSession();
     if (!session || !['admin', 'rop', 'okk', 'manager'].includes(session.user.role)) {
@@ -251,6 +257,37 @@ export async function POST(req: Request) {
 
     const result = delivery.result;
     if (!delivery.ok) {
+        /**
+         * Почта не отвечает — письмо НЕ теряем.
+         *
+         * 12.10.2026 SMTP Яндекса перестал пускать наш сервер (таймаут на 465
+         * и 587 при живом IMAP), и менеджеры увидели «ETIMEDOUT» на уже
+         * написанном письме. Переписывать его потом заново — худшее, что можно
+         * предложить человеку. Ставим в очередь: воркер повторяет каждые
+         * несколько минут и отправит, как только связь вернётся.
+         */
+        if (isConnectionProblem(result.error)) {
+            const job = await safeEnqueueSystemJob({
+                jobType: 'email_scheduled_send',
+                payload: { letter: { ...body, seq }, actor: session.user.email || session.user.username || session.user.role },
+                priority: 20,
+                idempotencyKey: body.clientKey ? `email_scheduled_send:${body.clientKey}` : undefined,
+                availableAt: new Date(Date.now() + 120_000).toISOString(),
+                // Связь возвращается не сразу: пробуем до конца дня.
+                maxAttempts: 40,
+            });
+
+            if (job) {
+                return NextResponse.json({
+                    ok: true,
+                    queuedAfterFailure: true,
+                    message: 'Почта сейчас не отвечает. Письмо встало в очередь и уйдёт само, '
+                        + 'как только связь вернётся — переписывать его не нужно. '
+                        + 'Если дело срочное, напишите клиенту из почтового ящика: письмо всё равно попадёт в заказ.',
+                });
+            }
+        }
+
         return NextResponse.json({ ok: false, ...result }, { status: 502 });
     }
 
