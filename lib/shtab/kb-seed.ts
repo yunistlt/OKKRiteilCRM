@@ -25,6 +25,8 @@ export const SCHEMA_SLUG_PREFIX = 'tseh-shema-';
 export type SeedReport = {
     inserted: string[];
     updated: string[];
+    /** Были погашены, текст не менялся — включены обратно без пересчёта эмбеддинга. */
+    revived: string[];
     unchanged: string[];
     deactivated: string[];
 };
@@ -49,12 +51,13 @@ export async function seedShtabKb(
         throw new Error(`Повторяющиеся slug в kb-content.ts: ${duplicates.join(', ')}`);
     }
 
-    const existing = await sql<{ slug: string; fp: string | null }[]>`
-        SELECT slug, metadata_fingerprint AS fp FROM public.shtab_kb
+    const existing = await sql<{ slug: string; fp: string | null; isActive: boolean }[]>`
+        SELECT slug, metadata_fingerprint AS fp, is_active AS "isActive" FROM public.shtab_kb
     `;
     const fpBySlug = new Map(existing.map((r) => [r.slug, r.fp]));
+    const activeBySlug = new Map(existing.map((r) => [r.slug, r.isActive]));
 
-    const report: SeedReport = { inserted: [], updated: [], unchanged: [], deactivated: [] };
+    const report: SeedReport = { inserted: [], updated: [], revived: [], unchanged: [], deactivated: [] };
 
     for (const row of SHTAB_KB_SEED) {
         const text = formatShtabKbForEmbedding(row);
@@ -62,6 +65,21 @@ export async function seedShtabKb(
 
         // Текст не менялся — эмбеддинг тот же, и платить за него второй раз незачем.
         if (fpBySlug.get(row.slug) === fp) {
+            // Но если статья погашена, вернуть её надо: эмбеддинг в строке уже
+            // лежит и остался верным, платить нечего. Без этой ветки засев,
+            // случайно запущенный из каталога с устаревшим kb-content.ts, гасил
+            // статьи насовсем — повторный запуск с правильным содержанием
+            // объявлял их «без изменений» и оставлял выключенными.
+            if (activeBySlug.get(row.slug) === false) {
+                await sql`
+                    UPDATE public.shtab_kb
+                       SET is_active = true, updated_at = now()
+                     WHERE slug = ${row.slug}
+                `;
+                report.revived.push(row.slug);
+                onProgress(`  вернул ${row.slug} — ${row.title}`);
+                continue;
+            }
             report.unchanged.push(row.slug);
             continue;
         }
