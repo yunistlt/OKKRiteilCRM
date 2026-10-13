@@ -751,20 +751,21 @@
 
 /* Порт связи и сворачивание ветки: появляются на блоке под курсором. */
 .shtab .struct-port,
-.shtab .struct-fold{position:absolute;width:22px;height:22px;line-height:1;font-size:13px;
-  border:1px solid var(--line-2);background:var(--field);color:var(--ink);opacity:0;transition:opacity .12s;
-  display:flex;align-items:center;justify-content:center;font-family:var(--f-mono)}
+.shtab .struct-fold{position:absolute;height:26px;line-height:1;font-size:14px;font-weight:700;
+  border:1px solid var(--line-2);background:var(--field);color:var(--ink);
+  display:flex;align-items:center;justify-content:center;font-family:var(--f-mono);
+  transform-origin:center}
 
-.shtab .struct-port{left:50%;bottom:-11px;transform:translateX(-50%);cursor:crosshair}
-.shtab .struct-fold{right:-11px;top:50%;transform:translateY(-50%);cursor:pointer;min-width:22px;width:auto;padding:0 5px}
-
+/* Порт связи нужен редко — показываем на наведении, чтобы не шуметь. */
+.shtab .struct-port{left:50%;bottom:-13px;width:26px;opacity:0;transition:opacity .12s;cursor:crosshair}
 .shtab .struct-block:hover .struct-port,
-.shtab .struct-block:hover .struct-fold,
-.shtab .struct-block.on .struct-port,
-.shtab .struct-block.on .struct-fold{opacity:1}
+.shtab .struct-block.on .struct-port{opacity:1}
 
-/* Свёрнутую ветку видно и без наведения: иначе пост выглядит бездетным. */
-.shtab .struct-block .struct-fold:not(:empty){opacity:.75}
+/* Сворачивание видно всегда: иначе о нём не узнать, а при обзорном масштабе
+   кнопку вообще не разглядеть. Масштаб схемы кнопки не уменьшает. */
+.shtab .struct-fold{right:-14px;top:50%;min-width:26px;padding:0 7px;cursor:pointer;
+  background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.shtab .struct-fold:hover{background:var(--signal);border-color:var(--signal)}
 
 /* Выбор цвета в карточке поста. */
 .shtab .struct-swatches{display:flex;gap:6px;flex-wrap:wrap}

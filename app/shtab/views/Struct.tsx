@@ -585,6 +585,7 @@ export default function Struct({ shtab }: ViewProps) {
                                     в карточке — мышью было никак. */}
                                 <button
                                     className="struct-port"
+                                    style={{ transform: `translateX(-50%) scale(${(1 / zoom).toFixed(2)})` }}
                                     title="Потяни к руководителю, чтобы подчинить пост"
                                     onPointerDown={(e) => {
                                         e.stopPropagation();
@@ -599,6 +600,7 @@ export default function Struct({ shtab }: ViewProps) {
                                 {kidCount.get(p.id) ? (
                                     <button
                                         className="struct-fold"
+                                        style={{ transform: `translateY(-50%) scale(${(1 / zoom).toFixed(2)})` }}
                                         title={p.collapsed ? 'Развернуть ветку' : 'Свернуть ветку'}
                                         onPointerDown={(e) => e.stopPropagation()}
                                         onClick={(e) => {
