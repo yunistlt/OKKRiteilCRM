@@ -71,7 +71,7 @@ export default function Struct({ shtab }: ViewProps) {
     const fitted = useRef(false);
     const zoomRef = useRef(1);
     /** Протяжка холста за пустое место — как в майнд-картах. */
-    const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+    const pan = useRef<{ x: number; y: number; left: number; top: number; moved: boolean } | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const load = useCallback(async () => {
@@ -187,6 +187,7 @@ export default function Struct({ shtab }: ViewProps) {
         (e: React.PointerEvent) => {
             const p = pan.current;
             if (p) {
+                if (Math.abs(e.clientX - p.x) + Math.abs(e.clientY - p.y) > 4) p.moved = true;
                 const box = canvasRef.current;
                 if (box) {
                     box.scrollLeft = p.left - (e.clientX - p.x);
@@ -205,6 +206,9 @@ export default function Struct({ shtab }: ViewProps) {
 
     const onPointerUp = useCallback(async () => {
         if (pan.current) {
+            // Клик мимо блоков (без протяжки) закрывает карточку поста:
+            // открытая форма от предыдущего клика мешала смотреть схему.
+            if (!pan.current.moved) setSelected(null);
             pan.current = null;
             canvasRef.current?.classList.remove('panning');
         }
@@ -398,7 +402,7 @@ export default function Struct({ shtab }: ViewProps) {
                         if ((e.target as HTMLElement).closest('.struct-block')) return;
                         const box = canvasRef.current;
                         if (!box) return;
-                        pan.current = { x: e.clientX, y: e.clientY, left: box.scrollLeft, top: box.scrollTop };
+                        pan.current = { x: e.clientX, y: e.clientY, left: box.scrollLeft, top: box.scrollTop, moved: false };
                         box.classList.add('panning');
                     }}
                     onPointerMove={onPointerMove}
