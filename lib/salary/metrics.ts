@@ -166,33 +166,69 @@ export function resolveVatPct(
 }
 
 /**
+ * Цена позиции, по которой заказ выставлен клиенту (за единицу, с НДС).
+ *
+ * RetailCRM отдаёт позицию двумя способами. Если есть `prices`, цена там уже
+ * со скидкой — вычитать `discountTotal` второй раз нельзя. Если `prices` нет
+ * (так приходят наши собственные заказы и часть выгрузки), остаётся
+ * `initialPrice` — цена ДО скидки, и скидку надо снять: `discountTotal` в
+ * RetailCRM — это скидка на ЕДИНИЦУ товара, не на строку.
+ *
+ * Проверено на 1 200 заказах за полгода: с `prices` старая и новая формулы
+ * сходятся с суммой заказа одинаково (993 из 993), без `prices` новая даёт
+ * 197 совпадений из 207 против 79 у старой.
+ */
+function itemNetPrice(it: any): number {
+    const listed = it?.prices?.[0]?.price;
+    if (listed != null) return Number(listed) || 0;
+    const initial = Number(it?.initialPrice ?? 0) || 0;
+    return initial - (Number(it?.discountTotal ?? 0) || 0);
+}
+
+/**
  * Финансовые показатели заказа из его позиций (raw_payload.items).
  * vatPct — эффективная ставка НДС заказа (по витрине, см. resolveVatPct);
  * применяется ко всем позициям единым делителем.
+ *
+ * totalSumm — сумма заказа из CRM. Это истина в последней инстанции: в ней уже
+ * учтена скидка на весь заказ (`discountManualPercent`/`discountManualAmount`),
+ * которой в позициях не видно. Σ по позициям приводим к ней пропорционально.
+ *
+ * Жалоба Евгении Матвеевой 13.10.2026: «суммы без НДС выше, чем суммы с НДС».
+ * Так и было: скидку не вычитали вовсе, а НДС 5% её не перекрывал — по заказу
+ * 53508 выходило 542 248 ₽ «без НДС» при сумме заказа 457 900 ₽.
  */
 export function computeOrderFinance(
     items: any[] | null,
     vatPct: number,
     ndsRules: SalaryConfig['nds_normalization']['rules'],
+    totalSumm?: number | null,
 ): OrderFinance {
     let goodsBase = 0;
-    let discountAmount = 0;
-    let revenueNoVat = 0;
-    let margin = 0;
+    let net = 0;
+    let purchase = 0;
 
     const divisor = vatDivisor(vatPct, ndsRules);
     for (const it of items ?? []) {
         const qty = Number(it?.quantity ?? 1) || 0;
         const initialPrice = Number(it?.initialPrice ?? 0) || 0;
-        const price = Number(it?.prices?.[0]?.price ?? it?.initialPrice ?? 0) || 0;
-        const discountTotal = Number(it?.discountTotal ?? 0) || 0;
         const purchasePrice = Number(it?.purchasePrice ?? 0) || 0;
 
         goodsBase += initialPrice * qty;
-        discountAmount += discountTotal;
-        revenueNoVat += (price * qty) / divisor;
-        margin += (price - purchasePrice) * qty;
+        net += itemNetPrice(it) * qty;
+        purchase += purchasePrice * qty;
     }
+
+    // Скидка на весь заказ видна только в его сумме — разносим её по позициям.
+    const total = Number(totalSumm ?? 0) || 0;
+    const scale = total > 0 && net > 0 ? total / net : 1;
+    const billed = net * scale;
+
+    const revenueNoVat = billed / divisor;
+    const margin = billed - purchase;
+    // Скидка — разница между прайсом и тем, что выставили: так она включает и
+    // скидку на заказ целиком. Σ discountTotal по позициям её не видела.
+    const discountAmount = Math.max(0, goodsBase - billed);
 
     const discountPct = goodsBase > 0 ? (discountAmount / goodsBase) * 100 : 0;
     return { goodsBase, discountAmount, discountPct, revenueNoVat, margin };
@@ -245,7 +281,7 @@ export function buildPeriodMetrics(input: {
         if (managerId == null || !Number.isFinite(managerId)) continue;
         const clientId = row.client_id == null ? null : Number(row.client_id);
         const vatPct = resolveVatPct(row.site, config.vat_policy, row.contragent);
-        const fin = computeOrderFinance(row.items, vatPct, config.nds_normalization.rules);
+        const fin = computeOrderFinance(row.items, vatPct, config.nds_normalization.rules, row.totalsumm);
         const deals = clientId != null ? clientDeals.get(clientId) ?? 0 : 0;
         const type = classifyOrderType(clientId, clientDeals, config);
         const category = row.typ_castomer ? String(row.typ_castomer).trim() || null : null;
