@@ -85,6 +85,12 @@
 
 .shtab .main{padding-top:28px;min-width:0}
 
+/* Полноширинный режим: холст схемы занимает всё окно, колонка Тамары убрана. */
+.shtab .wrap.wide{max-width:none;padding:0 18px 28px}
+.shtab .layout.wide{grid-template-columns:minmax(0,1fr);gap:0}
+.shtab .layout.wide .tam{display:none}
+.shtab .layout.wide .main{padding-top:18px}
+
 /* ---------- Тамара ---------- */
 .shtab .tam{position:sticky;top:46px;height:calc(var(--shtab-vh, 100vh) - 62px);min-height:460px;
   display:flex;flex-direction:column;padding-top:14px}
@@ -695,7 +701,7 @@
 
 @media (max-width:1100px){.shtab .struct{grid-template-columns:1fr}}
 
-.shtab .struct-canvas{position:relative;overflow:auto;height:600px;background:var(--surface-2);
+.shtab .struct-canvas{position:relative;overflow:auto;height:calc(var(--shtab-vh, 100vh) - 232px);min-height:520px;background:var(--surface-2);
   border-right:1px solid var(--line);touch-action:none}
 
 .shtab .struct-plane{position:relative;width:2400px;height:1600px;transform-origin:0 0}
@@ -720,7 +726,7 @@
 
 .shtab .struct-marks{display:flex;gap:8px;margin-top:auto}
 
-.shtab .struct-side{padding:16px;overflow:auto;max-height:600px}
+.shtab .struct-side{padding:16px;overflow:auto;max-height:calc(var(--shtab-vh, 100vh) - 232px)}
 
 .shtab .struct-doc{display:flex;align-items:center;gap:8px;border:1px solid var(--line);padding:6px 9px;
   background:var(--field);font-size:13px}
