@@ -396,7 +396,7 @@ function buildAlerts(p: {
     for (const m of managers) {
         const tiers = paramsByManager.get(m.managerId)?.get('plan_coef')?.tiers as Tier[] | undefined;
         if (!tiers || !m.planTarget || m.planPct == null) continue;
-        const cur = multipliers.find((x) => x.code === 'plan_coef')?.byManager[m.managerId]?.k ?? pickTier(m.planPct, tiers)?.k ?? 1;
+        const cur = multipliers.find((x) => x.code === 'plan_coef')?.byManager[m.managerId]?.k ?? pickTier(m.planPct, tiers)?.k ?? 0;
         const next = nextRewardTier(m.planPct, cur, tiers);
         if (!next) continue;
         const need = Math.max(0, round(m.planTarget * (next.min / 100) - m.revenueNoVat));
