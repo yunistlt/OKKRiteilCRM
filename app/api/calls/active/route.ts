@@ -23,6 +23,7 @@ import { enrichSessionWithManagerIdentity } from '@/lib/manager-identity';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { ordersByPhone } from '@/lib/call-binding';
+import { activeSince, dropStaleCalls } from '@/lib/calls/active-call';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,6 +34,21 @@ export const dynamic = 'force-dynamic';
  * не меняется: держим минуту, чтобы не гонять один и тот же запрос полтора
  * десятка раз за звонок.
  */
+/**
+ * Чистка зависших строк: не чаще раза в полминуты.
+ *
+ * Окно спрашивает нас каждые две секунды у каждого открытого ОКК — удалять на
+ * каждый заход незачем, а повисший звонок столько времени потерпит.
+ */
+let lastSweepAt = 0;
+const SWEEP_EVERY_MS = 30_000;
+
+async function sweepStale(): Promise<void> {
+    if (Date.now() - lastSweepAt < SWEEP_EVERY_MS) return;
+    lastSweepAt = Date.now();
+    await dropStaleCalls().catch(() => 0);
+}
+
 const ordersCache = new Map<string, { at: number; orders: Array<{ orderId: number; number: string }> }>();
 const ORDERS_CACHE_MS = 60_000;
 
@@ -75,6 +91,8 @@ export async function GET() {
         extension = value ? String(value).trim() : null;
     }
 
+    await sweepStale();
+
     const { data: rows } = await supabase
         .from('active_calls')
         .select('telphin_call_id, direction, from_number, to_number, extension_number, extensions, is_queue, client_name, client_id, order_id, order_number, status, started_at')
@@ -82,6 +100,15 @@ export async function GET() {
         .limit(10);
 
     const calls = ((rows ?? []) as any[]).filter((call) => {
+        /**
+         * Звонок, который уже не идёт, не показываем, даже если строка ещё не
+         * удалена: чистка идёт раз в полминуты, а окно спрашивает каждые две
+         * секунды (жалоба Евгении Матвеевой 13.10.2026 — окна получасовой
+         * давности лезли при каждом действии).
+         */
+        if (call.status === 'ended') return false;
+        if (!call.started_at || String(call.started_at) < activeSince(call.status)) return false;
+
         if (seeAll) return true;
         // Очередь звонит у нескольких сразу — окно видят все, кто в ней.
         if (call.is_queue) return true;

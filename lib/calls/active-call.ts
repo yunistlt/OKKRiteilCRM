@@ -141,15 +141,50 @@ export async function callStopped(callId: string, status: 'answered' | 'ended' =
 }
 
 /**
+ * Сколько звонок может считаться идущим.
+ *
+ * Гудок идёт 20–30 секунд: строка `ringing` старше двух минут — это не звонок,
+ * а след от события, на которое Телфин не прислал завершение. Разговор бывает
+ * долгим, поэтому `answered` держим полчаса.
+ */
+const RINGING_TTL_MS = 2 * 60 * 1000;
+const ANSWERED_TTL_MS = 30 * 60 * 1000;
+
+/** Граница «идёт сейчас» для статуса: раньше неё звонок показывать нельзя. */
+export function activeSince(status: string | null | undefined, now = Date.now()): string {
+    return new Date(now - (status === 'answered' ? ANSWERED_TTL_MS : RINGING_TTL_MS)).toISOString();
+}
+
+/**
  * Зависшие звонки: Телфин не всегда присылает событие о завершении, и строка
- * может остаться висеть. Старше получаса — это уже не «идёт сейчас».
+ * остаётся висеть.
+ *
+ * Жалоба Евгении Матвеевой 13.10.2026: окна уже прошедших звонков выскакивали
+ * при каждом действии — в таблице лежали строки с 8 октября. Функция была
+ * написана, но её никто не вызывал; теперь её зовёт маршрут окна звонка.
  */
 export async function dropStaleCalls(): Promise<number> {
-    const { data } = await supabase
+    const now = Date.now();
+    const dropped: string[] = [];
+
+    for (const status of ['ringing', 'answered'] as const) {
+        const { data } = await supabase
+            .from('active_calls')
+            .delete()
+            .eq('status', status)
+            .lt('started_at', activeSince(status, now))
+            .select('telphin_call_id');
+        for (const row of ((data ?? []) as any[])) dropped.push(row.telphin_call_id);
+    }
+
+    // Строка с чужим статусом (или без него) тоже не должна жить вечно.
+    const { data: rest } = await supabase
         .from('active_calls')
         .delete()
-        .lt('started_at', new Date(Date.now() - 30 * 60 * 1000).toISOString())
+        .not('status', 'in', '("ringing","answered")')
+        .lt('started_at', activeSince('ringing', now))
         .select('telphin_call_id');
+    for (const row of ((rest ?? []) as any[])) dropped.push(row.telphin_call_id);
 
-    return ((data ?? []) as any[]).length;
+    return dropped.length;
 }
