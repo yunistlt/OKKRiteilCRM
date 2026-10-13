@@ -10,6 +10,26 @@ export type RouteRule = {
     allowed: AppRole[];
 };
 
+/**
+ * Сервисные маршруты: обслуживают саму механику экранов — состав выпадающих
+ * списков фильтра, сохранённые наборы фильтров, список менеджеров для фильтра.
+ * Данных заказа или денег они не отдают, поэтому правом в реестре доступов не
+ * являются: иначе каждая новая роль открывает страницу заказов с мёртвой
+ * панелью фильтров и человек видит пустой экран вместо работы (решение
+ * владельца 13.10.2026).
+ *
+ * Доступны любой вошедшей роли — саму сессию по-прежнему проверяет middleware.
+ */
+export const SERVICE_ROUTES = [
+    '/api/okk/filter-options',
+    '/api/okk/filter-presets',
+    '/api/okk/managers',
+];
+
+export function isServiceRoute(pathname: string): boolean {
+    return SERVICE_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+}
+
 export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/agents/katerina', label: 'API настроек Катерины', description: 'Адреса отделов и режимы пересылки/заказов агента-секретаря.', category: 'Управление', allowed: ['admin', 'rop'] },
     { prefix: '/shtab', label: 'Штаб владельца', description: 'Рабочее место собственника по методологии «Альянс Стратег»: реестр минусов, разборы, карта ресурсов, стратегии.', category: 'Управление', allowed: ['admin'] },
@@ -218,6 +238,8 @@ export function getAllowedRolesForPath(pathname: string): AppRole[] | null {
 }
 
 export function canAccessPathWithRules(role: AppRole | null | undefined, pathname: string, rules: RouteRule[]): boolean {
+    if (isServiceRoute(pathname)) return true;
+
     const allowed = getAllowedRolesForPathFromRules(pathname, rules);
     if (!allowed) return true;
     return hasRole(role, allowed);
