@@ -86,7 +86,7 @@
 .shtab .main{padding-top:28px;min-width:0}
 
 /* Полноширинный режим: холст схемы занимает всё окно, колонка Тамары убрана. */
-.shtab .wrap.wide{max-width:none;padding:0 18px 28px}
+.shtab .wrap.wide{max-width:none;padding:0 14px 10px}
 .shtab .layout.wide{grid-template-columns:minmax(0,1fr);gap:0}
 .shtab .layout.wide .tam{display:none}
 .shtab .layout.wide .main{padding-top:10px}
@@ -703,10 +703,16 @@
 .shtab .struct{display:grid;grid-template-columns:minmax(0,1fr) 320px;border:1px solid var(--line);
   background:var(--surface)}
 
+/* Пост не выбран — карточки нет, и схема занимает всю ширину. */
+.shtab .struct:has(.struct-side.hidden){grid-template-columns:minmax(0,1fr)}
+.shtab .struct-side.hidden{display:none}
+
 @media (max-width:1100px){.shtab .struct{grid-template-columns:1fr}}
 
-.shtab .struct-canvas{position:relative;overflow:auto;height:calc(var(--shtab-vh, 100vh) - 232px);min-height:520px;background:var(--surface-2);
-  border-right:1px solid var(--line);touch-action:none}
+.shtab .struct-canvas{position:relative;overflow:auto;height:calc(var(--shtab-vh, 100vh) - 188px);min-height:420px;background:var(--surface-2);
+  border-right:1px solid var(--line);touch-action:pan-x pan-y;overscroll-behavior:contain}
+
+.shtab .struct-canvas.dragging{touch-action:none}
 
 .shtab .struct-plane{position:relative;transform-origin:0 0}
 
@@ -741,7 +747,7 @@
 
 .shtab .struct-marks{display:flex;gap:8px;margin-top:auto}
 
-.shtab .struct-side{padding:16px;overflow:auto;max-height:calc(var(--shtab-vh, 100vh) - 232px)}
+.shtab .struct-side{padding:14px;overflow:auto;max-height:calc(var(--shtab-vh, 100vh) - 188px)}
 
 .shtab .struct-doc{display:flex;align-items:center;gap:8px;border:1px solid var(--line);padding:6px 9px;
   background:var(--field);font-size:13px}

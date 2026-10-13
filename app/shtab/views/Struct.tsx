@@ -69,6 +69,7 @@ export default function Struct({ shtab }: ViewProps) {
     const canvasRef = useRef<HTMLDivElement>(null);
     /** Масштаб подбирается один раз: дальше его крутит человек, и перебивать его нельзя. */
     const fitted = useRef(false);
+    const zoomRef = useRef(1);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const load = useCallback(async () => {
@@ -101,6 +102,10 @@ export default function Struct({ shtab }: ViewProps) {
         };
     }, [load]);
 
+    useEffect(() => {
+        zoomRef.current = zoom;
+    }, [zoom]);
+
     const post = useMemo(() => posts.find((p) => p.id === selected) ?? null, [posts, selected]);
     const postDocs = useMemo(() => docs.filter((d) => d.post_id === selected), [docs, selected]);
 
@@ -109,7 +114,7 @@ export default function Struct({ shtab }: ViewProps) {
     const [planeW, planeH] = useMemo(() => {
         const maxX = posts.reduce((m, p) => Math.max(m, p.pos_x), 0);
         const maxY = posts.reduce((m, p) => Math.max(m, p.pos_y), 0);
-        return [Math.max(2400, maxX + BLOCK_W + 120), Math.max(1600, maxY + BLOCK_H + 120)];
+        return [maxX + BLOCK_W + 40, maxY + BLOCK_H + 40];
     }, [posts]);
 
     /** Уровень поста в дереве: по нему красится блок, как в майнд-картах. */
@@ -142,7 +147,8 @@ export default function Struct({ shtab }: ViewProps) {
         // Подгоняем по ширине: дерево растёт вниз, и вертикальная прокрутка
         // привычна, а ужимать схему до нечитаемых подписей ради высоты незачем.
         const maxX = posts.reduce((m, p) => Math.max(m, p.pos_x), 0) + BLOCK_W + 40;
-        const fit = Math.min(box.clientWidth / maxX, 1);
+        // Потолка нет: узкое дерево растягивается на всю ширину, пустого поля справа не остаётся.
+        const fit = Math.min(box.clientWidth / maxX, 1.6);
         setZoom(Math.max(0.62, +fit.toFixed(2)));
     }, [posts]);
 
@@ -169,6 +175,7 @@ export default function Struct({ shtab }: ViewProps) {
             if ((e.target as HTMLElement).closest('button')) return;
             (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
             drag.current = { id: p.id, dx: e.clientX / zoom - p.pos_x, dy: e.clientY / zoom - p.pos_y };
+            canvasRef.current?.classList.add('dragging');
             setSelected(p.id);
         },
         [zoom],
@@ -188,6 +195,7 @@ export default function Struct({ shtab }: ViewProps) {
     const onPointerUp = useCallback(async () => {
         const d = drag.current;
         drag.current = null;
+        canvasRef.current?.classList.remove('dragging');
         if (!d) return;
         const moved = posts.find((p) => p.id === d.id);
         if (!moved) return;
@@ -253,6 +261,29 @@ export default function Struct({ shtab }: ViewProps) {
         },
         [post, load],
     );
+
+    // Трекпад: щипок (ctrl+колесо у всех браузеров) меняет масштаб,два пальца
+    // прокручивают холст сами. Масштабируем вокруг курсора, иначе схема
+    // уезжает из-под пальца.
+    useEffect(() => {
+        const box = canvasRef.current;
+        if (!box) return;
+        const onWheel = (e: WheelEvent) => {
+            if (!e.ctrlKey && !e.metaKey) return; // обычная прокрутка — это панорама
+            e.preventDefault();
+            const rect = box.getBoundingClientRect();
+            const px = (box.scrollLeft + e.clientX - rect.left) / zoomRef.current;
+            const py = (box.scrollTop + e.clientY - rect.top) / zoomRef.current;
+            const next = Math.min(1.6, Math.max(0.3, +(zoomRef.current * (1 - e.deltaY / 220)).toFixed(3)));
+            setZoom(next);
+            requestAnimationFrame(() => {
+                box.scrollLeft = px * next - (e.clientX - rect.left);
+                box.scrollTop = py * next - (e.clientY - rect.top);
+            });
+        };
+        box.addEventListener('wheel', onWheel, { passive: false });
+        return () => box.removeEventListener('wheel', onWheel);
+    }, []);
 
     const openDoc = useCallback(async (id: number) => {
         const res = await fetch(`/api/shtab/doc/${id}`);
@@ -364,7 +395,7 @@ export default function Struct({ shtab }: ViewProps) {
                     </div>
                 </div>
 
-                <aside className="struct-side">
+                <aside className={`struct-side${post ? '' : ' hidden'}`}>
                     {!post ? (
                         <p className="hint">Выбери блок, чтобы править пост и его папку.</p>
                     ) : (
