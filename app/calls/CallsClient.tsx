@@ -59,6 +59,13 @@ export default function CallsClient() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [openId, setOpenId] = useState<number | null>(null);
+    /**
+     * Какую запись слушаем. Раньше «слушать» было ссылкой в новую вкладку:
+     * браузер её скачивал, и из реестра звонок было не послушать (вопрос
+     * Евгении Матвеевой 13.10.2026 — «как прослушать тут звонок??»). Играем на
+     * месте тем же проигрывателем, что в ОКК.
+     */
+    const [playingId, setPlayingId] = useState<number | null>(null);
 
     // Подтверждение подсказанного заказа: после него звонок привязан к заказу
     // способом «указал менеджер».
@@ -296,9 +303,13 @@ export default function CallsClient() {
                                     <td className="whitespace-nowrap px-3 py-2 text-gray-700">{formatDuration(call.durationSec)}</td>
                                     <td className="whitespace-nowrap px-3 py-2">
                                         {call.recordingUrl ? (
-                                            <a href={call.recordingUrl} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">
-                                                слушать
-                                            </a>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPlayingId(playingId === call.id ? null : call.id)}
+                                                className="font-semibold text-blue-700 hover:underline"
+                                            >
+                                                {playingId === call.id ? 'свернуть' : 'слушать'}
+                                            </button>
                                         ) : (
                                             <span className="text-gray-400">нет</span>
                                         )}
@@ -313,6 +324,30 @@ export default function CallsClient() {
                                         )}
                                     </td>
                                 </tr>
+                                {playingId === call.id && call.recordingUrl && (
+                                    <tr key={`${call.id}-audio`}>
+                                        <td colSpan={8} className="bg-gray-50 px-3 py-3">
+                                            {/* Запись лежит в хранилище Телфина: отдаём её
+                                                через свой прокси — напрямую браузер её
+                                                скачивает, а не играет. */}
+                                            <audio
+                                                controls
+                                                autoPlay
+                                                preload="none"
+                                                src={`/api/proxy/audio?url=${encodeURIComponent(call.recordingUrl)}`}
+                                                className="w-full"
+                                            />
+                                            <a
+                                                href={call.recordingUrl}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="mt-1 inline-block text-xs text-gray-500 hover:underline"
+                                            >
+                                                скачать файл
+                                            </a>
+                                        </td>
+                                    </tr>
+                                )}
                                 {openId === call.id && call.transcript && (
                                     <tr key={`${call.id}-text`}>
                                         <td colSpan={8} className="bg-gray-50 px-3 py-3">

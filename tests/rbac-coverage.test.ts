@@ -77,7 +77,6 @@ describe('rbac: покрытие API-роутов правилами', () => {
     '/api/faq/stats',
     '/api/faq/top',
     '/api/leads/catch',
-    '/api/proxy/audio',
     '/api/system/activity',
     '/api/system/stats',
     '/api/system/transcription-details',

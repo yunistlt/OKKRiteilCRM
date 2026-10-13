@@ -6,6 +6,8 @@
  * же, как обычная синхронизация, а не своим вторым разбором.
  */
 
+import { callExtension } from '@/lib/calls/extension';
+
 /** Номер в сравнимом виде: только цифры, без ведущих 7/8. */
 export function normalizeTelphinPhone(val: any): string | null {
     if (!val) return null;
@@ -28,6 +30,7 @@ export type RawTelphinCall = {
     duration_sec: number;
     recording_url: string | null;
     raw_payload: any;
+    manager_extension: string | null;
 };
 
 export function telphinCallToRaw(r: any): RawTelphinCall {
@@ -81,6 +84,16 @@ export function telphinCallToRaw(r: any): RawTelphinCall {
         duration_sec: r.duration || 0,
         recording_url: recordingUrl,
         raw_payload: r,
+        /**
+         * Чей это добавочный — считаем здесь, при заливке.
+         *
+         * Колонку завели 12.10.2026 для списка звонков, но заполнял её только
+         * путь вебхука. Основной поток идёт отсюда (CDR Телфина), и в списке у
+         * свежих звонков колонка «Менеджер» стояла пустой (жалоба Евгении
+         * Матвеевой 13.10.2026). Разбирать ноги на каждом показе нельзя —
+         * двести строк тянулись 7,5 секунды.
+         */
+        manager_extension: callExtension({ direction, raw_payload: r }) || null,
         /**
          * `ingested_at` не передаём намеренно: у колонки есть `default now()`,
          * и при повторной заливке того же звонка (скользящее окно синка) он
