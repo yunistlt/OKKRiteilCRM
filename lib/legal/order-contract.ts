@@ -9,6 +9,7 @@
  */
 import { supabase } from '@/utils/supabase';
 import { saveContractFile } from '@/lib/legal/contract-file';
+import { buildContractKit } from '@/lib/legal/contract-kit';
 import { reviewContract, type ContractReview } from '@/lib/legal/contract-review';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { orderDocumentData } from '@/lib/own-crm/documents';
@@ -162,7 +163,7 @@ export async function createOrderContract(params: {
     toLawyer?: boolean;
     /** Текст условий готов и согласован — вставляем как есть, без ИИ. */
     termsAsIs?: boolean;
-}): Promise<{ ok: true; id: number; byAi: boolean; review: ContractReview; file?: string | null } | { ok: false; reason: string }> {
+}): Promise<{ ok: true; id: number; byAi: boolean; review: ContractReview; file?: string | null; kit?: string | null; kitProblem?: string | null } | { ok: false; reason: string }> {
     const built = await buildOrderContract(params);
     if (!built) {
         return {
@@ -248,7 +249,39 @@ export async function createOrderContract(params: {
         author: params.author,
     });
 
-    return { ok: true, id: data.id, byAi: built.byAi, review, file: file.ok ? file.fileName : null };
+    /**
+     * Следом — комплект на подпись: счёт, договор и спецификация одним файлом.
+     *
+     * Раньше он собирался только по отдельной кнопке, и менеджер видел в
+     * «Файлах» один договор: «опять счёт, договор и спецификация не создаёт,
+     * только договор» (Лена Парфёнова 13.10.2026). Собираем сразу — кнопка
+     * остаётся, чтобы пересобрать после правок.
+     *
+     * Не собрался (нет позиций или юрлица) — это не отменяет договор: он уже
+     * сохранён и лежит файлом.
+     */
+    const kit = await buildContractKit({
+        orderId: params.orderId,
+        orderNumber: params.orderNumber,
+        contractId: String(data.id),
+        contractTitle: title,
+        contractText: built.text,
+        author: params.author,
+    }).catch((e: any) => ({ ok: false as const, reason: String(e?.message || e) }));
+
+    if (!kit.ok) {
+        console.warn(`[contract] комплект по заказу ${params.orderNumber} не собрался: ${kit.reason}`);
+    }
+
+    return {
+        ok: true,
+        id: data.id,
+        byAi: built.byAi,
+        review,
+        file: file.ok ? file.fileName : null,
+        kit: kit.ok ? kit.fileName : null,
+        kitProblem: kit.ok ? null : kit.reason,
+    };
 }
 
 /** Решение юриста по договору: согласовать или вернуть на доработку. */
