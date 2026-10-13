@@ -89,7 +89,11 @@
 .shtab .wrap.wide{max-width:none;padding:0 18px 28px}
 .shtab .layout.wide{grid-template-columns:minmax(0,1fr);gap:0}
 .shtab .layout.wide .tam{display:none}
-.shtab .layout.wide .main{padding-top:18px}
+.shtab .layout.wide .main{padding-top:10px}
+.shtab .layout.wide .view-head{margin-bottom:8px}
+.shtab .layout.wide .view-head .eyebrow{display:none}
+.shtab .layout.wide .view-head h1{font-size:19px;line-height:1.1;margin:0}
+.shtab .layout.wide .view-head p{display:none}
 
 /* ---------- Тамара ---------- */
 .shtab .tam{position:sticky;top:46px;height:calc(var(--shtab-vh, 100vh) - 62px);min-height:460px;
@@ -710,16 +714,27 @@
 
 .shtab .struct-links path{stroke:var(--line-2);stroke-width:1.5}
 
-.shtab .struct-block{position:absolute;background:var(--field);border:1px solid var(--line-2);padding:9px 11px;
-  cursor:grab;user-select:none;display:flex;flex-direction:column;gap:3px}
+.shtab .struct-block{position:absolute;background:var(--field);border:1px solid var(--line-2);padding:10px 12px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:3px;cursor:grab}
+
+/* Уровни дерева цветом, как в майнд-картах: чем выше пост, тем плотнее заливка. */
+.shtab .struct-block[data-level="0"]{background:var(--blue);border-color:var(--blue);color:var(--on-blue)}
+.shtab .struct-block[data-level="1"]{background:var(--calm);border-color:var(--calm);color:var(--on-blue)}
+.shtab .struct-block[data-level="2"]{background:var(--surface-2);border-color:var(--line-2);
+  box-shadow:inset 0 4px 0 var(--calm)}
+.shtab .struct-block[data-level="3"]{background:var(--field);border-color:var(--line);
+  box-shadow:inset 0 4px 0 var(--line-2)}
+
+.shtab .struct-block[data-level="0"] .struct-holder,
+.shtab .struct-block[data-level="1"] .struct-holder{color:color-mix(in srgb,var(--on-blue) 78%,transparent)}
 
 .shtab .struct-block.on{border-color:var(--blue);box-shadow:0 0 0 2px color-mix(in srgb,var(--blue) 22%,transparent)}
 
 .shtab .struct-block:active{cursor:grabbing}
 
-.shtab .struct-title{font-family:var(--f-display);font-weight:700;font-size:14.5px;line-height:1.2}
+.shtab .struct-title{font-family:var(--f-display);font-weight:700;font-size:17px;line-height:1.15}
 
-.shtab .struct-holder{font-size:12.5px;color:var(--ink-2)}
+.shtab .struct-holder{font-size:13.5px;color:var(--ink-2)}
 
 .shtab .struct-vkp{font-size:11.5px;color:var(--ink-3);line-height:1.35;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}

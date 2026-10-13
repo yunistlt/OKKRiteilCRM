@@ -112,6 +112,26 @@ export default function Struct({ shtab }: ViewProps) {
         return [Math.max(2400, maxX + BLOCK_W + 120), Math.max(1600, maxY + BLOCK_H + 120)];
     }, [posts]);
 
+    /** Уровень поста в дереве: по нему красится блок, как в майнд-картах. */
+    const levelOf = useMemo(() => {
+        const byId = new Map(posts.map((p) => [p.id, p]));
+        const out = new Map<number, number>();
+        for (const p of posts) {
+            let depth = 0;
+            let cur = p;
+            const seen = new Set<number>([p.id]);
+            while (cur.parent_id) {
+                const up = byId.get(cur.parent_id);
+                if (!up || seen.has(up.id)) break; // кольцо в данных схему не вешает
+                seen.add(up.id);
+                cur = up;
+                depth += 1;
+            }
+            out.set(p.id, Math.min(depth, 3));
+        }
+        return out;
+    }, [posts]);
+
     // При первом открытии схема показывается целиком: иначе человек видит левый
     // угол и решает, что постов всего пять.
     useEffect(() => {
@@ -119,10 +139,11 @@ export default function Struct({ shtab }: ViewProps) {
         const box = canvasRef.current;
         if (!box || box.clientWidth === 0) return;
         fitted.current = true;
+        // Подгоняем по ширине: дерево растёт вниз, и вертикальная прокрутка
+        // привычна, а ужимать схему до нечитаемых подписей ради высоты незачем.
         const maxX = posts.reduce((m, p) => Math.max(m, p.pos_x), 0) + BLOCK_W + 40;
-        const maxY = posts.reduce((m, p) => Math.max(m, p.pos_y), 0) + BLOCK_H + 40;
-        const fit = Math.min(box.clientWidth / maxX, box.clientHeight / maxY, 1);
-        setZoom(Math.max(0.4, +fit.toFixed(2)));
+        const fit = Math.min(box.clientWidth / maxX, 1);
+        setZoom(Math.max(0.62, +fit.toFixed(2)));
     }, [posts]);
 
     const patch = useCallback(async (id: number, fields: Partial<Post>) => {
@@ -304,15 +325,17 @@ export default function Struct({ shtab }: ViewProps) {
                                 .map((p) => {
                                     const parent = posts.find((x) => x.id === p.parent_id);
                                     if (!parent) return null;
-                                    const x1 = parent.pos_x + BLOCK_W / 2;
-                                    const y1 = parent.pos_y + BLOCK_H;
-                                    const x2 = p.pos_x + BLOCK_W / 2;
-                                    const y2 = p.pos_y;
-                                    const mid = (y1 + y2) / 2;
+                                    // Дерево растёт вправо, как оргсхема в майнд-картах: связь
+                                    // идёт от правого края родителя к левому краю ребёнка.
+                                    const x1 = parent.pos_x + BLOCK_W;
+                                    const y1 = parent.pos_y + BLOCK_H / 2;
+                                    const x2 = p.pos_x;
+                                    const y2 = p.pos_y + BLOCK_H / 2;
+                                    const mid = x1 + (x2 - x1) / 2;
                                     return (
                                         <path
                                             key={p.id}
-                                            d={`M ${x1} ${y1} L ${x1} ${mid} L ${x2} ${mid} L ${x2} ${y2}`}
+                                            d={`M ${x1} ${y1} H ${mid} V ${y2} H ${x2}`}
                                             fill="none"
                                         />
                                     );
@@ -322,6 +345,7 @@ export default function Struct({ shtab }: ViewProps) {
                             <div
                                 key={p.id}
                                 className={`struct-block${selected === p.id ? ' on' : ''}`}
+                                data-level={levelOf.get(p.id) ?? 0}
                                 style={{ left: p.pos_x, top: p.pos_y, width: BLOCK_W, minHeight: BLOCK_H }}
                                 onPointerDown={(e) => onPointerDown(e, p)}
                             >
