@@ -70,7 +70,7 @@ const tierPctK = z.object({ min: z.number().nonnegative(), k: z.number().nonnega
 const planCoef: BonusBlock<{ tiers: { min: number; k: number }[] }> = {
     code: 'plan_coef',
     name: 'Коэффициент по личному плану',
-    methodology: 'Множитель переменной части по % выполнения личного плана: берётся тир с наибольшим порогом ≤ факт/план×100. Личный план не задан → ×1 (не режем).',
+    methodology: 'Множитель переменной части по % выполнения личного плана: берётся тир с наибольшим порогом ≤ факт/план×100. Факт ниже самого нижнего порога → ×0 (переменная часть сгорает). Личный план не задан → ×1 (не режем).',
     kind: 'multiplier',
     group: 'variable',
     multiplierScope: 'variableBracket',
@@ -81,7 +81,10 @@ const planCoef: BonusBlock<{ tiers: { min: number; k: number }[] }> = {
         const fact = managerRevenue(m);
         const noPlan = target == null || target <= 0;
         const att = noPlan ? 0 : (fact / target) * 100;
-        const mult = noPlan ? 1 : (pickTier(att, p.tiers)?.k ?? 1);
+        // Ниже самого нижнего порога тира нет — это не «×1», а 0: план не выполнен
+        // даже на минимум, переменная часть сгорает (инцидент 13.10.2026: при 2%
+        // плана премии выплачивались полностью, при 51% — сгорали).
+        const mult = noPlan ? 1 : (pickTier(att, p.tiers)?.k ?? 0);
         return {
             multiplier: mult,
             amount: 0,
@@ -96,7 +99,7 @@ const planCoef: BonusBlock<{ tiers: { min: number; k: number }[] }> = {
 const deptPlanCoef: BonusBlock<{ tiers: { min: number; k: number }[] }> = {
     code: 'dept_plan_coef',
     name: 'Коэффициент по плану отдела',
-    methodology: 'Множитель переменной части по % выполнения плана отдела: тир с наибольшим порогом ≤ выручка отдела/план отдела×100. План отдела не задан → ×1 (не режем).',
+    methodology: 'Множитель переменной части по % выполнения плана отдела: тир с наибольшим порогом ≤ выручка отдела/план отдела×100. Факт ниже самого нижнего порога → ×0. План отдела не задан → ×1 (не режем).',
     kind: 'multiplier',
     group: 'variable',
     multiplierScope: 'variableBracket',
@@ -107,7 +110,7 @@ const deptPlanCoef: BonusBlock<{ tiers: { min: number; k: number }[] }> = {
         const fact = ctx.teamRevenueNoVat;
         const noPlan = target == null || target <= 0;
         const att = noPlan ? 0 : (fact / target) * 100;
-        const mult = noPlan ? 1 : (pickTier(att, p.tiers)?.k ?? 1);
+        const mult = noPlan ? 1 : (pickTier(att, p.tiers)?.k ?? 0);
         return {
             multiplier: mult,
             amount: 0,

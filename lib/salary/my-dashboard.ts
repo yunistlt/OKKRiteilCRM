@@ -210,7 +210,7 @@ export async function buildMyDashboard(params: {
         const planTiers = paramsByCode.get('plan_coef')?.tiers as { min: number; k: number }[] | undefined;
         if (planTiers && personalTarget && personalTarget > 0) {
             const att = (personalFact / personalTarget) * 100;
-            const kOld = findMult(contribs, 'plan_coef') ?? pickTier(att, planTiers)?.k ?? 1;
+            const kOld = findMult(contribs, 'plan_coef') ?? pickTier(att, planTiers)?.k ?? 0;
             const nt = nextRewardTier(att, kOld, planTiers);
             if (nt) {
                 const need = Math.max(0, round(personalTarget * (nt.min / 100) - personalFact));
