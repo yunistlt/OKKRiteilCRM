@@ -62,6 +62,8 @@ export default function Struct({ shtab }: ViewProps) {
     const [peopleNote, setPeopleNote] = useState<string | null>(null);
     const [selected, setSelected] = useState<number | null>(null);
     const [zoom, setZoom] = useState(1);
+    /** Смещение бесконечного холста: лист едет под схемой, как в Miro. */
+    const [offset, setOffset] = useState({ x: 0, y: 0 });
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
 
@@ -71,7 +73,8 @@ export default function Struct({ shtab }: ViewProps) {
     const fitted = useRef(false);
     const zoomRef = useRef(1);
     /** Протяжка холста за пустое место — как в майнд-картах. */
-    const pan = useRef<{ x: number; y: number; left: number; top: number; moved: boolean } | null>(null);
+    const pan = useRef<{ x: number; y: number; ox: number; oy: number; moved: boolean } | null>(null);
+    const offsetRef = useRef({ x: 0, y: 0 });
     const fileRef = useRef<HTMLInputElement>(null);
 
     const load = useCallback(async () => {
@@ -108,15 +111,23 @@ export default function Struct({ shtab }: ViewProps) {
         zoomRef.current = zoom;
     }, [zoom]);
 
+    useEffect(() => {
+        offsetRef.current = offset;
+    }, [offset]);
+
     const post = useMemo(() => posts.find((p) => p.id === selected) ?? null, [posts, selected]);
     const postDocs = useMemo(() => docs.filter((d) => d.post_id === selected), [docs, selected]);
 
-    // Размер плоскости — по самим постам. Раньше он был прибит к 2400×1600, и
-    // блоки, утащенные правее, просто обрезались вместе со связями.
-    const [planeW, planeH] = useMemo(() => {
-        const maxX = posts.reduce((m, p) => Math.max(m, p.pos_x), 0);
-        const maxY = posts.reduce((m, p) => Math.max(m, p.pos_y), 0);
-        return [maxX + BLOCK_W + 40, maxY + BLOCK_H + 40];
+    // Границы содержимого. Холст бесконечен во все стороны, поэтому координаты
+    // постов могут быть и отрицательными: рисуем всё относительно левого
+    // верхнего угла дерева, а не относительно нуля.
+    const bounds = useMemo(() => {
+        if (posts.length === 0) return { minX: 0, minY: 0, w: BLOCK_W, h: BLOCK_H };
+        const minX = Math.min(...posts.map((p) => p.pos_x));
+        const minY = Math.min(...posts.map((p) => p.pos_y));
+        const maxX = Math.max(...posts.map((p) => p.pos_x)) + BLOCK_W;
+        const maxY = Math.max(...posts.map((p) => p.pos_y)) + BLOCK_H;
+        return { minX, minY, w: maxX - minX, h: maxY - minY };
     }, [posts]);
 
     /** Уровень поста в дереве: по нему красится блок, как в майнд-картах. */
@@ -139,20 +150,50 @@ export default function Struct({ shtab }: ViewProps) {
         return out;
     }, [posts]);
 
-    // При первом открытии схема показывается целиком: иначе человек видит левый
-    // угол и решает, что постов всего пять.
+    /** Показать схему по центру листа. */
+    const fitView = useCallback(() => {
+        const box = canvasRef.current;
+        if (!box || box.clientWidth === 0 || posts.length === 0) return;
+        const pad = 48;
+        const byWidth = (box.clientWidth - pad * 2) / bounds.w;
+        const byHeight = (box.clientHeight - pad * 2) / bounds.h;
+        // Вмещаем целиком, как «fit to screen» в Miro: подчинённые стоят в ряд,
+        // схема шире экрана, и разглядывать её приближают жестами.
+        const z = Math.min(1.3, Math.max(0.25, +Math.min(byWidth, byHeight).toFixed(2)));
+        setZoom(z);
+        setOffset({
+            x: (box.clientWidth - bounds.w * z) / 2,
+            y: (box.clientHeight - bounds.h * z) / 2,
+        });
+    }, [bounds, posts.length]);
+
+    // При первом открытии схема стоит по центру листа целиком: иначе человек
+    // видит угол и решает, что постов всего пять.
     useEffect(() => {
         if (fitted.current || posts.length === 0) return;
-        const box = canvasRef.current;
-        if (!box || box.clientWidth === 0) return;
+        if (!canvasRef.current || canvasRef.current.clientWidth === 0) return;
         fitted.current = true;
-        // Подгоняем по ширине: дерево растёт вниз, и вертикальная прокрутка
-        // привычна, а ужимать схему до нечитаемых подписей ради высоты незачем.
-        const maxX = posts.reduce((m, p) => Math.max(m, p.pos_x), 0) + BLOCK_W + 40;
-        // Потолка нет: узкое дерево растягивается на всю ширину, пустого поля справа не остаётся.
-        const fit = Math.min(box.clientWidth / maxX, 1.6);
-        setZoom(Math.max(0.62, +fit.toFixed(2)));
-    }, [posts]);
+        fitView();
+    }, [posts.length, fitView]);
+
+    // Окно меняет ширину (свернули меню, потянули панель) — схема должна остаться
+    // там же относительно центра, а не уехать за край.
+    useEffect(() => {
+        const box = canvasRef.current;
+        if (!box || typeof ResizeObserver === 'undefined') return;
+        let prev = { w: box.clientWidth, h: box.clientHeight };
+        const ro = new ResizeObserver(() => {
+            const w = box.clientWidth;
+            const h = box.clientHeight;
+            if (w === 0 || h === 0) return;
+            const dx = (w - prev.w) / 2;
+            const dy = (h - prev.h) / 2;
+            prev = { w, h };
+            if (dx || dy) setOffset((o) => ({ x: o.x + dx, y: o.y + dy }));
+        });
+        ro.observe(box);
+        return () => ro.disconnect();
+    }, []);
 
     const patch = useCallback(async (id: number, fields: Partial<Post>) => {
         setPosts((prev) => prev.map((p) => (p.id === id ? { ...p, ...fields } : p)));
@@ -176,7 +217,7 @@ export default function Struct({ shtab }: ViewProps) {
         (e: React.PointerEvent, p: Post) => {
             if ((e.target as HTMLElement).closest('button')) return;
             (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-            drag.current = { id: p.id, dx: e.clientX / zoom - p.pos_x, dy: e.clientY / zoom - p.pos_y };
+            drag.current = { id: p.id, dx: e.clientX - p.pos_x * zoom, dy: e.clientY - p.pos_y * zoom };
             canvasRef.current?.classList.add('dragging');
             setSelected(p.id);
         },
@@ -188,18 +229,15 @@ export default function Struct({ shtab }: ViewProps) {
             const p = pan.current;
             if (p) {
                 if (Math.abs(e.clientX - p.x) + Math.abs(e.clientY - p.y) > 4) p.moved = true;
-                const box = canvasRef.current;
-                if (box) {
-                    box.scrollLeft = p.left - (e.clientX - p.x);
-                    box.scrollTop = p.top - (e.clientY - p.y);
-                }
+                setOffset({ x: p.ox + (e.clientX - p.x), y: p.oy + (e.clientY - p.y) });
                 return;
             }
             const d = drag.current;
             if (!d) return;
-            const x = Math.round(e.clientX / zoom - d.dx);
-            const y = Math.round(e.clientY / zoom - d.dy);
-            setPosts((prev) => prev.map((p) => (p.id === d.id ? { ...p, pos_x: Math.max(0, x), pos_y: Math.max(0, y) } : p)));
+            // Холст бесконечен: отрицательные координаты законны, блок тащится куда угодно.
+            const x = Math.round((e.clientX - d.dx) / zoom);
+            const y = Math.round((e.clientY - d.dy) / zoom);
+            setPosts((prev) => prev.map((p) => (p.id === d.id ? { ...p, pos_x: x, pos_y: y } : p)));
         },
         [zoom],
     );
@@ -297,20 +335,23 @@ export default function Struct({ shtab }: ViewProps) {
             const rect = box.getBoundingClientRect();
             const atX = clientX - rect.left;
             const atY = clientY - rect.top;
-            const px = (box.scrollLeft + atX) / zoomRef.current;
-            const py = (box.scrollTop + atY) / zoomRef.current;
-            const z = Math.min(1.6, Math.max(0.3, +next.toFixed(3)));
+            const z0 = zoomRef.current;
+            const z = Math.min(2.5, Math.max(0.2, +next.toFixed(3)));
+            const o = offsetRef.current;
+            // Точка под пальцами остаётся на месте: смещение подтягивается за масштабом.
+            setOffset({ x: atX - (atX - o.x) * (z / z0), y: atY - (atY - o.y) * (z / z0) });
             setZoom(z);
-            requestAnimationFrame(() => {
-                box.scrollLeft = px * z - atX;
-                box.scrollTop = py * z - atY;
-            });
         };
 
         const onWheel = (e: WheelEvent) => {
-            if (!e.ctrlKey && !e.metaKey) return; // обычное колесо — это панорама
             e.preventDefault();
-            zoomAt(zoomRef.current * (1 - e.deltaY / 220), e.clientX, e.clientY);
+            if (e.ctrlKey || e.metaKey) {
+                zoomAt(zoomRef.current * (1 - e.deltaY / 220), e.clientX, e.clientY);
+                return;
+            }
+            // Два пальца по трекпаду возят лист во все стороны, как в Miro.
+            const o = offsetRef.current;
+            setOffset({ x: o.x - e.deltaX, y: o.y - e.deltaY });
         };
 
         // Safari: scale приходит накопленным от начала жеста.
@@ -384,6 +425,9 @@ export default function Struct({ shtab }: ViewProps) {
                     <span className="eyebrow">постов: {posts.length}</span>
                 </div>
                 <div className="row" style={{ gap: 6 }}>
+                    <button className="btn btn-sm" onClick={fitView} title="Показать схему целиком по центру">
+                        по центру
+                    </button>
                     <button className="btn btn-sm" onClick={() => setZoom((z) => Math.max(0.4, +(z - 0.1).toFixed(2)))}>
                         −
                     </button>
@@ -402,7 +446,13 @@ export default function Struct({ shtab }: ViewProps) {
                         if ((e.target as HTMLElement).closest('.struct-block')) return;
                         const box = canvasRef.current;
                         if (!box) return;
-                        pan.current = { x: e.clientX, y: e.clientY, left: box.scrollLeft, top: box.scrollTop, moved: false };
+                        pan.current = {
+                            x: e.clientX,
+                            y: e.clientY,
+                            ox: offsetRef.current.x,
+                            oy: offsetRef.current.y,
+                            moved: false,
+                        };
                         box.classList.add('panning');
                     }}
                     onPointerMove={onPointerMove}
@@ -411,9 +461,13 @@ export default function Struct({ shtab }: ViewProps) {
                 >
                     <div
                         className="struct-plane"
-                        style={{ transform: `scale(${zoom})`, width: planeW, height: planeH }}
+                        style={{
+                            transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
+                            width: bounds.w,
+                            height: bounds.h,
+                        }}
                     >
-                        <svg className="struct-links" width={planeW} height={planeH}>
+                        <svg className="struct-links" width={bounds.w} height={bounds.h}>
                             {posts
                                 .filter((p) => p.parent_id)
                                 .map((p) => {
@@ -424,11 +478,15 @@ export default function Struct({ shtab }: ViewProps) {
                                     // колонкой под руководителем — к ним идёт ствол от низа
                                     // родителя и короткий отвод в левый край блока.
                                     const hanging = p.pos_x > parent.pos_x && p.pos_x < parent.pos_x + BLOCK_W;
-                                    const px = parent.pos_x + BLOCK_W / 2;
-                                    const py = parent.pos_y + BLOCK_H;
+                                    const ax = parent.pos_x - bounds.minX;
+                                    const ay = parent.pos_y - bounds.minY;
+                                    const bx = p.pos_x - bounds.minX;
+                                    const by = p.pos_y - bounds.minY;
+                                    const px = ax + BLOCK_W / 2;
+                                    const py = ay + BLOCK_H;
                                     const d = hanging
-                                        ? `M ${parent.pos_x + 30} ${py} V ${p.pos_y + BLOCK_H / 2} H ${p.pos_x}`
-                                        : `M ${px} ${py} V ${(py + p.pos_y) / 2} H ${p.pos_x + BLOCK_W / 2} V ${p.pos_y}`;
+                                        ? `M ${ax + 30} ${py} V ${by + BLOCK_H / 2} H ${bx}`
+                                        : `M ${px} ${py} V ${(py + by) / 2} H ${bx + BLOCK_W / 2} V ${by}`;
                                     return <path key={p.id} d={d} fill="none" />;
                                 })}
                         </svg>
@@ -437,7 +495,12 @@ export default function Struct({ shtab }: ViewProps) {
                                 key={p.id}
                                 className={`struct-block${selected === p.id ? ' on' : ''}`}
                                 data-level={levelOf.get(p.id) ?? 0}
-                                style={{ left: p.pos_x, top: p.pos_y, width: BLOCK_W, minHeight: BLOCK_H }}
+                                style={{
+                                    left: p.pos_x - bounds.minX,
+                                    top: p.pos_y - bounds.minY,
+                                    width: BLOCK_W,
+                                    minHeight: BLOCK_H,
+                                }}
                                 onPointerDown={(e) => onPointerDown(e, p)}
                             >
                                 <div className="struct-title">{p.title}</div>
