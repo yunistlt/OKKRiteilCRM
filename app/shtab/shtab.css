@@ -723,7 +723,7 @@
 
 .shtab .struct-links path{stroke:var(--line-2);stroke-width:1.5}
 
-.shtab .struct-block{position:absolute;background:var(--field);border:1px solid var(--line-2);padding:10px 12px;
+.shtab .struct-block{position:absolute;overflow:visible;background:var(--field);border:1px solid var(--line-2);padding:10px 12px;
   display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:3px;cursor:grab}
 
 /* Уровни дерева цветом, как в майнд-картах: чем выше пост, тем плотнее заливка. */
@@ -733,6 +733,50 @@
   box-shadow:inset 0 4px 0 var(--calm)}
 .shtab .struct-block[data-level="3"]{background:var(--field);border-color:var(--line);
   box-shadow:inset 0 4px 0 var(--line-2)}
+
+/* Цвет, выбранный руками, важнее уровня: уровень — догадка по дереву, цвет — решение. */
+.shtab .struct-block[data-color="blue"]{background:var(--blue);border-color:var(--blue);color:var(--on-blue);box-shadow:none}
+.shtab .struct-block[data-color="green"]{background:var(--calm);border-color:var(--calm);color:var(--on-blue);box-shadow:none}
+.shtab .struct-block[data-color="clay"]{background:var(--signal);border-color:var(--signal);color:var(--on-blue);box-shadow:none}
+.shtab .struct-block[data-color="sand"]{background:#D8CBA8;border-color:#BBA87C;color:var(--ink);box-shadow:none}
+.shtab .struct-block[data-color="grey"]{background:var(--surface-2);border-color:var(--line-2);color:var(--ink);box-shadow:none}
+.shtab .struct-block[data-color="white"]{background:var(--field);border-color:var(--line-2);color:var(--ink);box-shadow:none}
+
+.shtab .struct-block[data-color="blue"] .struct-holder,
+.shtab .struct-block[data-color="green"] .struct-holder,
+.shtab .struct-block[data-color="clay"] .struct-holder{color:color-mix(in srgb,var(--on-blue) 78%,transparent)}
+
+/* Пост, на который сейчас тянут связь. */
+.shtab .struct-block[data-target="yes"]{outline:2px solid var(--signal);outline-offset:2px}
+
+/* Порт связи и сворачивание ветки: появляются на блоке под курсором. */
+.shtab .struct-port,
+.shtab .struct-fold{position:absolute;width:22px;height:22px;line-height:1;font-size:13px;
+  border:1px solid var(--line-2);background:var(--field);color:var(--ink);opacity:0;transition:opacity .12s;
+  display:flex;align-items:center;justify-content:center;font-family:var(--f-mono)}
+
+.shtab .struct-port{left:50%;bottom:-11px;transform:translateX(-50%);cursor:crosshair}
+.shtab .struct-fold{right:-11px;top:50%;transform:translateY(-50%);cursor:pointer;min-width:22px;width:auto;padding:0 5px}
+
+.shtab .struct-block:hover .struct-port,
+.shtab .struct-block:hover .struct-fold,
+.shtab .struct-block.on .struct-port,
+.shtab .struct-block.on .struct-fold{opacity:1}
+
+/* Свёрнутую ветку видно и без наведения: иначе пост выглядит бездетным. */
+.shtab .struct-block .struct-fold:not(:empty){opacity:.75}
+
+/* Выбор цвета в карточке поста. */
+.shtab .struct-swatches{display:flex;gap:6px;flex-wrap:wrap}
+.shtab .struct-swatch{width:28px;height:28px;border:1px solid var(--line-2);cursor:pointer}
+.shtab .struct-swatch.on{outline:2px solid var(--ink);outline-offset:1px}
+.shtab .struct-swatch[data-color="auto"]{width:auto;padding:0 9px;font-size:12px;background:var(--field)}
+.shtab .struct-swatch[data-color="blue"]{background:var(--blue)}
+.shtab .struct-swatch[data-color="green"]{background:var(--calm)}
+.shtab .struct-swatch[data-color="clay"]{background:var(--signal)}
+.shtab .struct-swatch[data-color="sand"]{background:#D8CBA8}
+.shtab .struct-swatch[data-color="grey"]{background:var(--surface-2)}
+.shtab .struct-swatch[data-color="white"]{background:var(--field)}
 
 .shtab .struct-block[data-level="0"] .struct-holder,
 .shtab .struct-block[data-level="1"] .struct-holder{color:color-mix(in srgb,var(--on-blue) 78%,transparent)}

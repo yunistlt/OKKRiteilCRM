@@ -7,7 +7,11 @@ import { supabase } from '@/utils/supabase';
 // статистику и держателя.
 
 export const POST_COLUMNS =
-    'id, title, area_code, ideal_scene, statistic, holder_name, external_uid, ordinal, parent_id, pos_x, pos_y, vkp, duties';
+    'id, title, area_code, ideal_scene, statistic, holder_name, external_uid, ordinal, parent_id, pos_x, pos_y, vkp, duties, color, level_override, collapsed';
+
+/** Цвета блоков. Список один на схему, базу и разбор — иначе разъедется. */
+export const POST_COLORS = ['blue', 'green', 'clay', 'sand', 'grey', 'white'] as const;
+export type PostColor = (typeof POST_COLORS)[number];
 
 export const DOC_BUCKET = 'shtab-docs';
 
@@ -25,6 +29,12 @@ export type StructurePost = {
     pos_y: number;
     vkp: string;
     duties: string;
+    /** Цвет блока; null — красить по уровню подчинения. */
+    color: PostColor | null;
+    /** Уровень для окраски вручную; null — считать по дереву. */
+    level_override: number | null;
+    /** Ветка свёрнута: подчинённых на схеме не видно. */
+    collapsed: boolean;
 };
 
 export type StructureDoc = {

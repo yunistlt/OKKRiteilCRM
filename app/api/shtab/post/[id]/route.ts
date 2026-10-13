@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
-import { POST_COLUMNS, makesCycle } from '@/lib/shtab/structure';
+import { POST_COLORS, POST_COLUMNS, makesCycle } from '@/lib/shtab/structure';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +29,10 @@ const PatchSchema = z
         pos_y: z.number().int().min(-20000).max(20000).optional(),
         vkp: z.string().max(1000).optional(),
         duties: z.string().max(5000).optional(),
+        // Вид блока на схеме. null в цвете и уровне — вернуться к расчёту по дереву.
+        color: z.enum(POST_COLORS).nullable().optional(),
+        level_override: z.number().int().min(0).max(3).nullable().optional(),
+        collapsed: z.boolean().optional(),
     })
     .refine((v) => Object.keys(v).length > 0, { message: 'Нечего менять' });
 

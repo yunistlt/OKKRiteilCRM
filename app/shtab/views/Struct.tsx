@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { POST_COLORS, type PostColor } from '@/lib/shtab/structure';
 import type { ViewProps } from '../nav';
 
 // Структура компании: блок-схема постов на свободном холсте.
@@ -25,6 +26,9 @@ type Post = {
     pos_y: number;
     vkp: string;
     duties: string;
+    color: PostColor | null;
+    level_override: number | null;
+    collapsed: boolean;
 };
 
 type Doc = {
@@ -38,6 +42,15 @@ type Doc = {
 };
 
 type Person = { id: string; fio: string; position: string; department: string; workshop: string };
+
+const COLOR_TITLES: Record<PostColor, string> = {
+    blue: 'синий',
+    green: 'зелёный',
+    clay: 'терракота',
+    sand: 'песочный',
+    grey: 'серый',
+    white: 'белый',
+};
 
 const BLOCK_W = 230;
 const BLOCK_H = 96;
@@ -75,6 +88,9 @@ export default function Struct({ shtab }: ViewProps) {
     /** Протяжка холста за пустое место — как в майнд-картах. */
     const pan = useRef<{ x: number; y: number; ox: number; oy: number; moved: boolean } | null>(null);
     const offsetRef = useRef({ x: 0, y: 0 });
+    /** Тянем связь от поста: от кого ведём и куда указывает курсор. */
+    const [linking, setLinking] = useState<{ from: number; x: number; y: number; over: number | null } | null>(null);
+    const linkRef = useRef<typeof linking>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const load = useCallback(async () => {
@@ -118,17 +134,42 @@ export default function Struct({ shtab }: ViewProps) {
     const post = useMemo(() => posts.find((p) => p.id === selected) ?? null, [posts, selected]);
     const postDocs = useMemo(() => docs.filter((d) => d.post_id === selected), [docs, selected]);
 
+    /** Свёрнутая ветка: сам пост виден, его подчинённые — нет. */
+    const visible = useMemo(() => {
+        const byId = new Map(posts.map((p) => [p.id, p]));
+        const hidden = (p: Post) => {
+            const seen = new Set<number>([p.id]);
+            let cur = p;
+            while (cur.parent_id) {
+                const up = byId.get(cur.parent_id);
+                if (!up || seen.has(up.id)) return false;
+                if (up.collapsed) return true;
+                seen.add(up.id);
+                cur = up;
+            }
+            return false;
+        };
+        return posts.filter((p) => !hidden(p));
+    }, [posts]);
+
+    const kidCount = useMemo(() => {
+        const m = new Map<number, number>();
+        for (const p of posts) if (p.parent_id) m.set(p.parent_id, (m.get(p.parent_id) ?? 0) + 1);
+        return m;
+    }, [posts]);
+
     // Границы содержимого. Холст бесконечен во все стороны, поэтому координаты
     // постов могут быть и отрицательными: рисуем всё относительно левого
     // верхнего угла дерева, а не относительно нуля.
     const bounds = useMemo(() => {
-        if (posts.length === 0) return { minX: 0, minY: 0, w: BLOCK_W, h: BLOCK_H };
-        const minX = Math.min(...posts.map((p) => p.pos_x));
-        const minY = Math.min(...posts.map((p) => p.pos_y));
-        const maxX = Math.max(...posts.map((p) => p.pos_x)) + BLOCK_W;
-        const maxY = Math.max(...posts.map((p) => p.pos_y)) + BLOCK_H;
+        const src = visible.length ? visible : posts;
+        if (src.length === 0) return { minX: 0, minY: 0, w: BLOCK_W, h: BLOCK_H };
+        const minX = Math.min(...src.map((p) => p.pos_x));
+        const minY = Math.min(...src.map((p) => p.pos_y));
+        const maxX = Math.max(...src.map((p) => p.pos_x)) + BLOCK_W;
+        const maxY = Math.max(...src.map((p) => p.pos_y)) + BLOCK_H;
         return { minX, minY, w: maxX - minX, h: maxY - minY };
-    }, [posts]);
+    }, [posts, visible]);
 
     /** Уровень поста в дереве: по нему красится блок, как в майнд-картах. */
     const levelOf = useMemo(() => {
@@ -226,6 +267,17 @@ export default function Struct({ shtab }: ViewProps) {
 
     const onPointerMove = useCallback(
         (e: React.PointerEvent) => {
+            const link = linkRef.current;
+            if (link) {
+                // Под курсором ищем блок-цель: подсвечиваем его, пока тянем.
+                const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+                const overId = el?.closest('.struct-block')?.getAttribute('data-id');
+                const over = overId ? Number(overId) : null;
+                const next = { ...link, x: e.clientX, y: e.clientY, over: over === link.from ? null : over };
+                linkRef.current = next;
+                setLinking(next);
+                return;
+            }
             const p = pan.current;
             if (p) {
                 if (Math.abs(e.clientX - p.x) + Math.abs(e.clientY - p.y) > 4) p.moved = true;
@@ -243,6 +295,16 @@ export default function Struct({ shtab }: ViewProps) {
     );
 
     const onPointerUp = useCallback(async () => {
+        const link = linkRef.current;
+        if (link) {
+            linkRef.current = null;
+            setLinking(null);
+            if (link.over && link.over !== link.from) {
+                // Цикл ловит сервер: он один знает всё дерево целиком.
+                await patch(link.from, { parent_id: link.over });
+            }
+            return;
+        }
         if (pan.current) {
             // Клик мимо блоков (без протяжки) закрывает карточку поста:
             // открытая форма от предыдущего клика мешала смотреть схему.
@@ -468,33 +530,38 @@ export default function Struct({ shtab }: ViewProps) {
                         }}
                     >
                         <svg className="struct-links" width={bounds.w} height={bounds.h}>
-                            {posts
+                            {visible
                                 .filter((p) => p.parent_id)
                                 .map((p) => {
-                                    const parent = posts.find((x) => x.id === p.parent_id);
+                                    const parent = visible.find((x) => x.id === p.parent_id);
                                     if (!parent) return null;
-                                    // Оргсхема сверху вниз. Подчинённые в ряд соединяются
-                                    // классически: вниз, вбок, вниз. Исполнители висят
-                                    // колонкой под руководителем — к ним идёт ствол от низа
-                                    // родителя и короткий отвод в левый край блока.
-                                    const hanging = p.pos_x > parent.pos_x && p.pos_x < parent.pos_x + BLOCK_W;
-                                    const ax = parent.pos_x - bounds.minX;
-                                    const ay = parent.pos_y - bounds.minY;
-                                    const bx = p.pos_x - bounds.minX;
+                                    // Одна форма связи на все случаи: вниз от середины
+                                    // руководителя, вбок по общей полке и вниз в середину
+                                    // подчинённого. Углы скруглены — так читается спокойнее,
+                                    // чем ломаная под прямым углом.
+                                    const ax = parent.pos_x - bounds.minX + BLOCK_W / 2;
+                                    const ay = parent.pos_y - bounds.minY + BLOCK_H;
+                                    const bx = p.pos_x - bounds.minX + BLOCK_W / 2;
                                     const by = p.pos_y - bounds.minY;
-                                    const px = ax + BLOCK_W / 2;
-                                    const py = ay + BLOCK_H;
-                                    const d = hanging
-                                        ? `M ${ax + 30} ${py} V ${by + BLOCK_H / 2} H ${bx}`
-                                        : `M ${px} ${py} V ${(py + by) / 2} H ${bx + BLOCK_W / 2} V ${by}`;
+                                    const shelf = by - 30 > ay ? by - 30 : (ay + by) / 2;
+                                    const r = Math.min(14, Math.abs(bx - ax) / 2, Math.abs(shelf - ay), Math.abs(by - shelf));
+                                    const dir = bx > ax ? 1 : -1;
+                                    const d =
+                                        Math.abs(bx - ax) < 2
+                                            ? `M ${ax} ${ay} V ${by}`
+                                            : `M ${ax} ${ay} V ${shelf - r} Q ${ax} ${shelf} ${ax + r * dir} ${shelf} ` +
+                                              `H ${bx - r * dir} Q ${bx} ${shelf} ${bx} ${shelf + r} V ${by}`;
                                     return <path key={p.id} d={d} fill="none" />;
                                 })}
                         </svg>
-                        {posts.map((p) => (
+                        {visible.map((p) => (
                             <div
                                 key={p.id}
                                 className={`struct-block${selected === p.id ? ' on' : ''}`}
-                                data-level={levelOf.get(p.id) ?? 0}
+                                data-id={p.id}
+                                data-level={p.level_override ?? levelOf.get(p.id) ?? 0}
+                                data-color={p.color ?? undefined}
+                                data-target={linking && linking.over === p.id ? 'yes' : undefined}
                                 style={{
                                     left: p.pos_x - bounds.minX,
                                     top: p.pos_y - bounds.minY,
@@ -512,6 +579,36 @@ export default function Struct({ shtab }: ViewProps) {
                                     ) : null}
                                     {p.statistic ? <span className="eyebrow">стат.</span> : null}
                                 </div>
+
+                                {/* Порт связи: тянем от него к другому посту, и тот становится
+                                    руководителем. Раньше подчинение задавалось только списком
+                                    в карточке — мышью было никак. */}
+                                <button
+                                    className="struct-port"
+                                    title="Потяни к руководителю, чтобы подчинить пост"
+                                    onPointerDown={(e) => {
+                                        e.stopPropagation();
+                                        const next = { from: p.id, x: e.clientX, y: e.clientY, over: null };
+                                        linkRef.current = next;
+                                        setLinking(next);
+                                    }}
+                                >
+                                    +
+                                </button>
+
+                                {kidCount.get(p.id) ? (
+                                    <button
+                                        className="struct-fold"
+                                        title={p.collapsed ? 'Развернуть ветку' : 'Свернуть ветку'}
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            void patch(p.id, { collapsed: !p.collapsed });
+                                        }}
+                                    >
+                                        {p.collapsed ? `+${kidCount.get(p.id)}` : '−'}
+                                    </button>
+                                ) : null}
                             </div>
                         ))}
                         {posts.length === 0 ? <p className="hint" style={{ padding: 20 }}>Постов пока нет. Заведи первый.</p> : null}
@@ -590,6 +687,50 @@ export default function Struct({ shtab }: ViewProps) {
                                         </option>
                                     ))}
                                 </select>
+                            </div>
+
+                            <div className="field">
+                                <label className="fl eyebrow">Цвет блока</label>
+                                <div className="struct-swatches">
+                                    <button
+                                        className={`struct-swatch${post.color ? '' : ' on'}`}
+                                        data-color="auto"
+                                        title="По уровню подчинения"
+                                        onClick={() => void patch(post.id, { color: null })}
+                                    >
+                                        авто
+                                    </button>
+                                    {POST_COLORS.map((c) => (
+                                        <button
+                                            key={c}
+                                            className={`struct-swatch${post.color === c ? ' on' : ''}`}
+                                            data-color={c}
+                                            title={COLOR_TITLES[c]}
+                                            onClick={() => void patch(post.id, { color: c })}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="field">
+                                <label className="fl eyebrow">Уровень</label>
+                                <select
+                                    value={post.level_override ?? ''}
+                                    onChange={(e) =>
+                                        void patch(post.id, {
+                                            level_override: e.target.value === '' ? null : Number(e.target.value),
+                                        })
+                                    }
+                                >
+                                    <option value="">по подчинению</option>
+                                    <option value="0">первый — верх</option>
+                                    <option value="1">второй</option>
+                                    <option value="2">третий</option>
+                                    <option value="3">четвёртый</option>
+                                </select>
+                                <p className="hint">
+                                    Уровень задаёт плотность заливки. Цвет, выбранный вручную, важнее уровня.
+                                </p>
                             </div>
 
                             <div className="field">
