@@ -419,20 +419,17 @@ export default function Struct({ shtab }: ViewProps) {
                                 .map((p) => {
                                     const parent = posts.find((x) => x.id === p.parent_id);
                                     if (!parent) return null;
-                                    // Дерево растёт вправо, как оргсхема в майнд-картах: связь
-                                    // идёт от правого края родителя к левому краю ребёнка.
-                                    const x1 = parent.pos_x + BLOCK_W;
-                                    const y1 = parent.pos_y + BLOCK_H / 2;
-                                    const x2 = p.pos_x;
-                                    const y2 = p.pos_y + BLOCK_H / 2;
-                                    const mid = x1 + (x2 - x1) / 2;
-                                    return (
-                                        <path
-                                            key={p.id}
-                                            d={`M ${x1} ${y1} H ${mid} V ${y2} H ${x2}`}
-                                            fill="none"
-                                        />
-                                    );
+                                    // Оргсхема сверху вниз. Подчинённые в ряд соединяются
+                                    // классически: вниз, вбок, вниз. Исполнители висят
+                                    // колонкой под руководителем — к ним идёт ствол от низа
+                                    // родителя и короткий отвод в левый край блока.
+                                    const hanging = p.pos_x > parent.pos_x && p.pos_x < parent.pos_x + BLOCK_W;
+                                    const px = parent.pos_x + BLOCK_W / 2;
+                                    const py = parent.pos_y + BLOCK_H;
+                                    const d = hanging
+                                        ? `M ${parent.pos_x + 30} ${py} V ${p.pos_y + BLOCK_H / 2} H ${p.pos_x}`
+                                        : `M ${px} ${py} V ${(py + p.pos_y) / 2} H ${p.pos_x + BLOCK_W / 2} V ${p.pos_y}`;
+                                    return <path key={p.id} d={d} fill="none" />;
                                 })}
                         </svg>
                         {posts.map((p) => (
