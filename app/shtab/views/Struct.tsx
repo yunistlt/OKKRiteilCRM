@@ -70,6 +70,8 @@ export default function Struct({ shtab }: ViewProps) {
     /** Масштаб подбирается один раз: дальше его крутит человек, и перебивать его нельзя. */
     const fitted = useRef(false);
     const zoomRef = useRef(1);
+    /** Протяжка холста за пустое место — как в майнд-картах. */
+    const pan = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const load = useCallback(async () => {
@@ -183,6 +185,15 @@ export default function Struct({ shtab }: ViewProps) {
 
     const onPointerMove = useCallback(
         (e: React.PointerEvent) => {
+            const p = pan.current;
+            if (p) {
+                const box = canvasRef.current;
+                if (box) {
+                    box.scrollLeft = p.left - (e.clientX - p.x);
+                    box.scrollTop = p.top - (e.clientY - p.y);
+                }
+                return;
+            }
             const d = drag.current;
             if (!d) return;
             const x = Math.round(e.clientX / zoom - d.dx);
@@ -193,6 +204,10 @@ export default function Struct({ shtab }: ViewProps) {
     );
 
     const onPointerUp = useCallback(async () => {
+        if (pan.current) {
+            pan.current = null;
+            canvasRef.current?.classList.remove('panning');
+        }
         const d = drag.current;
         drag.current = null;
         canvasRef.current?.classList.remove('dragging');
@@ -262,28 +277,64 @@ export default function Struct({ shtab }: ViewProps) {
         [post, load],
     );
 
-    // Трекпад: щипок (ctrl+колесо у всех браузеров) меняет масштаб,два пальца
-    // прокручивают холст сами. Масштабируем вокруг курсора, иначе схема
-    // уезжает из-под пальца.
+    // Трекпад.
+    //
+    // Щипок в Chrome приходит как колесо с ctrlKey, а в Safari — собственными
+    // событиями gesture*, которых больше нигде нет. Было сделано только первое,
+    // поэтому в Safari жест не работал вовсе.
+    //
+    // Масштабируем вокруг точки под пальцами: иначе схема уезжает в сторону и
+    // кажется, что жест «срабатывает не туда».
     useEffect(() => {
         const box = canvasRef.current;
         if (!box) return;
-        const onWheel = (e: WheelEvent) => {
-            if (!e.ctrlKey && !e.metaKey) return; // обычная прокрутка — это панорама
-            e.preventDefault();
+
+        const zoomAt = (next: number, clientX: number, clientY: number) => {
             const rect = box.getBoundingClientRect();
-            const px = (box.scrollLeft + e.clientX - rect.left) / zoomRef.current;
-            const py = (box.scrollTop + e.clientY - rect.top) / zoomRef.current;
-            const next = Math.min(1.6, Math.max(0.3, +(zoomRef.current * (1 - e.deltaY / 220)).toFixed(3)));
-            setZoom(next);
+            const atX = clientX - rect.left;
+            const atY = clientY - rect.top;
+            const px = (box.scrollLeft + atX) / zoomRef.current;
+            const py = (box.scrollTop + atY) / zoomRef.current;
+            const z = Math.min(1.6, Math.max(0.3, +next.toFixed(3)));
+            setZoom(z);
             requestAnimationFrame(() => {
-                box.scrollLeft = px * next - (e.clientX - rect.left);
-                box.scrollTop = py * next - (e.clientY - rect.top);
+                box.scrollLeft = px * z - atX;
+                box.scrollTop = py * z - atY;
             });
         };
+
+        const onWheel = (e: WheelEvent) => {
+            if (!e.ctrlKey && !e.metaKey) return; // обычное колесо — это панорама
+            e.preventDefault();
+            zoomAt(zoomRef.current * (1 - e.deltaY / 220), e.clientX, e.clientY);
+        };
+
+        // Safari: scale приходит накопленным от начала жеста.
+        let gestureBase = 1;
+        let gestureAt = { x: 0, y: 0 };
+        const onGestureStart = (e: any) => {
+            e.preventDefault();
+            gestureBase = zoomRef.current;
+            gestureAt = { x: e.clientX, y: e.clientY };
+        };
+        const onGestureChange = (e: any) => {
+            e.preventDefault();
+            zoomAt(gestureBase * e.scale, e.clientX || gestureAt.x, e.clientY || gestureAt.y);
+        };
+        const stop = (e: Event) => e.preventDefault();
+
         box.addEventListener('wheel', onWheel, { passive: false });
-        return () => box.removeEventListener('wheel', onWheel);
+        box.addEventListener('gesturestart', onGestureStart as EventListener, { passive: false });
+        box.addEventListener('gesturechange', onGestureChange as EventListener, { passive: false });
+        box.addEventListener('gestureend', stop, { passive: false });
+        return () => {
+            box.removeEventListener('wheel', onWheel);
+            box.removeEventListener('gesturestart', onGestureStart as EventListener);
+            box.removeEventListener('gesturechange', onGestureChange as EventListener);
+            box.removeEventListener('gestureend', stop);
+        };
     }, []);
+
 
     const openDoc = useCallback(async (id: number) => {
         const res = await fetch(`/api/shtab/doc/${id}`);
@@ -343,8 +394,16 @@ export default function Struct({ shtab }: ViewProps) {
                 <div
                     ref={canvasRef}
                     className="struct-canvas"
+                    onPointerDown={(e) => {
+                        if ((e.target as HTMLElement).closest('.struct-block')) return;
+                        const box = canvasRef.current;
+                        if (!box) return;
+                        pan.current = { x: e.clientX, y: e.clientY, left: box.scrollLeft, top: box.scrollTop };
+                        box.classList.add('panning');
+                    }}
                     onPointerMove={onPointerMove}
                     onPointerUp={() => void onPointerUp()}
+                    onPointerLeave={() => void onPointerUp()}
                 >
                     <div
                         className="struct-plane"

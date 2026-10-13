@@ -712,7 +712,9 @@
 .shtab .struct-canvas{position:relative;overflow:auto;height:calc(var(--shtab-vh, 100vh) - 188px);min-height:420px;background:var(--surface-2);
   border-right:1px solid var(--line);touch-action:pan-x pan-y;overscroll-behavior:contain}
 
-.shtab .struct-canvas.dragging{touch-action:none}
+.shtab .struct-canvas.dragging,
+.shtab .struct-canvas.panning{touch-action:none}
+.shtab .struct-canvas.panning{cursor:grabbing}
 
 .shtab .struct-plane{position:relative;transform-origin:0 0}
 
