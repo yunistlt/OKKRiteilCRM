@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { resolveOrderRef } from '@/lib/own-crm/order-ref';
 import { buildOrderContext, renderTemplate } from '@/lib/templates/render';
 import { writeLetter } from '@/lib/templates/ai-letter';
+import { managerSignature, withSignature } from '@/lib/templates/signature';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +33,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         return NextResponse.json({ error: 'order_not_found' }, { status: 404 });
     }
 
+    // Подпись менеджера заказа — одна и та же во всех письмах клиенту.
+    const ref = await resolveOrderRef(id);
+    const { data: orderRow } = ref
+        ? await supabase.from('orders').select('manager_id').eq('id', ref.id).maybeSingle()
+        : { data: null };
+    const signature = await managerSignature((orderRow as any)?.manager_id ?? null);
+
     // Шаблон с заданием: письмо пишет ИИ под этот заказ, менеджер правит руками.
     if ((template as any).mode === 'ai') {
         if (!(template as any).prompt) {
@@ -38,11 +47,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         }
         try {
             const letter = await writeLetter(String((template as any).prompt), context);
+            const body = withSignature(letter.text, signature, false);
             return NextResponse.json({
                 ok: true,
                 name: template.name,
                 subject: letter.subject,
-                html: letter.text.split('\n').map((line) => `<p>${line}</p>`).join(''),
+                html: body.split('\n').map((line) => `<p>${line}</p>`).join(''),
                 byAi: true,
             });
         } catch (e: any) {
@@ -60,5 +70,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         );
     }
 
-    return NextResponse.json({ ok: true, name: template.name, subject: subject.output, html: body.output });
+    return NextResponse.json({
+        ok: true,
+        name: template.name,
+        subject: subject.output,
+        html: withSignature(body.output, signature, true),
+    });
 }

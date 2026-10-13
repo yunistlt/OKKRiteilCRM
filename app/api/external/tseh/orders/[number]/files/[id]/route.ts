@@ -29,6 +29,7 @@ export async function GET(req: NextRequest, { params }: { params: { number: stri
         .eq('order_number', number)
         .eq('for_production', true)
         .is('deleted_at', null)
+        .is('archived_at', null)
         .maybeSingle();
 
     if (!data) return NextResponse.json({ error: 'Файл не найден' }, { status: 404 });

@@ -130,6 +130,59 @@ describe('содержание базы знаний', () => {
         }
     });
 
+    it('Базовый тренинг руководителя покрыт по всей цепочке', () => {
+        // БТР — второй слой методички: он отвечает не «чем заниматься», а «как
+        // руководить каждый день». Выпадет статья — Тамара доведёт владельца до
+        // стратегии и замолчит там, где начинается ежедневная работа.
+        const slugs = new Set(SHTAB_KB_SEED.map((r) => r.slug));
+        for (const step of [
+            'btr-chto-eto',
+            'btr-administrator-produkta',
+            'btr-produkt',
+            'btr-formulirovka-zadaniya',
+            'btr-nastoyanie',
+            'btr-vnimanie-vtoroy-terminal',
+            'btr-tochki-kontrolya',
+            'btr-anatomiya-vliyaniya',
+            'btr-organizaciya-i-post',
+            'btr-delovaya-etika',
+            'btr-komponenty',
+            'btr-posty-iz-komponentov',
+            'btr-statistika-i-norma',
+            'btr-rost-statistiki',
+            'btr-strategiya-i-taktika',
+            'btr-rabochiy-plan',
+            'btr-planerka',
+            'btr-slazhennost',
+            'btr-inspekciya',
+            'btr-korrektiruyushchie-deystviya',
+            'btr-politika',
+            'btr-stabilnyy-post',
+            'btr-uchenichestvo',
+            'btr-otvetstvennost',
+            'btr-tochka-zreniya-rukovoditelya',
+            'btr-stanovlenie-rukovoditelya',
+            'btr-tri-obyazannosti',
+            'btr-poryadok-sistemy',
+            'btr-liniya-upravleniya',
+        ]) {
+            expect(slugs, step).toContain(step);
+        }
+    });
+
+    it('сокращение «БТР» есть в тексте статей, а не только в тегах', () => {
+        // Тамару спросили «что ты знаешь про БТР», и она честно ответила, что не
+        // знает: сокращение лежало только в тегах, и поиск по смыслу не дотянул
+        // до порога. Название должно встречаться там, где его читает модель.
+        const withAbbr = SHTAB_KB_SEED.filter(
+            (r) => r.slug.startsWith('btr-') && /БТР/.test(`${r.title}\n${r.content}`),
+        );
+        expect(withAbbr.length).toBeGreaterThan(2);
+        const index = SHTAB_KB_SEED.find((r) => r.slug === 'btr-chto-eto');
+        expect(index?.title).toMatch(/БТР/);
+        expect(index?.content).toMatch(/Базовый тренинг руководителя/);
+    });
+
     it('статья про стратегию не ведёт сразу к проектам', () => {
         // Пропущенный слой программ — это пропущенные производственные задачи.
         const strat = SHTAB_KB_SEED.find((r) => r.slug === 'as-strategiya');

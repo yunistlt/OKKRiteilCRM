@@ -7,7 +7,7 @@ import { cookies, headers } from 'next/headers';
  * 05.10.2026). Роль заводится ещё в двух местах: тип `app_role` и ограничение
  * `users_role_check` — без них вход ломается.
  */
-export type AppRole = 'admin' | 'okk' | 'rop' | 'manager' | 'jurist' | 'demo' | 'logistics' | 'logistics_view';
+export type AppRole = 'admin' | 'okk' | 'rop' | 'manager' | 'jurist' | 'demo' | 'logistics' | 'logistics_view' | 'buhgalter';
 
 export type SessionUser = {
     id: string;
@@ -47,7 +47,7 @@ type RequestLike = {
 };
 
 function normalizeRole(rawRole: unknown): AppRole | null {
-    if (rawRole === 'admin' || rawRole === 'okk' || rawRole === 'rop' || rawRole === 'manager' || rawRole === 'jurist' || rawRole === 'demo' || rawRole === 'logistics' || rawRole === 'logistics_view') {
+    if (rawRole === 'admin' || rawRole === 'okk' || rawRole === 'rop' || rawRole === 'manager' || rawRole === 'jurist' || rawRole === 'demo' || rawRole === 'logistics' || rawRole === 'logistics_view' || rawRole === 'buhgalter') {
         return rawRole;
     }
     return null;

@@ -180,3 +180,55 @@ export async function findOrCreateOwnClient(hints: ClientHints): Promise<Resolve
 
 /** Нормализованное название — пригодится вызывающим для логов и сверки. */
 export { normalizeCompanyName };
+
+/**
+ * Дописать телефоны заказа в карточку клиента.
+ *
+ * Дыра, найденная владельцем 08.10.2026: номер из заказа 900096 в карточке не
+ * появился. Карточку мы находили по ИНН или по названию с почтой — и телефон,
+ * который менеджер только что вписал в заявку, никуда не сохранялся. Новую
+ * карточку телефон получал, существующая оставалась без него. В реестре звонков
+ * такой номер выглядел чужим, кнопки «Позвонить» не было.
+ *
+ * Сверяем по последним десяти цифрам: один и тот же номер пишут как попало
+ * («+7 (995) 344-68-62» и «89953446862» — это один телефон).
+ */
+export async function addClientPhones(clientId: number, phones: Array<string | null | undefined>): Promise<string[]> {
+    const tail10 = (value: unknown): string | null => {
+        const digits = String(value ?? '').replace(/\D/g, '');
+        return digits.length >= 10 ? digits.slice(-10) : null;
+    };
+
+    const incoming = Array.from(new Set(phones.map((p) => clean(p)).filter((p) => tail10(p))));
+    if (!incoming.length) return [];
+
+    const { data, error } = await supabase
+        .from('clients')
+        .select('phones')
+        .eq('id', clientId)
+        .maybeSingle();
+    if (error || !data) return [];
+
+    const current = (((data as any).phones || []) as unknown[]).map((p) => String(p ?? '')).filter(Boolean);
+    const tails = new Set(current.map(tail10).filter(Boolean) as string[]);
+
+    const added: string[] = [];
+    for (const phone of incoming) {
+        const tail = tail10(phone) as string;
+        if (tails.has(tail)) continue;
+        tails.add(tail);
+        added.push(phone);
+    }
+    if (!added.length) return [];
+
+    const { error: saveError } = await supabase
+        .from('clients')
+        .update({ phones: [...current, ...added], updated_at: new Date().toISOString() })
+        .eq('id', clientId);
+    if (saveError) {
+        console.error('[own-client] телефон не дописался в карточку:', saveError);
+        return [];
+    }
+
+    return added;
+}

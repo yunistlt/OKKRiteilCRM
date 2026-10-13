@@ -4,7 +4,9 @@ import { supabase } from '@/utils/supabase';
 import { formatEventValue, MAIL_FEED_FIELD_PATTERNS } from '@/lib/order-events';
 import { buildFieldLabelResolver } from '@/lib/order-field-labels';
 import { loadOrderCalls } from '@/lib/own-crm/order-calls';
+import { resolveOrderRef } from '@/lib/own-crm/order-ref';
 import { loadOrderMail } from '@/lib/own-crm/order-mail';
+import { clientCardIdForOrder } from '@/lib/own-crm/clients';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,13 +19,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     try {
         // 1. Fetch Order Details (Basic info)
+        // Номер или идентификатор — разбирает одно место на весь проект.
+        const ref = await resolveOrderRef(id);
+        if (!ref) {
+            return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 });
+        }
+
         const { data: order, error: orderError } = await supabase
             .from('orders')
             .select(`
                 *,
                 managers ( first_name, last_name, email )
             `)
-            .eq('order_id', id)
+            .eq('id', ref.id)
             .single();
 
         if (orderError) throw orderError;
@@ -79,12 +87,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
          * оттуда, где оно живёт, — из карточки клиента.
          */
         const customerId = (order as any).raw_payload?.customer?.id ?? (order as any).customer?.id ?? null;
+        /**
+         * Какую карточку открывать по кнопкам «карточка заказчика» и «править в
+         * карточке клиента». Заказ бывает заведён на живого человека, а не на
+         * компанию — тогда это компания, где он контактное лицо (см.
+         * lib/own-crm/clients.ts). Нет и её — отдаём null, карточка объясняет
+         * менеджеру, что завести.
+         */
+        const clientCardId = await clientCardIdForOrder(customerId);
         let clientCompanyName: string | null = null;
-        if (customerId) {
+        if (clientCardId) {
             const { data: client } = await supabase
                 .from('clients')
                 .select('company_name, "legalName", full_name')
-                .eq('id', String(customerId))
+                .eq('id', String(clientCardId))
                 .maybeSingle();
             const row = client as any;
             clientCompanyName = row?.company_name || row?.legalName || row?.full_name || null;
@@ -105,6 +121,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 party: entry.party,
                 partyEmail: entry.partyEmail,
                 attachments: entry.attachments,
+                // Сами файлы: имя, размер и письмо, из которого качать.
+                attachmentList: entry.attachmentList,
+                emailId: entry.emailId,
                 source: entry.source,
             })),
             ...((events ?? []).map((e) => ({
@@ -116,6 +135,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 subject: null,
                 body: null,
                 attachments: 0,
+                attachmentList: [],
+                emailId: null,
                 source: 'retailcrm',
             }))),
         ].sort((left, right) => String(right.date ?? '').localeCompare(String(left.date ?? '')));
@@ -226,6 +247,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             emails: emails,
             ropNotes,
             clientCompanyName,
+            clientCardId,
             history: history || [],
             raw_payload: order.raw_payload
         });

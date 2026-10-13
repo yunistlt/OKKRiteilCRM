@@ -16,6 +16,7 @@ import { runInsightAnalysisDetailed, type BusinessInsights } from './insight-age
 import { OKK_CONSULTANT_GUIDES } from './okk-consultant';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 import { cachedAiResult } from '@/lib/ai-cache';
+import { cutForAi } from '@/lib/email/classify';
 import { resolveRetailCRMLabel } from '@/lib/retailcrm/mapping';
 import { getOpenAIClient } from '@/utils/openai';
 
@@ -221,11 +222,12 @@ async function buildScriptGateContext(orderId: number, order: any, currentStatus
     // Комментарии заказа — куда менеджер заносит то, что выяснил в разговоре
     // (отдельного поля под годовой объём в CRM нет).
     const rp = (order?.raw_payload as any) || {};
-    const commentsRaw = [rp.managerComment, rp.customerComment]
+    // Режем целыми символами: обрубленное эмодзи в комментарии ломает запрос к
+    // разбору — на этом семь часов висели неразобранные письма (05.10.2026).
+    const commentsRaw = cutForAi([rp.managerComment, rp.customerComment]
         .map((c: any) => String(c ?? '').trim())
         .filter(Boolean)
-        .join(' | ')
-        .slice(0, 2000);
+        .join(' | '), 2000);
     const statusCodes = await collectOrderStatusCodes(orderId, currentStatus);
     const [approval, production, sphereKnown, tech, terms, price] = await Promise.all([
         reachedApprovalStatus(statusCodes, currentStatus),
@@ -246,20 +248,28 @@ async function buildScriptGateContext(orderId: number, order: any, currentStatus
     };
 }
 
+/**
+ * Откуда взята оценка — показывается человеку в объяснении.
+ *
+ * Имена полей, а не снимка: закон владельца 06.10.2026 — у каждого значения
+ * своё поле, снимок (`raw_payload`) это запись истории, и рабочее значение
+ * читается не из него. Подписи раньше называли снимок, и выходило, что
+ * система объясняет свои оценки местом, из которого брать данные нельзя.
+ */
 const DEFAULT_SOURCE_REFS: Record<string, string[]> = {
-    tz_received: ['orders.raw_payload.customerComment', 'orders.raw_payload.managerComment', 'orders.raw_payload.customFields'],
-    field_buyer_filled: ['orders.raw_payload.company', 'orders.raw_payload.contact', 'orders.raw_payload.customer'],
-    field_product_category: ['orders.raw_payload.customFields', 'orders.raw_payload.category'],
-    field_contact_data: ['orders.raw_payload.phone', 'orders.raw_payload.email', 'orders.raw_payload.contact.phones'],
+    tz_received: ['orders.customerComment', 'orders.managerComment'],
+    field_buyer_filled: ['orders.company', 'orders.contact', 'orders.customer'],
+    field_product_category: ['orders.typ_castomer'],
+    field_contact_data: ['orders.phone', 'orders.email', 'orders.additionalPhone'],
     relevant_number_found: ['call_order_link', 'raw_telphin_calls.from_number', 'raw_telphin_calls.to_number'],
-    field_expected_amount: ['orders.raw_payload.customFields.expected_amount', 'orders.raw_payload.totalSumm'],
-    field_purchase_form: ['orders.raw_payload.customFields.typ_customer_margin', 'orders.raw_payload.customFields.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete'],
-    field_sphere_correct: ['orders.raw_payload.customFields.sfera_deiatelnosti'],
+    field_expected_amount: ['orders.totalsumm'],
+    field_purchase_form: ['orders.typ_customer_margin', 'orders.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete'],
+    field_sphere_correct: ['orders.sfera_deiatelnosti'],
     mandatory_comments: ['order_history_log.field'],
     email_sent_no_answer: ['order_history_log.field', 'raw_telphin_calls.direction', 'raw_telphin_calls.transcript'],
     lead_in_work_lt_1_day: ['orders.created_at', 'raw_telphin_calls.started_at', 'order_history_log.occurred_at'],
-    next_contact_not_overdue: ['orders.raw_payload.customFields.next_contact_date', 'orders.raw_payload.customFields.data_kontakta'],
-    lead_in_work_lt_1_day_after_tz: ['orders.updated_at', 'orders.raw_payload.customFields'],
+    next_contact_not_overdue: ['orders.data_kontakta'],
+    lead_in_work_lt_1_day_after_tz: ['orders.updated_at'],
     deal_in_status_lt_5_days: ['order_history_log.occurred_at', 'orders.created_at'],
 };
 
@@ -658,11 +668,50 @@ export async function collectFacts(orderId: number) {
     // Данные заказа
     const { data: order } = await supabase
         .from('orders')
-        .select('raw_payload, created_at, status, updated_at, manager_id')
+        /**
+         * Рабочие значения берём из полей, а не из снимка (закон владельца
+         * 06.10.2026). Снимок остаётся подложкой только для вложенного, чему
+         * отдельных полей нет, — состава и вложенных структур.
+         *
+         * Почему это важно именно здесь: по этим данным ставится оценка
+         * качества заявки, а от неё считается зарплата. Снимок обновлял
+         * перенос из RetailCRM, его отключили — и оценки считались по
+         * устаревшим значениям.
+         */
+        .select(`raw_payload, created_at, status, updated_at, manager_id,
+                 "customerComment", "managerComment", "company", "contact", "customer",
+                 phone, "additionalPhone", email, totalsumm,
+                 typ_castomer, typ_customer_margin, sfera_deiatelnosti, data_kontakta,
+                 vy_dlya_sebya_ili_dlya_zakazchika_priobretaete`)
         .eq('order_id', orderId)
         .single();
 
-    let raw = (order?.raw_payload as any) || {};
+    const snapshot = (order?.raw_payload as any) || {};
+    const o = (order ?? {}) as any;
+
+    // Поля заказа поверх снимка: форма остаётся прежней, значения — свежие.
+    let raw: any = {
+        ...snapshot,
+        customerComment: o.customerComment ?? snapshot.customerComment,
+        managerComment: o.managerComment ?? snapshot.managerComment,
+        company: o.company ?? snapshot.company,
+        contact: o.contact ?? snapshot.contact,
+        customer: o.customer ?? snapshot.customer,
+        phone: o.phone ?? snapshot.phone,
+        additionalPhone: o.additionalPhone ?? snapshot.additionalPhone,
+        email: o.email ?? snapshot.email,
+        totalSumm: o.totalsumm ?? snapshot.totalSumm,
+        customFields: {
+            ...(snapshot.customFields || {}),
+            typ_castomer: o.typ_castomer ?? snapshot.customFields?.typ_castomer,
+            typ_customer_margin: o.typ_customer_margin ?? snapshot.customFields?.typ_customer_margin,
+            sfera_deiatelnosti: o.sfera_deiatelnosti ?? snapshot.customFields?.sfera_deiatelnosti,
+            data_kontakta: o.data_kontakta ?? snapshot.customFields?.data_kontakta,
+            vy_dlya_sebya_ili_dlya_zakazchika_priobretaete:
+                o.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete
+                ?? snapshot.customFields?.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete,
+        },
+    };
 
     // validate structure and normalize for easier downstream logic
     try {
@@ -685,7 +734,7 @@ export async function collectFacts(orderId: number) {
     let calls: any[] = [];
     const { data: links } = await supabase
         .from('call_order_link')
-        .select('telphin_call_id, started_at, duration_sec, direction, source')
+        .select('telphin_call_id, started_at, duration_sec, direction, source, answered')
         .eq('order_id', orderId);
 
     const linkRows = (links ?? []) as any[];
@@ -708,7 +757,10 @@ export async function collectFacts(orderId: number) {
                 duration_sec: raw.duration_sec ?? l.duration_sec,
                 direction: raw.direction ?? l.direction,
                 telphin_call_id: String(l.telphin_call_id),
-                matched_by: l.source === 'crm' ? 'retailcrm' : 'phone_matching',
+                // Был ли разговор с клиентом — решено в связи, одним правилом
+                // на весь проект (закон владельца 05.10.2026).
+                answered: l.answered,
+                matched_by: l.source === 'own' ? 'okk_card' : l.source === 'crm' ? 'retailcrm' : 'phone_matching',
             };
         });
     }
@@ -752,8 +804,20 @@ export async function collectFacts(orderId: number) {
     // Сохраняем результат классификации, чтобы использовать в обосновании
     const callAnalysisResults: Record<string, { is_human: boolean; reason: string }> = {};
 
-    // Сначала фильтруем звонки > 15 секунд, так как короткие очевидно недозвон
-    const potentialConnectedCalls = calls.filter((c: any) => (c.duration_sec || 0) > 15);
+    /**
+     * Закон владельца 05.10.2026: «звонок считается состоявшимся, когда был
+     * разговор с клиентом. Никакие автодозвоны, никакие автоответчики».
+     *
+     * Телфин отдаёт попытку дозвона как отвеченный звонок с длительностью: у
+     * заказа 39775 верхний уровень говорил «48 секунд», а единственное плечо
+     * разговора — failed, 0 секунд, без записи. Раньше такой звонок проходил
+     * как разговор по правилу «дольше 15 секунд», и ОКК ставил менеджеру в
+     * заслугу разговор, которого не было. Теперь попытка отсекается сразу:
+     * `answered` считается в связи звонка с заказом по плечам разговора.
+     */
+    const potentialConnectedCalls = calls.filter(
+        (c: any) => c.answered !== false && (c.duration_sec || 0) > 15,
+    );
     const connectedCalls: any[] = [];
 
     for (const call of potentialConnectedCalls) {

@@ -17,14 +17,23 @@ interface OrdersStatusSidebarProps {
     tree: StatusGroup[];
     selected: string[];
     onSelect: (statuses: string[]) => void;
+    /** Свёрнута ли колонка. Запоминается за человеком списком заказов. */
+    collapsed?: boolean;
+    onCollapsedChange?: (collapsed: boolean) => void;
 }
 
 /**
  * Левая колонка списка заказов — повторяет RetailCRM: этапы с количеством, под ними
  * статусы. Цвет группы берём из цвета её статусов, чтобы взгляд цеплялся так же.
  */
-export default function OrdersStatusSidebar({ tree, selected, onSelect }: OrdersStatusSidebarProps) {
-    const [collapsed, setCollapsed] = useState(false);
+export default function OrdersStatusSidebar({ tree, selected, onSelect, collapsed: collapsedProp, onCollapsedChange }: OrdersStatusSidebarProps) {
+    /**
+     * Свёрнута колонка статусов или нет — личная настройка, переживающая
+     * обновление страницы (жалоба владельца 05.10.2026). Хранит её список
+     * заказов вместе с колонками и ширинами.
+     */
+    const collapsed = collapsedProp ?? false;
+    const setCollapsed = (next: boolean) => onCollapsedChange?.(next);
     const totalAll = tree.reduce((sum, g) => sum + g.total, 0);
 
     if (collapsed) {

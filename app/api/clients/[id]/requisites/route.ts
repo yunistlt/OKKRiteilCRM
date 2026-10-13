@@ -5,7 +5,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
-import { loadClientRequisites, saveClientRequisites } from '@/lib/own-crm/client-requisites';
+import { DuplicateInnError, loadClientRequisites, saveClientRequisites } from '@/lib/own-crm/client-requisites';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,6 +50,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         await saveClientRequisites(id, parsed.data, session.user.email || session.user.username || null);
         return NextResponse.json({ ok: true, requisites: await loadClientRequisites(id) });
     } catch (e: any) {
+        // Дубль ИНН — не сбой, а развилка для человека: карточка покажет
+        // кнопку «Объединить» с той карточкой, где ИНН уже стоит.
+        if (e instanceof DuplicateInnError) {
+            return NextResponse.json(
+                {
+                    error: e.message,
+                    duplicate: { clientId: e.otherClientId, clientName: e.otherClientName },
+                    requisites: await loadClientRequisites(id),
+                },
+                { status: 409 },
+            );
+        }
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }

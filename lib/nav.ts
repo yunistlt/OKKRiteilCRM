@@ -42,6 +42,9 @@ export const NAV_GROUPS: NavGroup[] = [
                 { name: 'Клиенты', href: '/clients', icon: '🏢', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 { name: 'Письма', href: '/emails', icon: '✉️', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 { name: 'Звонки', href: '/calls', icon: '📞', allowed: ['admin', 'okk', 'rop', 'manager'] },
+                // Файлы всех заказов одним списком: паспорт изделия ищут по
+                // названию, не помня номера заказа (Женя Матвеева 12.10.2026).
+                { name: 'Файлы', href: '/files', icon: '📎', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 // Оповещения рядом с письмами и звонками: это тот же поток
                 // событий по заказам (решение владельца 05.10.2026).
                 { name: 'Оповещения', href: '/notifications', icon: '🔔', allowed: ['admin', 'okk', 'rop', 'manager'] },

@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { getDefaultPathForRole, isReadOnlyRole } from '@/lib/rbac';
 import { canAccessPathServer } from '@/lib/rbac-server';
+import { gateRedirectTarget } from '@/lib/read-gate/guard';
 
 function applyNoStoreHeaders(response: NextResponse) {
     response.headers.set('Cache-Control', 'private, no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
@@ -35,7 +36,20 @@ export async function middleware(request: NextRequest) {
         pathname.startsWith('/api/monitoring') ||
         pathname.startsWith('/api/stt') ||
         pathname.startsWith('/api/telphin') ||
+        // События телефонии: Телфин шлёт их своим сервером, сессии у него нет.
+        // Маршрут закрыт не сессией, а ключом TELPHIN_WEBHOOK_SECRET в самом
+        // обработчике (решение владельца 05.10.2026 — нужно оповещение во
+        // время звонка, а не по его записи).
+        pathname.startsWith('/api/calls/webhooks') ||
         pathname.startsWith('/api/widget') ||
+        // Уставные документы компании для клиента: раньше это была ссылка на
+        // чужой Яндекс.Диск, теперь своя страница. Входа не требует —
+        // публикуем только то, что помечено публичным в карточке юрлица
+        // (требование владельца 08.10.2026).
+        pathname.startsWith('/docs/') ||
+        // Каталог продукции: постоянная ссылка из письма клиенту.
+        pathname === '/katalog' ||
+        pathname.startsWith('/api/public/') ||
         // Файлы приложения-установки: браузер обновляет воркер фоновым запросом,
         // и если тот упирается в редирект на вход, воркер остаётся старым
         // навсегда — интерфейс после выкатки не обновлялся, пока человек не
@@ -65,6 +79,16 @@ export async function middleware(request: NextRequest) {
                 { error: 'У вашей роли доступ только на просмотр — изменения закрыты' },
                 { status: 403 },
             ));
+        }
+
+        /**
+         * Шлюз чтения: пока разбор не прочитан, любой маршрут ведёт на документ.
+         * Проверка идёт ПОСЛЕ авторизации и только для страниц — API нужен самой
+         * странице документа, чтобы отчитаться о времени и подтвердить прочтение.
+         */
+        const gateTarget = await gateRedirectTarget(request, session);
+        if (gateTarget) {
+            return applyNoStoreHeaders(NextResponse.redirect(new URL(gateTarget, request.url)));
         }
 
         if (!(await canAccessPathServer(session.user.role, pathname))) {

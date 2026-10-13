@@ -11,6 +11,7 @@ import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 
 // @ts-nocheck
 import { NextResponse } from 'next/server';
+import { findOrderByOurReply } from '@/lib/order-mail/link';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
@@ -316,6 +317,9 @@ export async function GET(req: Request) {
                     from_email: e.fromEmail,
                     from_name: e.fromName,
                     to_email: e.toEmail,
+                    // Все получатели и копия: по ним работает «ответить всем».
+                    to_emails: e.toEmails?.length ? e.toEmails : null,
+                    cc_emails: e.ccEmails?.length ? e.ccEmails : null,
                     subject: e.subject,
                     in_reply_to: e.inReplyTo,
                     email_refs: e.references,
@@ -379,6 +383,13 @@ export async function GET(req: Request) {
                 let v: any = null;
                 let subjectOrderNum: string | null = null; // номер заказа клиента, найденный в теме «Re:»
                 let threadOrder: { number: string; id: number | null } | null = null; // заказ из того же почтового треда
+                /**
+                 * Заказ по НАШЕМУ письму, на которое отвечают (ТЗ §3.1).
+                 * Самая надёжная линия: `In-Reply-To` переживает и снесённую
+                 * тему, и потерянный тег. Раньше такой ответ опознавался как
+                 * переписка, но к заказу не привязывался — «номера в теме нет».
+                 */
+                let ourReplyOrder: { number: string; id: number | null; reason: string } | null = null;
 
                 // Для «роботов-лидов» (webasyst и т.п.) или пересылаемых писем (Fwd) реальный контакт клиента — в теле письма,
                 // а не в From. Тянем email/телефон/имя для карточки и назначения.
@@ -399,9 +410,19 @@ export async function GET(req: Request) {
                 const leadContact = extractLeadContact(
                     (e.body_text && e.body_text.trim()) ? e.body_text : stripHtml(e.body_html),
                 );
-                const custEmail = (isRobotLead || isForwarded)
-                    ? (leadContact.email || e.from_email || '')
-                    : (e.from_email || leadContact.email || '');
+                /**
+                 * Почта клиента. У письма-робота (заявка с сайта) адрес
+                 * отправителя — это адрес сайта, а не клиента: подставлять его
+                 * в заказ нельзя, иначе менеджер ответит роботу (жалоба
+                 * Евгении 05.10.2026). Если в теле почты нет — у клиента её
+                 * просто нет, оставляем пусто: в заявке «Заказать звонок»
+                 * бывает только телефон.
+                 */
+                const custEmail = isRobotLead
+                    ? (leadContact.email || '')
+                    : isForwarded
+                        ? (leadContact.email || e.from_email || '')
+                        : (e.from_email || leadContact.email || '');
                 const custName = (isRobotLead || isForwarded)
                     ? (leadContact.name || e.from_name || undefined)
                     : (e.from_name || leadContact.name || undefined);
@@ -496,13 +517,22 @@ export async function GET(req: Request) {
                     // ветки сработали бы и тег, и repliesToOurThread (в теле цитата нашего письма).
                     // Тред-дедуп проверяем ПЕРВЫМ: если по этой же переписке заказ уже заведён,
                     // разбирать письмо как новую заявку незачем — какими бы ни были тег и «Re:».
+                    // Ответ на наше письмо — проверяем раньше всего: он даёт точный
+                    // номер заказа, а не признак «это переписка».
+                    ourReplyOrder = await findOrderByOurReply({ in_reply_to: e.in_reply_to, email_refs: e.email_refs });
+
                     threadOrder = aiRoute === 'new_request'
                         ? await findOrderByEmailThread(e, threadDedupDays)
                         : null;
                     const staleTag = !threadOrder && crmTag && aiRoute === 'new_request'
                         ? await findStaleTaggedOrder(e.subject, crmTagStaleDays)
                         : null;
-                    if (threadOrder) {
+                    if (ourReplyOrder) {
+                        // Клиент ответил на наше письмо по заказу — это переписка,
+                        // и заказ известен точно. Новую заявку не заводим.
+                        emailType = 'reply_thread';
+                        reasoning = `${ourReplyOrder.reason} №${ourReplyOrder.number} — ${noteFor(aiRoute)} | ${v.reasoning}`;
+                    } else if (threadOrder) {
                         emailType = 'reply_thread';
                         reasoning = `Продолжение переписки, по которой заказ №${threadOrder.number} уже создан — дубль не заводим | ${v.reasoning}`;
                     } else if (staleTag) {
@@ -569,11 +599,18 @@ export async function GET(req: Request) {
 
                 let createdOrderId: number | null = null;
                 let createdOrderNumber: string | null = null;
+                // Заказ, к которому привязали ЭТО письмо (не созданный, а существующий).
+                let linkedOrder: { id: number; number: string } | null = null;
 
-                // Разрешаем существующий заказ для переписки
-                if (emailType === 'reply_thread') {
+                // Разрешаем существующий заказ: для переписки И для писем, которые уходят в отдел.
+                // Письмо по заказу обязано цепляться к заказу ВСЕГДА — пересылка в бухгалтерию/
+                // логистику/юриста это не отменяет, а дополняет.
+                // Инцидент 07.10.2026: четыре письма по заказу №900064 (11,26 млн — условия оплаты,
+                // спор о цене, КП и скриншот счёта) ИИ отнёс к бухгалтерии и переслал. Привязки не
+                // было — в карточке заказа ни писем, ни файлов, менеджер вёл сделку на 11 млн вслепую.
+                if (emailType === 'reply_thread' || isDepartmentRoute(emailType as any)) {
                     // 0. Заказ, найденный по почтовому треду (самый надёжный), затем — номер из темы
-                    let orderNum: string | null = threadOrder?.number || subjectOrderNum;
+                    let orderNum: string | null = ourReplyOrder?.number || threadOrder?.number || subjectOrderNum;
 
                     // 1. Проверяем тему на наличие CRM-тега [#N/NNNNN]
                     if (!orderNum && e.subject) {
@@ -617,20 +654,34 @@ export async function GET(req: Request) {
                     if (resolvedOrder) {
                         createdOrderId = resolvedOrder.id;
                         createdOrderNumber = resolvedOrder.number;
+                        linkedOrder = resolvedOrder;
                         reasoning = `${reasoning} | Привязано к заказу №${resolvedOrder.number}`;
                     }
                 }
 
-                // Письмо продолжает тред уже созданного заказа: сам заказ не плодим, но вложения
-                // (обычно там ТЗ/спецификация) прикрепляем к нему — иначе файлы потерялись бы.
-                if (createOrders && emailType === 'reply_thread' && threadOrder?.id
+                // Письмо относится к заказу → в отдел его НЕ пересылаем вообще. Переписку по сделке
+                // ведёт менеджер заказа; бухгалтерия/логистика/юрист получают только то, что к заказу
+                // не привязано. Иначе разговор о цене и условиях уходит людям, которые его не ведут,
+                // а менеджер узнаёт о нём последним (инцидент 07.10.2026, заказ №900064).
+                if (isDepartmentRoute(emailType as any) && linkedOrder) {
+                    const guessed = routes[emailType]?.label || emailType;
+                    classify[emailType as keyof typeof classify]--;
+                    emailType = 'reply_thread';
+                    classify.reply_thread++;
+                    reasoning = `${reasoning} | Письмо по заказу №${linkedOrder.number} — в «${guessed}» не пересылаем, ведёт менеджер заказа`;
+                }
+
+                // Вложения письма → в тот же заказ, к которому письмо привязали (переписка или
+                // письмо в отдел). Там КП, спецификации, скриншоты счётов — без них карточка заказа
+                // врёт о том, что происходило в сделке.
+                if (createOrders && linkedOrder?.id
                     && Array.isArray(e.attachments_meta) && e.attachments_meta.length > 0 && e.imap_uid != null) {
                     try {
                         const content = await fetchEmailContentByUid(Number(e.imap_uid), e.folder || FOLDER);
                         const files = content?.attachments || [];
                         if (files.length > 0) {
-                            const att = await attachEmailFilesToOrder(threadOrder.id, files);
-                            reasoning = `${reasoning} | Вложения в заказ №${threadOrder.number}: ${att.attached}/${att.total}` +
+                            const att = await attachEmailFilesToOrder(linkedOrder.id, files);
+                            reasoning = `${reasoning} | Вложения в заказ №${linkedOrder.number}: ${att.attached}/${att.total}` +
                                 (att.errors.length ? ` (ошибки: ${att.errors.slice(0, 2).join('; ')})` : '');
                         }
                     } catch (attErr: any) {

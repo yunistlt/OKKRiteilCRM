@@ -290,7 +290,7 @@ const DEFAULT_COL_GROUPS: Group[] = [
             },
             {
                 key: 'next_contact_not_overdue', label: 'Дата следующего контакта не просрочена/не сдвинута без причины', type: 'bool',
-                tip: { agent: 'Игорь', agentEmoji: '👮‍♂️', how: 'next_contact_date >= сегодня', data: 'raw_payload.customFields.next_contact_date' }
+                tip: { agent: 'Игорь', agentEmoji: '👮‍♂️', how: 'next_contact_date >= сегодня', data: 'orders.data_kontakta' }
             },
             {
                 key: 'lead_in_work_lt_1_day_after_tz', label: 'Лид в работе менее суток с даты получения ТЗ', type: 'bool',
@@ -309,19 +309,19 @@ const DEFAULT_COL_GROUPS: Group[] = [
         cols: [
             {
                 key: 'tz_received', label: 'ТЗ от клиента получено (ширина, длина, высота, t°, тип нагрева)', type: 'bool',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Проверяет наличие полей размеров/температуры в customFields заказа', data: 'raw_payload.customFields (tz, width, height, temperature)' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Ищет размеры, температуру и прочие признаки ТЗ в комментариях заказа', data: 'orders.customerComment / orders.managerComment' }
             },
             {
                 key: 'field_buyer_filled', label: 'Заполнение поля «Покупатель» — данные организации', type: 'bool',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Проверяет поля company.name, contact.name или customer.* (firstName/lastName/companyName) в данных заказа', data: 'raw_payload.company / raw_payload.contact / raw_payload.customer' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Проверяет поля company.name, contact.name или customer.* (firstName/lastName/companyName) в данных заказа', data: 'orders.company / orders.contact / orders.customer' }
             },
             {
                 key: 'field_product_category', label: 'Заполнено поле «Категория товара»', type: 'bool',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Ищем теги товара в customFields (tovarnaya_kategoriya, product_category, category или любой ключ с "катег"/"kategori")', data: 'raw_payload.customFields' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Заполнена категория товара', data: 'orders.typ_castomer' }
             },
             {
                 key: 'field_contact_data', label: 'Внесены «Контактные данные клиента»', type: 'bool',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Проверяет phone / email / contact.phones в заказе', data: 'raw_payload.phone / email / contact.phones' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Проверяет phone / email / contact.phones в заказе', data: 'orders.phone / orders.email / orders.additionalPhone' }
             },
             {
                 key: 'relevant_number_found', label: 'Релевантный номер (поиск в интернете если не дозвониться)', type: 'bool',
@@ -329,15 +329,15 @@ const DEFAULT_COL_GROUPS: Group[] = [
             },
             {
                 key: 'field_expected_amount', label: 'Указана ожидаемая сумма сделки', type: 'bool',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'customFields.expected_amount > 0 или totalSumm > 0', data: 'raw_payload.customFields.expected_amount / totalSumm' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Сумма заказа больше нуля', data: 'orders.totalsumm' }
             },
             {
                 key: 'field_purchase_form', label: 'Указана «Форма закупки»', type: 'bool',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Наличие customFields.forma_zakupki / purchase_form', data: 'raw_payload.customFields.forma_zakupki' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Заполнена форма закупки', data: 'orders.typ_customer_margin' }
             },
             {
                 key: 'field_sphere_correct', label: 'Указана и указана верно «Сфера деятельности»', type: 'bool',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'customFields со сферой деятельности заполнен', data: 'raw_payload.customFields.sfera_deyatelnosti / sphere_of_activity' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Заполнена сфера деятельности', data: 'orders.sfera_deiatelnosti' }
             },
             {
                 key: 'mandatory_comments', label: 'Обязательные комментарии МОПов в сделке', type: 'bool',

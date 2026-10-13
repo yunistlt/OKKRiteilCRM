@@ -1,6 +1,5 @@
 import { supabase } from '@/utils/supabase';
-import { fetchRetailCrmOrder } from '@/lib/retailcrm/orders';
-import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
+import { editOrder } from '@/lib/own-crm/edit-order';
 import { queueOrderForProduction } from '@/lib/own-crm/tseh-outbox';
 
 // Перевод заказа в «Передано в производство» после поступления оплаты.
@@ -40,69 +39,55 @@ export interface MoveToProductionResult {
 }
 
 /**
- * После оплаты переводит заказ в производство, если он ещё НЕ в производстве/отгрузке/
- * завершён/отменён (не откатываем назад). Текущий статус берём из RetailCRM (авторитетно).
+ * После оплаты переводит заказ в производство, если он ещё НЕ в производстве/
+ * отгрузке/завершён/отменён (не откатываем назад). Статус читаем и пишем в
+ * своей базе: с 09.10.2026 заказы ведутся только в ОКК.
  * Не бросает — сбой не должен ломать проброс оплаты.
  */
 export async function moveOrderToProductionAfterPayment(
   orderId: number | null | undefined,
-  opts: { currentStatus?: string | null; site?: string | null } = {},
 ): Promise<MoveToProductionResult> {
   if (!orderId) return { moved: false, notMovedReason: 'нет id заказа' };
   try {
     /**
-     * Свой заказ переводим у себя.
+     * Статус заказа живёт в нашей базе — и читаем, и пишем только её.
      *
-     * Раньше перевод шёл только через RetailCRM: статус читался оттуда и писался
+     * Раньше перевод шёл через RetailCRM: статус читался оттуда и писался
      * туда же. Для заказов нашей базы это не работало — оплата приходила, а
-     * заказ оставался на «Счёт на оплате» (заказ 54691, 02.10.2026). К тому же
-     * запись в RetailCRM выключена на время переезда.
+     * заказ оставался на «Счёт на оплате» (заказ 54691, 02.10.2026). С
+     * 09.10.2026 RetailCRM архив на чтение, и путь один на все заказы.
      */
-    const { data: own } = await supabase
+    const { data: row } = await supabase
       .from('orders')
-      .select('id, status, is_own')
+      .select('id, status')
       .eq('order_id', orderId)
       .maybeSingle();
 
-    if ((own as any)?.is_own) {
-      const current = String((own as any).status || '');
-      const { set: blocked, prodName, names } = await loadStatusMeta();
-      if (blocked.has(current)) {
-        return { moved: false, notMovedReason: `уже в статусе «${names[current] || current}»` };
-      }
-      const { error } = await supabase
-        .from('orders')
-        .update({ status: PRODUCTION_STATUS, updated_at: new Date().toISOString() })
-        .eq('id', (own as any).id);
-      if (error) {
-        return { moved: false, notMovedReason: `статус не записался: ${error.message}` };
-      }
-      // Заказ встал в очередь, из которой ЦехУспех забирает его сам.
-      await queueOrderForProduction(orderId);
-      return { moved: true, statusName: prodName };
-    }
+    if (!row) return { moved: false, notMovedReason: 'заказ не найден' };
 
-    // Текущий статус и site можно передать (если заказ уже фетчили) — иначе тянем сами.
-    // site обязателен: orders/edit отклоняет чужой site заказа (см. updateExistingOrderInCrm).
-    let current = opts.currentStatus ? String(opts.currentStatus) : '';
-    let site = opts.site ? String(opts.site) : '';
-    if (!current || !site) {
-      const order = await fetchRetailCrmOrder(orderId);
-      if (!order) return { moved: false, notMovedReason: 'заказ не найден в RetailCRM' };
-      if (!current) current = String(order.status || '');
-      if (!site) site = String(order.site || '');
-    }
+    const current = String((row as any).status || '');
     const { set: blocked, prodName, names } = await loadStatusMeta();
     if (blocked.has(current)) {
-      const curName = names[current] || current;
-      return { moved: false, notMovedReason: `уже в статусе «${curName}»` };
+      return { moved: false, notMovedReason: `уже в статусе «${names[current] || current}»` };
     }
-    const res = await updateExistingOrderInCrm(orderId, { status: PRODUCTION_STATUS }, site || undefined);
-    if (!res.success) {
-      return { moved: false, notMovedReason: `RetailCRM отклонил перевод: ${res.errorMsg || 'неизвестная ошибка'}` };
+
+    /**
+     * Статус меняем ОДНОЙ дверью — через `editOrder`.
+     *
+     * Прямой `update` писал только колонку: без записи в историю и без даты
+     * входа в статус. Поэтому расчёт зарплаты не видел такие заказы вовсе —
+     * он ищет вход в производство по истории (владелец 12.10.2026: «почему не
+     * актуальные данные»). Три заказа октября так и повисли невидимыми.
+     */
+    const moved = await editOrder(Number((row as any).id), { statusCode: PRODUCTION_STATUS });
+    if (!moved.ok) {
+      return { moved: false, notMovedReason: `статус не записался: ${moved.reason}` };
     }
+
+    // Заказ встал в очередь, из которой ЦехУспех забирает его сам.
+    await queueOrderForProduction(orderId);
     return { moved: true, statusName: prodName };
   } catch (e: any) {
-    return { moved: false, notMovedReason: `ошибка RetailCRM: ${String(e?.message || e).slice(0, 150)}` };
+    return { moved: false, notMovedReason: `сбой перевода: ${String(e?.message || e).slice(0, 150)}` };
   }
 }

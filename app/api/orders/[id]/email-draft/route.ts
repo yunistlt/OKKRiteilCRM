@@ -14,6 +14,13 @@ const bodySchema = z.object({
     subject: z.string().trim().max(500).optional().nullable(),
     body: z.string().max(50000).optional().nullable(),
     attachments: z.array(z.string().max(300)).max(20).optional(),
+    /**
+     * Приложенные файлы заказа и документы. Держим номера, а не содержимое:
+     * файлы уже лежат у нас, и приложенное один раз отваливаться не должно
+     * (решение владельца 12.10.2026).
+     */
+    orderFileIds: z.array(z.number().int().positive()).max(50).optional(),
+    documents: z.array(z.enum(['proposal', 'invoice'])).max(2).optional(),
 });
 
 function authorOf(session: any): string {
@@ -26,7 +33,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 
     const { data } = await supabase
         .from('order_email_drafts')
-        .select('recipient, subject, body, attachments, updated_at')
+        .select('recipient, subject, body, attachments, order_file_ids, documents, updated_at')
         .eq('order_number', String(params.id))
         .eq('author', authorOf(session))
         .maybeSingle();
@@ -39,6 +46,8 @@ export async function GET(_request: Request, { params }: { params: { id: string 
             subject: (data as any).subject ?? '',
             body: (data as any).body ?? '',
             attachments: (data as any).attachments ?? [],
+            orderFileIds: (data as any).order_file_ids ?? [],
+            documents: (data as any).documents ?? [],
             savedAt: (data as any).updated_at,
         },
     });
@@ -63,6 +72,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
                 subject: parsed.data.subject ?? null,
                 body: parsed.data.body ?? null,
                 attachments: parsed.data.attachments ?? [],
+                order_file_ids: parsed.data.orderFileIds ?? [],
+                documents: parsed.data.documents ?? [],
                 updated_at: new Date().toISOString(),
             },
             { onConflict: 'order_number,author' },

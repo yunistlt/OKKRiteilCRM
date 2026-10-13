@@ -1,5 +1,6 @@
 import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
+import { localToday } from '@/lib/sales-rop/local-day';
 import { notifyOwnerFailure, runMorning } from '@/lib/sales-rop/service';
 
 export const dynamic = 'force-dynamic';
@@ -34,12 +35,4 @@ export async function GET(req: NextRequest) {
     }
 }
 
-/**
- * Сегодня по заводскому времени. Тольятти — UTC+4 (самарское), а не московское:
- * час разницы решает, каким днём датирован план, запущенный ранним утром.
- */
-export const TSEH_UTC_OFFSET_HOURS = 4;
 
-export function localToday(now = new Date()): string {
-    return new Date(now.getTime() + TSEH_UTC_OFFSET_HOURS * 60 * 60 * 1000).toISOString().slice(0, 10);
-}

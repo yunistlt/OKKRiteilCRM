@@ -25,6 +25,9 @@ export default function MySalaryPage() {
     const [loading, setLoading] = useState(true);
     const [details, setDetails] = useState<any>(null);
     const [dash, setDash] = useState<MyDashboard | null>(null);
+    // Зарплаты коллег — открыты всему отделу (решение владельца 07.10.2026).
+    const [colleagues, setColleagues] = useState<any[]>([]);
+    const [openColleague, setOpenColleague] = useState<number | null>(null);
     const [simOpen, setSimOpen] = useState(false);
     const [needsRecalc, setNeedsRecalc] = useState(false);
     const [recalculating, setRecalculating] = useState(false);
@@ -42,6 +45,7 @@ export default function MySalaryPage() {
             setStatus(json.period?.status ?? 'none');
             setDetails(json.details ?? null);
             setDash(json.dashboard ?? null);
+            setColleagues(Array.isArray(json.colleagues) ? json.colleagues : []);
             setNeedsRecalc(!!json.needsRecalc);
         } catch (e: any) {
             toast({ title: 'Ошибка', description: e.message, variant: 'destructive' });
@@ -265,6 +269,46 @@ export default function MySalaryPage() {
                     <Section title="К_команды — заказы отдела">
                         <TeamOrdersTable orders={teamOrders} teamRevenueNoVat={teamRevenueNoVat} />
                     </Section>
+
+                    {/* ── Зарплаты коллег ──────────────────────────────────
+                        Открыто всему отделу по решению владельца 07.10.2026.
+                        Видно ровно то же, из чего сложилась своя ЗП, — расчёт
+                        обязан раскладываться до исходных данных, а это работает
+                        только если его видно. Пересчёт, закрытие периода и
+                        ставки остаются у РОПа и администратора. */}
+                    {colleagues.length > 0 && (
+                        <Section title="Зарплаты коллег" hint="тот же расчёт, что и свой — нажмите на имя, чтобы раскрыть">
+                            <div className="border">
+                                {colleagues.map((c) => {
+                                    const cc: BlockContribution[] = Array.isArray(c.breakdown?.blockContributions)
+                                        ? c.breakdown.blockContributions
+                                        : [];
+                                    const open = openColleague === Number(c.manager_id);
+                                    return (
+                                        <div key={c.manager_id} className="border-b last:border-b-0">
+                                            <button
+                                                type="button"
+                                                onClick={() => setOpenColleague(open ? null : Number(c.manager_id))}
+                                                className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-muted/50"
+                                            >
+                                                <span className="text-sm font-semibold">{c.manager_name}</span>
+                                                <span className="text-base font-extrabold tabular-nums">{rub(c.total)}</span>
+                                            </button>
+                                            {open && (
+                                                <div className="border-t p-3">
+                                                    {cc.length > 0 ? (
+                                                        <BlockBreakdown contributions={cc} total={Number(c.total) || 0} defaultOpen />
+                                                    ) : (
+                                                        <div className="text-xs text-muted-foreground">Разбивка по блокам за этот период не сохранена.</div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </Section>
+                    )}
 
                     <div className="text-[11px] text-muted-foreground">
                         Нажмите на номер заказа, чтобы открыть карточку в ОКК и проверить данные расчёта.

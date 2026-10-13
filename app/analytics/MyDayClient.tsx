@@ -30,6 +30,8 @@ type Action = {
     weight: number;
     slaLeftMinutes: number | null;
     done: boolean;
+    /** Чем задача закрыта сегодня: звонок, письмо, смена статуса… */
+    doneBy?: string | null;
 };
 
 type MyDay = {
@@ -92,11 +94,21 @@ export default function MyDayClient() {
 
     useEffect(() => { load(); }, [load]);
 
+    /**
+     * Выполненное из списка уходит.
+     *
+     * Ирина Гордеева 12.10.2026: «задачи не уходят, даже если выполнены, так и
+     * висят списком на день». Показываем их отдельно — по кнопке, чтобы можно
+     * было проверить, что день закрыт.
+     */
+    const [showDone, setShowDone] = useState(false);
+
     const rows = useMemo(() => {
         if (!day) return [];
-        const filtered = tab === 'all' ? day.all : day.all.filter((a) => a.kind === tab);
+        const byTab = tab === 'all' ? day.all : day.all.filter((a) => a.kind === tab);
+        const filtered = showDone ? byTab.filter((a) => a.done) : byTab.filter((a) => !a.done);
         return showAll ? filtered : filtered.slice(0, 8);
-    }, [day, tab, showAll]);
+    }, [day, tab, showAll, showDone]);
 
     if (loading) return <p className="px-6 py-8 text-sm text-gray-500">Собираем ваш день…</p>;
     if (error) return <p className="px-6 py-8 text-sm text-amber-800">{error}</p>;
@@ -124,6 +136,8 @@ export default function MyDayClient() {
                     tab={tab}
                     onTab={(key) => { setTab(key); setShowAll(false); }}
                     showAll={showAll}
+                    showDone={showDone}
+                    onToggleDone={() => setShowDone((v) => !v)}
                     onToggle={() => setShowAll((v) => !v)}
                 />
             </div>
@@ -191,25 +205,25 @@ function NowCard({ action }: { action: Action | null }) {
                     <p className="text-[11px] uppercase tracking-wide text-gray-500">Сделка</p>
                     <p className="text-2xl font-bold tabular-nums text-gray-900">{formatRub(action.amount)}</p>
                     <p className="mt-1 text-xs text-gray-600">
-                        Заказ №<OrderNumberLink number={action.orderNumber} />
+                        Заказ №<OrderNumberLink number={action.orderNumber} from="my-day" />
                     </p>
                 </div>
 
                 <div className="space-y-2">
                     <Link
-                        href={`/orders?order=${action.orderId}`}
+                        href={`/orders?order=${action.orderId}&from=my-day`}
                         className="flex items-center justify-center gap-2 bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
                     >
                         <Phone size={14} /> Позвонить
                     </Link>
                     <Link
-                        href={`/orders?order=${action.orderId}`}
+                        href={`/orders?order=${action.orderId}&from=my-day`}
                         className="flex items-center justify-center gap-2 border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-800 hover:bg-gray-900 hover:text-white"
                     >
                         <Mail size={14} /> Написать
                     </Link>
                     <Link
-                        href={`/orders?order=${action.orderId}`}
+                        href={`/orders?order=${action.orderId}&from=my-day`}
                         className="flex items-center justify-center gap-2 border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-800 hover:bg-gray-900 hover:text-white"
                     >
                         Открыть сделку <ArrowRight size={14} />
@@ -259,7 +273,7 @@ function NextQueue({ actions }: { actions: Action[] }) {
                         </p>
 
                         <Link
-                            href={`/orders?order=${action.orderId}`}
+                            href={`/orders?order=${action.orderId}&from=my-day`}
                             className="mt-2 border border-gray-300 px-2 py-1.5 text-center text-xs font-bold text-gray-800 hover:bg-gray-900 hover:text-white"
                         >
                             {action.action}
@@ -278,6 +292,8 @@ function TaskTable({
     tab,
     onTab,
     showAll,
+    showDone,
+    onToggleDone,
     onToggle,
 }: {
     rows: Action[];
@@ -286,9 +302,12 @@ function TaskTable({
     tab: TabKey;
     onTab: (key: TabKey) => void;
     showAll: boolean;
+    showDone: boolean;
+    onToggleDone: () => void;
     onToggle: () => void;
 }) {
-    const countOf = (key: TabKey) => (key === 'all' ? day.all.length : day.all.filter((a) => a.kind === key).length);
+    // В счётчике вкладки — то, что осталось сделать, а не весь день.
+    const countOf = (key: TabKey) => day.all.filter((a) => !a.done && (key === 'all' || a.kind === key)).length;
 
     return (
         <section className="border border-gray-200 bg-white">
@@ -316,7 +335,15 @@ function TaskTable({
                     <span className="text-red-700">🔴 {counts.urgent} приоритетных</span>
                     <span className="text-amber-700">🟡 {counts.next} следующих</span>
                     <span className="text-gray-600">⚪ {counts.planned} плановых</span>
-                    {counts.done > 0 && <span className="text-green-700">✓ {counts.done} отработано</span>}
+                    {counts.done > 0 && (
+                        <button
+                            type="button"
+                            onClick={onToggleDone}
+                            className={`font-bold ${showDone ? 'text-gray-900 underline' : 'text-green-700 hover:underline'}`}
+                        >
+                            ✓ {counts.done} отработано{showDone ? ' — скрыть' : ''}
+                        </button>
+                    )}
                 </div>
                 <button
                     type="button"
@@ -328,7 +355,9 @@ function TaskTable({
             </div>
 
             {rows.length === 0 ? (
-                <p className="px-3 py-4 text-sm text-gray-600">В этом срезе действий нет.</p>
+                <p className="px-3 py-4 text-sm text-gray-600">
+                    {showDone ? 'Отработанных задач в этом срезе нет.' : 'Всё сделано — в этом срезе задач не осталось.'}
+                </p>
             ) : (
                 <table className="w-full text-left text-[13px]">
                     <thead>
@@ -352,10 +381,14 @@ function TaskTable({
                                 <td className="px-3 py-2 text-gray-900">{action.client}</td>
                                 <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gray-900">{formatRub(action.amount)}</td>
                                 <td className="px-3 py-2 font-semibold text-gray-900">{action.action}</td>
-                                <td className="px-3 py-2 text-gray-600">{action.reason}</td>
+                                <td className="px-3 py-2 text-gray-600">
+                                    {action.done && action.doneBy
+                                        ? <span className="text-green-700">сделано сегодня: {action.doneBy}</span>
+                                        : action.reason}
+                                </td>
                                 <td className="px-3 py-2 text-right">
                                     <Link
-                                        href={`/orders?order=${action.orderId}`}
+                                        href={`/orders?order=${action.orderId}&from=my-day`}
                                         className="text-xs font-bold text-blue-700 hover:underline"
                                     >
                                         №{action.orderNumber}
@@ -507,7 +540,7 @@ function UpcomingCard({ actions }: { actions: Action[] }) {
                     <li key={action.orderNumber} className="flex items-baseline justify-between gap-2">
                         <div className="min-w-0">
                             <Link
-                                href={`/orders?order=${action.orderId}`}
+                                href={`/orders?order=${action.orderId}&from=my-day`}
                                 className="block truncate text-xs font-semibold text-gray-900 hover:text-blue-700"
                             >
                                 {action.client}

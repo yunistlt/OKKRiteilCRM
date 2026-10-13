@@ -456,12 +456,29 @@ export async function computePrepayForOrders(
     }
     const paidSet = new Set(policy.paid_statuses);
     const invoiceTypes = new Set(policy.invoice_types ?? ['invoicejur', 'invoicefiz']);
-    const { data, error } = await supabase.from('orders').select('order_id,raw_payload').in('order_id', orderIds);
+    /**
+     * Оплаты берём из их собственной таблицы, а не из снимка заказа (закон
+     * владельца 06.10.2026: у каждого значения своё поле). В снимке лежат
+     * только оплаты, пришедшие из RetailCRM; оплаты, внесённые у нас, он не
+     * знает — а они бывают. Разбор 06.10.2026: по заказам 54789 и 54863 деньги
+     * пришли в банк, с которым у нас нет обмена, в снимке их нет, и показатель
+     * предоплаты занижался.
+     */
+    const { data, error } = await supabase
+        .from('order_payments')
+        .select('order_id, type, status, amount, externalId, source')
+        .in('order_id', orderIds);
     if (error) throw error;
+
+    const byOrder = new Map<number, any[]>();
+    for (const row of ((data as any[]) ?? [])) {
+        const id = Number(row.order_id);
+        (byOrder.get(id) ?? byOrder.set(id, []).get(id)!).push(row);
+    }
+
     let paid = 0;
-    for (const o of (data as any[]) ?? []) {
-        const payments = o?.raw_payload?.payments;
-        if (!payments || typeof payments !== 'object') continue;
+    for (const [orderId, payments] of Array.from(byOrder)) {
+        const o = { order_id: orderId };
         // Фактический приход = наши банк-синк-платежи (по externalId tochka-/tbank-); счёт,
         // выставленный менеджером (invoice-тип без нашего externalId) — фолбэк, если прихода нет.
         // Так снимается задвоение «счёт + банковский платёж» на ту же сумму. Признак — externalId,
@@ -469,10 +486,13 @@ export async function computePrepayForOrders(
         // только по externalId. Прочие не-invoice поступления (напр. наличные) тоже считаем приходом.
         let receipts = 0;
         let invoices = 0;
-        for (const p of Object.values(payments as Record<string, any>)) {
+        for (const p of payments) {
             if (!p || !paidSet.has(String(p.status))) continue;
             const amount = Number(p.amount) || 0;
-            if (isBankSyncExternalId(p.externalId)) receipts += amount;
+            // Оплата, внесённая у нас, — подтверждённый приход: её вносят,
+            // увидев деньги, а не выставив счёт.
+            if (String(p.source) === 'okk') receipts += amount;
+            else if (isBankSyncExternalId(p.externalId)) receipts += amount;
             else if (invoiceTypes.has(String(p.type))) invoices += amount;
             else receipts += amount;
         }

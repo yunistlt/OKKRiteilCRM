@@ -31,7 +31,10 @@ export async function GET(request: Request) {
 
     let query = supabase
         .from('clients')
-        .select('id, company_name, contact_name, inn, phones, email, orders_count, total_summ, average_check, last_order_at, manager_id, "kategoria_klienta", "kategoria_klienta_po_vidu"', { count: 'exact' });
+        .select('id, company_name, contact_name, inn, phones, email, orders_count, total_summ, average_check, last_order_at, manager_id, "kategoria_klienta", "kategoria_klienta_po_vidu"', { count: 'exact' })
+        // Слитые карточки в списке не показываем: вся работа по компании
+        // переехала в главную, а дубль оставлен только ради старых ссылок.
+        .is('merged_into', null);
 
     if (q) {
         const safe = q.replace(/[%,()]/g, ' ').trim();
@@ -63,6 +66,7 @@ export async function GET(request: Request) {
             const { data: byPhone } = await supabase
                 .from('clients')
                 .select('id, company_name, contact_name, inn, phones, email, orders_count, total_summ, average_check, last_order_at, manager_id')
+                .is('merged_into', null)
                 .contains('phones', [digits])
                 .limit(pageSize);
             rows = (byPhone || []) as any[];

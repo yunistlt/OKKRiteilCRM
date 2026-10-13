@@ -1,4 +1,5 @@
 import { isCronHeaderAuthorized } from '@/lib/cron-auth';
+import { isRetailcrmInboundSyncEnabled, RETAILCRM_READ_BLOCKED_MESSAGE } from '@/lib/retailcrm/inbound-guard';
 
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
@@ -22,6 +23,12 @@ function cleanPhone(val: any): string {
 }
 
 export async function GET(request: Request) {
+    // Рубильник чтения из RetailCRM: мы живём в ОКК, снимок чужой системы не
+    // должен перезаписывать нашу работу (решение владельца 09.10.2026).
+    if (!(await isRetailcrmInboundSyncEnabled())) {
+        return NextResponse.json({ ok: false, skipped: true, reason: RETAILCRM_READ_BLOCKED_MESSAGE }, { status: 200 });
+    }
+
     if (!RETAILCRM_URL || !RETAILCRM_API_KEY) {
         return NextResponse.json({ error: 'RetailCRM config missing' }, { status: 500 });
     }
@@ -210,9 +217,23 @@ export async function GET(request: Request) {
                 });
             }
 
-            if (clientsToUpsert.length > 0) {
+            /**
+             * Из RetailCRM берём только карточки, которых у нас ещё нет.
+             *
+             * Закон владельца 05.10.2026: «мы уже ничего не синхронизируем с
+             * ритейлом, если только надо что-то докачать». Работа идёт в ОКК,
+             * и обновление оттуда затирало бы наши правки.
+             */
+            const { data: known } = await supabase
+                .from('clients')
+                .select('id')
+                .in('id', clientsToUpsert.map((row) => row.id));
+            const haveIds = new Set(((known ?? []) as any[]).map((row) => Number(row.id)));
+            const freshClients = clientsToUpsert.filter((row) => !haveIds.has(Number(row.id)));
+
+            if (freshClients.length > 0) {
                 const { error } = await supabase.rpc('upsert_clients', {
-                    clients_data: clientsToUpsert
+                    clients_data: freshClients
                 });
 
                 if (error) {

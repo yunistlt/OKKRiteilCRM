@@ -22,7 +22,7 @@
 import { supabase } from '@/utils/supabase';
 import { orderTotal, validateNewOrder, type NewOrder, type NewOrderItem, type CreatedOrder } from './create-order';
 import { itemDiscountPerUnit, itemPriceWithDiscount, orderTotals } from './discount';
-import { customFieldValueName, itemLabel, managerName, moneyValue, statusName, writeOwnHistory, type HistoryEntry } from './history-write';
+import { customFieldValueName, itemLabel, managerName, moneyValue, statusName, statusValue, writeOwnHistory, type HistoryEntry } from './history-write';
 import { OWN_ID_BASE, OWN_SITE, isOwnCrmManager, nextOwnOrderNumber, ownItemIds } from './own-order-insert';
 
 export { isOwnCrmManager, nextOwnOrderNumber };
@@ -136,7 +136,7 @@ export async function createOwnOrder(order: NewOrder): Promise<CreatedOrder> {
     await writeOwnHistory(
         id,
         [
-            { field: 'status', newValue: await statusName(order.statusCode || DEFAULT_STATUS) },
+            { field: 'status', newValue: await statusValue(order.statusCode || DEFAULT_STATUS) },
             ...(order.managerId ? [{ field: 'manager', newValue: await managerName(order.managerId) }] : []),
             ...(order.customerComment ? [{ field: 'customer_comment', newValue: order.customerComment }] : []),
             ...(order.managerComment ? [{ field: 'manager_comment', newValue: order.managerComment }] : []),
@@ -283,7 +283,32 @@ export async function editOwnOrder(
     if (edit.site) payload.site = edit.site;
 
     const update: Record<string, unknown> = { raw_payload: payload };
-    if (edit.statusCode) update.status = edit.statusCode;
+    /**
+     * Телефон держим и в колонке: поиск в списке заказов ищет по ней, а не
+     * внутри `raw_payload`. Иначе исправленный в карточке номер в поиске
+     * остаётся прежним (жалобы менеджеров 06.10.2026).
+     */
+    if (payload.phone !== undefined) {
+        const phones = Array.from(new Set([
+            payload.phone,
+            ...(payload.phones || []).map((item: any) => item?.number),
+        ].filter(Boolean).map(String)));
+        update.phone = payload.phone || null;
+        update.customer_phones = phones.length ? phones : null;
+    }
+    if (edit.statusCode) {
+        update.status = edit.statusCode;
+        /**
+         * Дата входа в статус. Её читают расчёт зарплаты, «зависшие сделки» и
+         * «времени в статусе»; у своих заказов колонка оставалась пустой, и
+         * они нигде не считались (владелец 12.10.2026).
+         */
+        if (edit.statusCode !== (((data as any)?.raw_payload) || {}).status) {
+            const movedAt = new Date().toISOString();
+            update.status_since = movedAt;
+            payload.statusUpdatedAt = movedAt;
+        }
+    }
     if (edit.managerId) update.manager_id = edit.managerId;
     if (edit.site) update.site = edit.site;
 
@@ -298,8 +323,8 @@ export async function editOwnOrder(
     if (edit.statusCode && edit.statusCode !== before.status) {
         history.push({
             field: 'status',
-            oldValue: await statusName(before.status),
-            newValue: await statusName(edit.statusCode),
+            oldValue: await statusValue(before.status),
+            newValue: await statusValue(edit.statusCode),
         });
     }
     if (edit.customerComment !== undefined && String(edit.customerComment ?? '') !== String(before.customerComment ?? '')) {

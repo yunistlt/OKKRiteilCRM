@@ -1,4 +1,6 @@
 import { supabase } from '@/utils/supabase';
+import { logError } from '@/lib/error-monitor';
+import { planAllowedForManager } from '@/lib/read-gate/service';
 import { PRESALE_STATUSES, buildPlan, purchases } from '@/lib/sales-rop/rules';
 import { adviseTask, clientKeyForOrder } from '@/lib/sales-rop/task-advisor';
 import { computeTaskResults } from '@/lib/sales-rop/task-result';
@@ -17,7 +19,7 @@ import {
 import { sendNotification } from '@/lib/notify/send';
 import type { NotifyContext } from '@/lib/notify/route';
 import type { OwnerRow } from '@/lib/sales-rop/format';
-import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
+import { editOrder } from '@/lib/own-crm/edit-order';
 import { analyzeClient } from '@/lib/sales-rop/analyst';
 import { appendRopNote } from '@/lib/sales-rop/crm-note';
 import { reviewCallDay } from '@/lib/sales-rop/call-review';
@@ -668,16 +670,15 @@ export type MorningResult = {
 /**
  * Ставит дату следующего контакта в карточке заказа.
  *
- * Пишем через тот же orders/edit, что и остальной проект: он единственный
- * доступен ключу и, главное, требует РЕАЛЬНЫЙ site заказа — при чужом site
- * RetailCRM отвечает «Not found», и запись молча не происходит.
+ * Пишем через общую дверь правки заказа — в нашу базу: с 09.10.2026 заказы
+ * ведутся только в ОКК.
  *
  * Ошибка одного заказа не должна отменять рассылку: план в чате полезен и без
- * записи в CRM, а провал виден в crm_error.
+ * записи даты, а провал виден в crm_error.
  */
 async function setContactDate(
     orderId: number,
-    site: string,
+    _site: string,
     date: string,
     currentDate?: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
@@ -689,11 +690,133 @@ async function setContactDate(
     }
 
     try {
-        const res = await updateExistingOrderInCrm(orderId, { customFields: { data_kontakta: date } }, site || undefined);
-        return res.success ? { ok: true } : { ok: false, error: res.errorMsg || 'RetailCRM отказал' };
+        const res = await editOrder(orderId, { customFields: { data_kontakta: date } });
+        return res.ok ? { ok: true } : { ok: false, error: res.reason };
     } catch (e: any) {
         return { ok: false, error: e.message };
     }
+}
+
+
+/**
+ * Письмо клиента без ответа (ТЗ переписки §9, этап 3).
+ *
+ * Разговор «ждём нас» — это невыполненная работа ровно так же, как
+ * просроченный контакт: клиент написал, а ему не ответили. До сих пор план
+ * видел звонки и даты, но не почту — и письмо могло лежать неделю, пока
+ * менеджер уверен, что по заказу тихо.
+ *
+ * Берём заказы, где последнее входящее письмо свежее последнего нашего и
+ * старше суток. Сутки — чтобы не дёргать по письму, пришедшему час назад.
+ */
+async function loadUnansweredMailTasks(settings: Settings, orders: PresaleOrder[]): Promise<Task[]> {
+    /** Сколько ждать, прежде чем считать письмо оставшимся без ответа. */
+    const MIN_HOURS = 24;
+    /** Сколько таких заказов даём одному менеджеру за день. */
+    const PER_MANAGER = 3;
+
+    const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+
+    const byNumber = new Map<string, PresaleOrder>();
+    for (const order of orders) byNumber.set(String(order.number), order);
+    if (!byNumber.size) return [];
+
+    const [incomingRes, sentRes, mailboxRes] = await Promise.all([
+        supabase
+            .from('incoming_emails')
+            .select('created_crm_order_number, received_at, subject')
+            .not('created_crm_order_number', 'is', null)
+            .gt('received_at', since)
+            .order('received_at', { ascending: false })
+            .limit(3000),
+        supabase
+            .from('order_email_sends')
+            .select('order_number, created_at')
+            .gt('created_at', since)
+            .order('created_at', { ascending: false })
+            .limit(3000),
+        /**
+         * Ответы из самого ящика: менеджер мог ответить почтой, а не из ОКК.
+         * Без этого мы бы требовали ответить на уже отвеченное письмо — верный
+         * способ сделать план недостоверным.
+         */
+        supabase
+            .from('outgoing_emails')
+            .select('order_number, sent_at')
+            .not('order_number', 'is', null)
+            .gt('sent_at', since)
+            .order('sent_at', { ascending: false })
+            .limit(3000),
+    ]);
+
+    const lastOut = new Map<string, number>();
+    const remember = (key: unknown, at: unknown) => {
+        const number = String(key ?? '').trim();
+        const ms = new Date(String(at ?? '')).getTime();
+        if (!number || !Number.isFinite(ms)) return;
+        if ((lastOut.get(number) ?? 0) < ms) lastOut.set(number, ms);
+    };
+
+    for (const row of ((sentRes.data ?? []) as any[])) remember(row.order_number, row.created_at);
+    for (const row of ((mailboxRes.data ?? []) as any[])) remember(row.order_number, row.sent_at);
+
+    const seen = new Set<string>();
+    const candidates: Array<Task & { letterAt: number }> = [];
+
+    for (const row of ((incomingRes.data ?? []) as any[])) {
+        const number = String(row.created_crm_order_number ?? '');
+        if (!number || seen.has(number)) continue;
+        seen.add(number);
+
+        const order = byNumber.get(number);
+        if (!order) continue;
+        if (settings.excludedStatuses.includes(order.statusCode)) continue;
+        if (settings.planManagerIds.length > 0 && order.managerId !== null && !settings.planManagerIds.includes(order.managerId)) continue;
+
+        const letterAt = new Date(String(row.received_at)).getTime();
+        if ((lastOut.get(number) ?? 0) > letterAt) continue;
+
+        const hours = Math.floor((Date.now() - letterAt) / 3_600_000);
+        if (hours < MIN_HOURS) continue;
+
+        const days = Math.floor(hours / 24);
+        candidates.push({
+            orderId: order.orderId,
+            number,
+            client: order.client,
+            statusCode: order.statusCode,
+            statusName: order.statusName,
+            amount: order.amount,
+            managerId: order.managerId,
+            reasonCode: 'mail_unanswered',
+            reasonText:
+                `клиент написал ${days <= 1 ? 'вчера' : `${days} дн назад`} и ответа не получил` +
+                `${row.subject ? ` («${String(row.subject).slice(0, 60)}»)` : ''} — ответь письмом в заказе`,
+            weight: order.amount,
+            letterAt,
+        });
+    }
+
+    /**
+     * Сначала те, кто ждёт дольше. Без ограничения в план падало бы три сотни
+     * заказов разом (замер 11.10.2026: 354) — столько писем за день никто не
+     * разберёт, и план перестал бы работать как план.
+     */
+    candidates.sort((a, b) => a.letterAt - b.letterAt);
+
+    const perManager = new Map<number | null, number>();
+    const tasks: Task[] = [];
+
+    for (const candidate of candidates) {
+        const taken = perManager.get(candidate.managerId) ?? 0;
+        if (taken >= PER_MANAGER) continue;
+        perManager.set(candidate.managerId, taken + 1);
+
+        const { letterAt: _letterAt, ...task } = candidate;
+        tasks.push(task);
+    }
+
+    return tasks;
 }
 
 export async function runMorning(today: string, opts: { dryRun?: boolean } = {}): Promise<MorningResult & { preview: string[] }> {
@@ -756,6 +879,15 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         list.push(back);
         plan.set(back.managerId, list);
         plannedIds.add(back.orderId);
+    }
+
+    // Письма без ответа — вперёд обзвона: клиент уже обратился сам.
+    for (const mail of await loadUnansweredMailTasks(settings, orders)) {
+        if (plannedIds.has(mail.orderId)) continue;
+        const list = plan.get(mail.managerId) ?? [];
+        list.push(mail);
+        plan.set(mail.managerId, list);
+        plannedIds.add(mail.orderId);
     }
 
     for (const touch of await loadClientTouchTasks(settings, today)) {
@@ -951,7 +1083,26 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
             const dm = bucket.managerId !== null ? direct.get(bucket.managerId) : undefined;
             // Нет личного чата — план всё равно уходит в общий: человек не должен
             // остаться без работы из-за того, что не написал боту.
-            if (text) {
+            /**
+             * Разбор идёт перед планом: пока менеджер не подтвердил прочтение,
+             * личный план не отправляем. Добивка (крон раз в десять минут)
+             * дошлёт его, как только разбор подтверждён. Нечего читать или
+             * действует отсрочка — план уходит сразу, как раньше.
+             */
+            const planAllowed = await planAllowedForManager(bucket.managerId ?? null);
+            if (text && !planAllowed && bucket.managerId !== null) {
+                // Придерживаем план, а не выбрасываем: иначе человек останется
+                // без работы на весь день из-за непрочитанного разбора.
+                await supabase.from('sales_rop_pending_plan').upsert({
+                    manager_id: bucket.managerId,
+                    plan_date: today,
+                    recipient_name: bucket.name,
+                    text,
+                    manager_chat_id: dm ?? null,
+                    sent_at: null,
+                }, { onConflict: 'manager_id,plan_date' });
+            }
+            if (text && planAllowed) {
                 await sendTypedSafe('sales.plan_daily_dm', text, bucket.name, failures, {
                     // Менеджер назван — план ляжет в его чат с Семёном в CRM;
                     // Telegram останется запасным путём.
@@ -1148,8 +1299,54 @@ async function soft<T>(label: string, fallback: T, degraded: string[], fn: () =>
         return await fn();
     } catch (e: any) {
         degraded.push(`${label}: ${String(e?.message ?? e).slice(0, 120)}`);
+        // Иначе провал виден только в телеграме и теряется через день: 6 октября
+        // так пропала сверка касаний, и узнали мы о ней через сутки, по
+        // ложному обвинению в разборе.
+        logError('sales-rop/evening', e, { step: label });
         return fallback;
     }
+}
+
+/**
+ * Досверить касания за день, если вечерний прогон их не записал.
+ *
+ * 6 октября сверка не прошла: `detectTouches` упала (разово — на тех же данных
+ * сегодня отрабатывает за полторы секунды), `soft()` проглотила ошибку, отчёт
+ * ушёл, а у всех сорока задач дня осталось пусто в `checked_at`. Наружу это не
+ * вылезло никак: ни строки в журнале ошибок, ни повторной попытки. Утренний
+ * разбор прочитал пустоту как «не сделано ни одной задачи» и чуть не обвинил
+ * человека.
+ *
+ * Поэтому перед разбором день досверяется. Вызов идемпотентный: трогает только
+ * строки без отметки о проверке.
+ */
+export async function backfillTouches(date: string): Promise<{ filled: number; reason?: string }> {
+    const { data: tasks } = await supabase
+        .from('sales_rop_task')
+        .select('order_id')
+        .eq('plan_date', date)
+        .is('checked_at', null);
+
+    const pending = (tasks ?? []) as Array<{ order_id: number }>;
+    if (!pending.length) return { filled: 0 };
+
+    let touches: Map<number, string>;
+    try {
+        touches = await detectTouches(date);
+    } catch (e: any) {
+        return { filled: 0, reason: e?.message || 'сверка касаний не отработала' };
+    }
+
+    const stamp = new Date().toISOString();
+    for (const t of pending) {
+        const kind = touches.get(Number(t.order_id)) ?? null;
+        await supabase
+            .from('sales_rop_task')
+            .update({ touched: Boolean(kind), touch_kind: kind, checked_at: stamp })
+            .eq('plan_date', date)
+            .eq('order_id', t.order_id);
+    }
+    return { filled: pending.length };
 }
 
 export async function runEvening(today: string, opts: { dryRun?: boolean } = {}): Promise<EveningResult> {

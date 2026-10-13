@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 
     let query = supabase
         .from('order_contracts')
-        .select('id, order_number, title, status, version, terms_text, body_text, created_by, created_at, updated_at, reviewed_by, reviewed_at, review_comment')
+        .select('id, order_number, title, status, version, terms_text, body_text, created_by, created_at, updated_at, reviewed_by, reviewed_at, review_comment, pdf_path')
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .limit(200);

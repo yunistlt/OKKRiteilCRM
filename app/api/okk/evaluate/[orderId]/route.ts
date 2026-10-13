@@ -5,6 +5,7 @@ import { canAccessTargetManager, getEffectiveCapabilityForRole } from '@/lib/acc
 import { enqueueOrderRefreshJob } from '@/lib/system-jobs';
 import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
 import { supabase } from '@/utils/supabase';
+import { resolveOrderRef } from '@/lib/own-crm/order-ref';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -23,11 +24,10 @@ export async function POST(
         const session = await getSession();
         const capability = await getEffectiveCapabilityForRole(session?.user?.role);
 
-        const { data: order } = await supabase
-            .from('orders')
-            .select('manager_id')
-            .eq('order_id', orderId)
-            .single();
+        const ref = await resolveOrderRef(orderId);
+        const { data: order } = ref
+            ? await supabase.from('orders').select('manager_id').eq('id', ref.id).single()
+            : { data: null as any };
 
         if (!order || !canAccessTargetManager(session?.user, capability, order.manager_id)) {
             return NextResponse.json({ error: 'У вас нет прав на перепроверку этого заказа' }, { status: 403 });

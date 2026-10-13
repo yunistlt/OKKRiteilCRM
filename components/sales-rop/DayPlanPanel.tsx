@@ -147,9 +147,18 @@ export default function DayPlanPanel({ onClose }: { onClose?: () => void }) {
                                     <p className="mt-0.5 text-[11px] leading-snug text-gray-500">{task.reason}</p>
                                 )}
                                 {task.done && (
-                                    <p className="mt-0.5 text-[11px] font-semibold text-green-700">
-                                        Отработан{task.doneBy ? `: ${task.doneBy}` : ''}
-                                    </p>
+                                    /* Перенос даты без объяснения — не работа, а нарушение:
+                                       им можно бесконечно отодвигать клиента (закон владельца
+                                       05.10.2026). Красим иначе и называем честно. */
+                                    task.doneBy === 'перенос даты без причины' ? (
+                                        <p className="mt-0.5 text-[11px] font-semibold text-red-700">
+                                            Нарушение: дату перенесли без причины
+                                        </p>
+                                    ) : (
+                                        <p className="mt-0.5 text-[11px] font-semibold text-green-700">
+                                            Отработан{task.doneBy ? `: ${task.doneBy}` : ''}
+                                        </p>
+                                    )
                                 )}
                             </li>
                         ))}

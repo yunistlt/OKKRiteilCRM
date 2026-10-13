@@ -46,7 +46,8 @@ async function main() {
     const report = await seedShtabKb(sql, generateEmbedding, (m) => console.log(m));
     console.log(
         `\nГотово. Добавлено ${report.inserted.length}, обновлено ${report.updated.length}, ` +
-            `без изменений ${report.unchanged.length}, погашено ${report.deactivated.length}.`,
+            `возвращено ${report.revived.length}, без изменений ${report.unchanged.length}, ` +
+            `погашено ${report.deactivated.length}.`,
     );
 }
 

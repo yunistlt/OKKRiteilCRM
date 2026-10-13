@@ -140,6 +140,34 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             .upload(path, attachment.content, { contentType, upsert: true })
             .catch(() => undefined);
 
+        /**
+         * Вложение письма становится файлом заказа.
+         *
+         * Раньше оно оседало только в хранилище: открыть по ссылке можно, а во
+         * вкладке «Файлы» его нет — значит нельзя ни приложить к ответу
+         * галочкой, ни отправить в цех. Присланный клиентом чертёж — такой же
+         * файл заказа, как загруженный руками.
+         */
+        const { data: known } = await supabase
+            .from('order_files')
+            .select('id')
+            .eq('storage_path', path)
+            .is('deleted_at', null)
+            .maybeSingle();
+
+        if (!known) {
+            await supabase.from('order_files').insert({
+                order_number: orderNumber,
+                file_name: filename,
+                content_type: contentType,
+                size_bytes: attachment.content.length,
+                storage_bucket: BUCKET,
+                storage_path: path,
+                note: 'из письма клиента',
+                uploaded_by: null,
+            });
+        }
+
         return new NextResponse(new Uint8Array(attachment.content), {
             headers: {
                 'Content-Type': contentType,

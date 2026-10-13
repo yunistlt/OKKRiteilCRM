@@ -14,7 +14,7 @@
  * `create-order.ts` начинают ссылаться друг на друга по кругу.
  */
 import { supabase } from '@/utils/supabase';
-import { findOrCreateOwnClient } from './own-client';
+import { addClientPhones, findOrCreateOwnClient } from './own-client';
 import { itemLabel, managerName, moneyValue, statusName, writeOwnHistory } from './history-write';
 
 /**
@@ -190,6 +190,21 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         customFields: orderData.customFields || {},
     };
 
+    /**
+     * Телефоны кладём и в колонки, не только внутрь `raw_payload`.
+     *
+     * У приехавших из RetailCRM заказов колонки `phone` и `customer_phones`
+     * заполняет перенос, и поиск в списке заказов ищет именно по ним. Свои
+     * заказы их не заполняли, и заказ нельзя было найти по номеру телефона —
+     * клиент звонит, не помня номера заказа, а список отвечает «под этот фильтр
+     * заказов нет» (Ирина Гордеева и Евгения Матвеева, 06.10.2026).
+     */
+    const orderPhone = payload.phone || (payload.phones || [])[0]?.number || null;
+    const allPhones = Array.from(new Set([
+        orderPhone,
+        ...(payload.phones || []).map((item: any) => item?.number),
+    ].filter(Boolean).map(String)));
+
     const { error } = await supabase.from('orders').insert({
         id,
         order_id: id,
@@ -199,11 +214,36 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         manager_id: orderData.managerId ?? null,
         is_own: true,
         created_at: new Date().toISOString(),
+        phone: orderPhone,
+        customer_phones: allPhones.length ? allPhones : null,
+        /**
+         * Клиента пишем и в колонку, не только внутрь `raw_payload`.
+         *
+         * У приехавших заказов `orders.customer` заполняет перенос, и по этой
+         * колонке читается всё: карточка заказа, фильтр по клиенту, сверка
+         * номеров телефонов, группы компаний. Свои заказы её не заполняли —
+         * карточка клиента заводилась и телефон в неё попадал, но заказ с ней
+         * связан не был: 90 своих заказов из 121 показывали пустого покупателя,
+         * а номер из заказа не вёл в карточку (разбор 08.10.2026).
+         */
+        customer: (payload as any).customer ?? null,
         raw_payload: payload,
     });
 
     if (error) {
         throw new Error(`Не удалось завести заказ у нас: ${error.message}`);
+    }
+
+    /**
+     * Телефон заказа дописываем в карточку клиента.
+     *
+     * Номер вписал человек — это проверенный телефон клиента, и в карточке он
+     * обязан быть: из реестра звонков звонят только по номерам карточки. До
+     * 08.10.2026 телефон получала только НОВАЯ карточка, а найденная по ИНН
+     * оставалась без него (заказ 900096).
+     */
+    if (client) {
+        await addClientPhones(client.id, allPhones);
     }
 
     // История с первой секунды: создание заказа — это уже событие, как в

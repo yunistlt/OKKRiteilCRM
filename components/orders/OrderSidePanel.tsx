@@ -1,8 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import OrderMailPanel from '@/components/orders/OrderMailPanel';
+import { orderFileHref } from '@/lib/orders/file-href';
 
-export type PanelKind = 'history' | 'files' | 'tasks';
+export type PanelKind = 'history' | 'files' | 'tasks' | 'mail';
 
 interface HistoryItem {
     field_label?: string;
@@ -24,15 +26,17 @@ interface OrderSidePanelProps {
     statusPalette?: StatusPalette;
     onClose: () => void;
     onTasksChanged?: (done: number, total: number) => void;
+    onMailUnread?: (count: number) => void;
 }
 
 const TITLES: Record<PanelKind, string> = {
     history: 'История заказа',
     files: 'Файлы',
     tasks: 'Задачи',
+    mail: 'Переписка',
 };
 
-export default function OrderSidePanel({ kind, orderNumber, history, statusPalette, onClose, onTasksChanged }: OrderSidePanelProps) {
+export default function OrderSidePanel({ kind, orderNumber, history, statusPalette, onClose, onTasksChanged, onMailUnread }: OrderSidePanelProps) {
     return (
         <div className="border border-gray-300 bg-white">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-900 px-3 py-2">
@@ -40,10 +44,11 @@ export default function OrderSidePanel({ kind, orderNumber, history, statusPalet
                 <button onClick={onClose} className="text-xs font-bold text-white hover:text-blue-300">Закрыть</button>
             </div>
 
-            <div className="max-h-[420px] overflow-y-auto p-3">
+            <div className={kind === 'mail' ? 'p-0' : 'max-h-[420px] overflow-y-auto p-3'}>
                 {kind === 'history' && <HistoryList items={history || []} palette={statusPalette || {}} />}
                 {kind === 'files' && <FilesList orderNumber={orderNumber} />}
                 {kind === 'tasks' && <TasksList orderNumber={orderNumber} onChanged={onTasksChanged} />}
+                {kind === 'mail' && <OrderMailPanel orderNumber={orderNumber} onUnread={onMailUnread} />}
             </div>
         </div>
     );
@@ -156,6 +161,10 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
     // Приложить файл руками (просьба Евгении 02.10.2026: счёт выставлен в
     // RetailCRM, а нужен при заказе в ОКК).
     const [busy, setBusy] = useState(false);
+    /** Поиск файла по всем заказам: паспорт изделия нужен чаще, чем файл заказа. */
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searching, setSearching] = useState(false);
+    const [found, setFound] = useState<Array<{ id: number; orderNumber: string; name: string }> | null>(null);
     const [note, setNote] = useState<string | null>(null);
 
     const load = useCallback(() => {
@@ -166,6 +175,53 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
     }, [orderNumber]);
 
     useEffect(() => { load(); }, [load]);
+
+    /** Найти файл по названию во всех заказах. */
+    const searchFiles = async () => {
+        if (searchQuery.trim().length < 3) {
+            setNote('Введите хотя бы три буквы названия');
+            return;
+        }
+
+        setSearching(true);
+        setNote(null);
+        try {
+            const res = await fetch(`/api/files/search?q=${encodeURIComponent(searchQuery.trim())}`);
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Поиск не отработал');
+            setFound(payload.files ?? []);
+        } catch (e: any) {
+            setNote(e.message);
+        } finally {
+            setSearching(false);
+        }
+    };
+
+    /**
+     * Взять найденный файл в этот заказ.
+     *
+     * Копируем только запись: сам файл уже лежит в хранилище, второй раз его
+     * заливать незачем.
+     */
+    const attachFound = async (fileId: number) => {
+        setBusy(true);
+        setNote(null);
+        try {
+            const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'copy', fileId }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось приложить файл');
+            setNote(payload.message || 'Файл приложен к заказу');
+            await load();
+        } catch (e: any) {
+            setNote(e.message);
+        } finally {
+            setBusy(false);
+        }
+    };
 
     const upload = async (file: File) => {
         setBusy(true);
@@ -186,12 +242,14 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
     };
 
     const remove = async (fileId: number, name: string) => {
-        if (!confirm(`Убрать «${name}» из заказа?`)) return;
+        // Файл не удаляется — уходит в архив и остаётся в разделе «Файлы»
+        // (ЗАКОН владельца 12.10.2026).
+        if (!confirm(`Отправить «${name}» в архив? Файл останется в системе, но уйдёт из списка заказа.`)) return;
         setBusy(true);
         try {
             const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files/upload?fileId=${fileId}`, { method: 'DELETE' });
             const payload = await res.json();
-            if (!res.ok) throw new Error(payload.error || 'Не удалось убрать файл');
+            if (!res.ok) throw new Error(payload.error || 'Не удалось отправить файл в архив');
             load();
         } catch (e: any) {
             setNote(e.message);
@@ -227,6 +285,66 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
                 {note && <span className="text-[11px] text-gray-700">{note}</span>}
             </div>
 
+            {/**
+             * Поиск файла по всем заказам.
+             *
+             * Женя Матвеева 12.10.2026: «нужен паспорт на шкаф ШСО-22М, он точно
+             * есть в заказах, но найти не могу». Паспорта на месте, просто
+             * лежат каждый в своём заказе — и добраться до них можно было,
+             * только помня номер.
+             */}
+            <div className="mb-3 border border-gray-200 bg-gray-50 p-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    <input
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') void searchFiles(); }}
+                        placeholder="Найти файл во всех заказах: «ШСО-22М», «паспорт»"
+                        className="min-w-[14rem] flex-1 border border-gray-300 px-2 py-1 text-xs"
+                    />
+                    <button
+                        onClick={() => void searchFiles()}
+                        disabled={searching}
+                        className="border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                    >
+                        {searching ? 'Ищем…' : 'Найти'}
+                    </button>
+                </div>
+
+                {found !== null && (
+                    found.length ? (
+                        <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto">
+                            {found.map((file) => (
+                                <li key={file.id} className="flex items-baseline justify-between gap-2 text-xs">
+                                    <a
+                                        href={orderFileHref({ orderNumber: file.orderNumber, fileId: file.id })}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="truncate font-semibold text-blue-700 hover:underline"
+                                        title={file.name}
+                                    >
+                                        {file.name}
+                                    </a>
+                                    <span className="shrink-0 text-gray-500">
+                                        заказ {file.orderNumber}
+                                        {' · '}
+                                        <button
+                                            onClick={() => void attachFound(file.id)}
+                                            disabled={busy}
+                                            className="font-semibold text-blue-700 hover:underline disabled:text-gray-300"
+                                        >
+                                            приложить сюда
+                                        </button>
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="mt-2 text-xs text-gray-500">Ничего не нашли — попробуйте часть названия изделия.</p>
+                    )
+                )}
+            </div>
+
             {files === null ? (
                 <p className="text-sm text-gray-500">Загружаем…</p>
             ) : !files.length ? (
@@ -243,7 +361,7 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
                             {f.source === 'manual' ? (
                                 <div className="flex items-baseline justify-between gap-2">
                                     <a
-                                        href={`/api/orders/${encodeURIComponent(orderNumber)}/files/download?fileId=${f.fileId}`}
+                                        href={orderFileHref({ orderNumber, fileId: f.fileId })}
                                         target="_blank"
                                         rel="noreferrer"
                                         className="text-sm font-bold text-blue-700 hover:underline"
@@ -254,13 +372,14 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
                                         onClick={() => remove(f.fileId, f.filename)}
                                         disabled={busy}
                                         className="text-[11px] font-semibold text-gray-500 hover:underline disabled:text-gray-300"
+                                        title="Файл уйдёт в архив и останется в разделе «Файлы»"
                                     >
-                                        убрать
+                                        в архив
                                     </button>
                                 </div>
                             ) : f.downloadable !== false && f.emailId ? (
                                 <a
-                                    href={`/api/orders/${encodeURIComponent(orderNumber)}/files/download?emailId=${encodeURIComponent(String(f.emailId))}&name=${encodeURIComponent(f.filename)}`}
+                                    href={orderFileHref({ orderNumber, emailId: String(f.emailId), name: f.filename })}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="text-sm font-bold text-blue-700 hover:underline"
@@ -296,6 +415,11 @@ function TasksList({ orderNumber, onChanged }: { orderNumber: string; onChanged?
     const [due, setDue] = useState('');
     const [dueTime, setDueTime] = useState('');
     const [saving, setSaving] = useState(false);
+    /** Какую задачу правим и что в её полях. */
+    const [editing, setEditing] = useState<string | null>(null);
+    const [editTitle, setEditTitle] = useState('');
+    const [editDue, setEditDue] = useState('');
+    const [editTime, setEditTime] = useState('');
 
     const load = useCallback(async () => {
         const res = await fetch(`/api/orders/${orderNumber}/tasks`);
@@ -331,6 +455,40 @@ function TasksList({ orderNumber, onChanged }: { orderNumber: string; onChanged?
             body: JSON.stringify({ id: task.id, done: !task.done }),
         });
         await load();
+    };
+
+    /**
+     * Правка задачи на месте.
+     *
+     * Елена Парфёнова 08.10.2026: забыла поставить время, задача сохранилась,
+     * а поправить нельзя — только удалить и завести заново.
+     */
+    const startEdit = (task: any) => {
+        setEditing(task.id);
+        setEditTitle(task.title || '');
+        setEditDue(task.due_date ? String(task.due_date).slice(0, 10) : '');
+        setEditTime(task.due_time ? String(task.due_time).slice(0, 5) : '');
+    };
+
+    const saveEdit = async () => {
+        if (!editing || !editTitle.trim() || saving) return;
+        setSaving(true);
+        try {
+            await fetch(`/api/orders/${orderNumber}/tasks`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: editing,
+                    title: editTitle.trim(),
+                    dueDate: editDue || null,
+                    dueTime: editDue ? (editTime || null) : null,
+                }),
+            });
+            setEditing(null);
+            await load();
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -384,15 +542,65 @@ function TasksList({ orderNumber, onChanged }: { orderNumber: string; onChanged?
                                 onChange={() => toggle(t)}
                                 className="mt-1"
                             />
-                            <div className="min-w-0 flex-1">
-                                <p className={`text-sm ${t.done ? 'text-gray-400 line-through' : 'font-medium text-gray-900'}`}>{t.title}</p>
-                                <p className="text-[11px] text-gray-500">
-                                    {t.due_date
-                                        ? `Срок: ${new Date(t.due_date).toLocaleDateString('ru-RU')}${t.due_time ? ` в ${String(t.due_time).slice(0, 5)}` : ''}`
-                                        : 'Без срока'}
-                                    {t.created_by ? ` · поставил ${t.created_by}` : ''}
-                                </p>
-                            </div>
+                            {editing === t.id ? (
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap gap-2">
+                                        <input
+                                            value={editTitle}
+                                            onChange={(e) => setEditTitle(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') saveEdit();
+                                                if (e.key === 'Escape') setEditing(null);
+                                            }}
+                                            autoFocus
+                                            className="min-w-[10rem] flex-1 border border-gray-300 px-2 py-1 text-sm focus:border-blue-600 focus:outline-none"
+                                        />
+                                        <input
+                                            type="date"
+                                            value={editDue}
+                                            onChange={(e) => setEditDue(e.target.value)}
+                                            className="border border-gray-300 px-2 py-1 text-sm focus:border-blue-600 focus:outline-none"
+                                        />
+                                        <input
+                                            type="time"
+                                            value={editTime}
+                                            onChange={(e) => setEditTime(e.target.value)}
+                                            disabled={!editDue}
+                                            title={editDue ? 'Во сколько' : 'Сначала выберите дату'}
+                                            className="border border-gray-300 px-2 py-1 text-sm focus:border-blue-600 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                                        />
+                                    </div>
+                                    <div className="mt-1 flex gap-3">
+                                        <button
+                                            onClick={saveEdit}
+                                            disabled={!editTitle.trim() || saving}
+                                            className="text-[11px] font-semibold text-blue-700 hover:underline disabled:text-gray-300"
+                                        >
+                                            Сохранить
+                                        </button>
+                                        <button
+                                            onClick={() => setEditing(null)}
+                                            className="text-[11px] font-semibold text-gray-500 hover:underline"
+                                        >
+                                            Отмена
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="min-w-0 flex-1">
+                                    <p className={`text-sm ${t.done ? 'text-gray-400 line-through' : 'font-medium text-gray-900'}`}>{t.title}</p>
+                                    <p className="text-[11px] text-gray-500">
+                                        {t.due_date
+                                            ? `Срок: ${new Date(t.due_date).toLocaleDateString('ru-RU')}${t.due_time ? ` в ${String(t.due_time).slice(0, 5)}` : ''}`
+                                            : 'Без срока'}
+                                        {t.created_by ? ` · поставил ${t.created_by}` : ''}
+                                        {' · '}
+                                        <button onClick={() => startEdit(t)} className="font-semibold text-blue-700 hover:underline">
+                                            изменить
+                                        </button>
+                                    </p>
+                                </div>
+                            )}
                         </li>
                     ))}
                 </ul>

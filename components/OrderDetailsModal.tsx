@@ -7,11 +7,15 @@ import PhoneFieldCall from './calls/PhoneFieldCall';
 import ManagerTransfer from './orders/ManagerTransfer';
 import TextWithOrderLinks from './ui/TextWithOrderLinks';
 import { CardSection, CardSectionsProvider } from './orders/CardSections';
+import ItemPhoto from './orders/ItemPhoto';
+import AttachmentList from './orders/AttachmentList';
+import { orderFileHref } from '@/lib/orders/file-href';
 import { prependComment } from '@/lib/own-crm/comment-entries';
 import { clientTime } from '@/lib/own-crm/phone-timezone';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { STANDARD_CONTRACT_TERMS } from '@/lib/legal/contract-terms';
 import { priceSourceLabel } from '@/lib/format';
-import { orderTotals } from '@/lib/own-crm/discount';
+import { itemTotalWithDiscount, orderTotals } from '@/lib/own-crm/discount';
 import { uniquePhones } from '@/lib/own-crm/phones';
 import { useBreadcrumbs } from '@/components/ui/BreadcrumbsContext';
 import { siteSearchUrl } from '@/lib/own-crm/site-link';
@@ -22,6 +26,7 @@ import { formatQualityCriterionLabel } from '@/lib/quality-labels';
 import OrderReplyForm from '@/components/orders/OrderReplyForm';
 import { NumberInput } from '@/components/ui/NumberInput';
 import OrderSidePanel, { PanelKind } from '@/components/orders/OrderSidePanel';
+import { itemNameWithVariant } from '@/lib/own-crm/item-name';
 import OrderStatusSwitcher from '@/components/orders/OrderStatusSwitcher';
 import OwnOrderPayments from '@/components/own-crm/OwnOrderPayments';
 import { decodeEntities } from '@/lib/sales-rop/letter-render';
@@ -47,6 +52,8 @@ interface OrderDetails {
     ropNotes?: Array<{ date: string | null; text: string }>;
     /** Название компании заказчика из его карточки — в заказе его может не быть. */
     clientCompanyName?: string | null;
+    /** Карточка клиента для ссылок: заказчик-юрлицо либо компания его контактного лица. */
+    clientCardId?: number | null;
     history: any[];
     /** Названия и цвета статусов — для плашек в истории. */
     statusPalette?: Record<string, { name: string; color: string | null }>;
@@ -123,7 +130,7 @@ const FieldErrorsContext = createContext<Record<string, string>>({});
  */
 const FieldDirtyContext = createContext<Set<string>>(new Set());
 
-const EditField = ({ label, value, onChange, required, type = 'text', options, action, fieldKey }: {
+const EditField = ({ label, value, onChange, required, type = 'text', options, action, fieldKey, multiline }: {
     label: string;
     value: any;
     onChange?: (value: any) => void;
@@ -134,6 +141,12 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
     action?: ReactNode;
     /** Ключ черновика — по нему поле узнаёт свою ошибку. */
     fieldKey?: string;
+    /**
+     * Поле в несколько строк — для тех, куда пишут длинный текст (требование
+     * владельца 06.10.2026 про комментарий логисту: «туда пишут длинные
+     * портянки, так же как в комментарий оператору»).
+     */
+    multiline?: boolean;
 }) => {
     const problem = useContext(FieldErrorsContext)[fieldKey ?? ''];
     const changed = useContext(FieldDirtyContext).has(fieldKey ?? '');
@@ -160,6 +173,13 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
                     <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
             </select>
+        ) : onChange && multiline ? (
+            <textarea
+                value={value ?? ''}
+                onChange={(e) => onChange(e.target.value)}
+                rows={4}
+                className={`w-full resize-y px-2 py-1 border text-sm text-gray-900 ${frame}`}
+            />
         ) : onChange ? (
             <div className="flex items-stretch gap-1">
                 <input
@@ -294,15 +314,35 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     // Договор по заказу: окно с условиями, которые менеджер пишет словами.
     const [contractOpen, setContractOpen] = useState(false);
     const [contractTerms, setContractTerms] = useState('');
+    /** Выбранный стандартный шаблон условий. Пусто — менеджер пишет свои. */
+    const [contractTermCode, setContractTermCode] = useState('');
+    /** Замечания ИИ-юрисконсульта к составленному договору. */
+    const [contractReview, setContractReview] = useState<{
+        level: 'ok' | 'attention' | 'risk';
+        summary: string;
+        notes: string[];
+        byAi: boolean;
+    } | null>(null);
     const [contractSaving, setContractSaving] = useState(false);
     const [contractNote, setContractNote] = useState<string | null>(null);
+    // Номер созданного договора — по нему даём ссылку на сам файл.
+    const [contractId, setContractId] = useState<number | null>(null);
+    /**
+     * Какой документ сейчас собирается.
+     *
+     * Договор и комплект «счёт + договор + спецификация» собираются из заказа
+     * на лету — это несколько секунд. Обычная ссылка на такое молчит: Лена
+     * Парфёнова 09.10.2026 «тут не открывает, в файлах нет». Теперь кнопка
+     * честно говорит, что идёт сборка, и сама открывает готовый файл.
+     */
+    const [documentNote, setDocumentNote] = useState<string | null>(null);
     // Карточка заказа редактируемая сразу: режима «только просмотр» у нас нет.
     // Правка копится в состоянии и уходит в CRM одной кнопкой сверху.
     // Разовая скидка на заказ — рублями и процентом, как в RetailCRM.
     const [draftOrderDiscount, setDraftOrderDiscount] = useState({ amount: 0, percent: 0 });
     // discount — скидка на ЕДИНИЦУ товара, как её считает RetailCRM
     // (item.discountTotal): цена со скидкой = price − discount.
-    const [draftItems, setDraftItems] = useState<Array<{ id?: number | null; name: string; quantity: number; price: number; discount: number; article?: string | null; siteId?: string | null; xmlId?: string | null }>>([]);
+    const [draftItems, setDraftItems] = useState<Array<{ id?: number | null; name: string; quantity: number; price: number; discount: number; discountPercent: number; article?: string | null; siteId?: string | null; xmlId?: string | null }>>([]);
     // Ссылки на карточки товаров сайта по артикулу: название в составе кликабельно.
     const [catalogLinks, setCatalogLinks] = useState<Record<string, { url: string; name: string; image?: string | null }>>({});
     const [draftClientComment, setDraftClientComment] = useState('');
@@ -432,6 +472,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     const catalogTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [printTemplates, setPrintTemplates] = useState<Array<{ id: string; code: string; name: string }>>([]);
     const [panel, setPanel] = useState<PanelKind | null>(null);
+    /** Сколько писем клиента менеджер ещё не читал — цифра на кнопке «Переписка». */
+    const [mailUnread, setMailUnread] = useState(0);
     const [taskCount, setTaskCount] = useState<{ done: number; total: number } | null>(null);
     const [counterpartyScore, setCounterpartyScore] = useState<CounterpartyScoreResult | null>(null);
     const [counterpartyScoreLoading, setCounterpartyScoreLoading] = useState(false);
@@ -440,6 +482,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     const [productionNote, setProductionNote] = useState('');
     const [productionFiles, setProductionFiles] = useState<number[]>([]);
     const [productionSaving, setProductionSaving] = useState(false);
+    /** Файл с компьютера прямо во вкладке производства. */
+    const [productionUploading, setProductionUploading] = useState(false);
     const [productionMessage, setProductionMessage] = useState<string | null>(null);
     const [productionData, setProductionData] = useState<{
         comment: string;
@@ -456,6 +500,38 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     const [qualityMobileTab, setQualityMobileTab] = useState<QualityMobileTab>('calls');
     const [transcribing, setTranscribing] = useState(false);
     const [qualityFetched, setQualityFetched] = useState(false);
+
+    /**
+     * Открыть документ заказа, который собирается на лету.
+     *
+     * Договор и комплект строятся из самого заказа — это несколько секунд.
+     * Пока идёт сборка, кнопка говорит об этом; готовый файл открываем в
+     * новой вкладке, а если браузер её заблокировал — отдаём файлом. Ошибку
+     * показываем словами сервера, а не молчим.
+     */
+    /**
+     * Документ открываем ПРЯМОЙ ссылкой в новой вкладке, а не через blob.
+     *
+     * Было: ждали ответ, собирали blob и только потом звали window.open —
+     * Safari такое всплывающее окно считает непрошенным и глушит. Менеджер
+     * нажимал «Открыть договор (PDF)», вкладка не появлялась, и выглядело это
+     * как «нет возможности взять договор» (Ирина Гордеева 12.10.2026).
+     *
+     * Теперь вкладка открывается в самом щелчке — браузер её пропускает, —
+     * а сервер отдаёт в неё готовый PDF (он же ложится в «Файлы» заказа).
+     */
+    const openOrderDocument = useCallback((kind: 'contract' | 'kit', url: string) => {
+        setDocumentNote(null);
+        const tab = window.open(url, '_blank');
+        if (!tab) {
+            // Всплывающие окна запрещены настройками браузера — даём ссылку.
+            setDocumentNote('Браузер не пропустил новую вкладку. Файл лежит во вкладке «Файлы» этого заказа.');
+            return;
+        }
+        setDocumentNote(kind === 'kit'
+            ? 'Комплект собирается в соседней вкладке (5–10 секунд). Он же ляжет в «Файлы» заказа.'
+            : 'Договор открыт в соседней вкладке. Он же лежит во вкладке «Файлы».');
+    }, []);
 
     const fetchQualityScore = useCallback(async () => {
         if (!orderId) return;
@@ -527,6 +603,33 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     useEffect(() => {
         if (isOpen && orderId) loadRequisites();
     }, [isOpen, orderId, loadRequisites]);
+
+    /**
+     * Договор по заказу, если он уже составлен.
+     *
+     * Кнопки «Открыть договор» и «Счёт + договор + спецификация» появлялись
+     * только сразу после нажатия «Составить договор»: номер договора жил в
+     * памяти страницы. Открыл заказ заново — кнопок нет, и выглядит это как
+     * «комплект не составляется» (Лена Парфёнова 12.10.2026).
+     */
+    const loadContract = useCallback(async () => {
+        const number = String(data?.order?.number ?? orderId ?? '').trim();
+        if (!number) return;
+
+        try {
+            const res = await fetch(`/api/orders/${encodeURIComponent(number)}/contract`);
+            if (!res.ok) return;
+            const payload = await res.json();
+            const latest = (payload.contracts ?? [])[0];
+            if (latest?.id) setContractId(Number(latest.id));
+        } catch {
+            // Договора может не быть вовсе — это нормальный случай, молчим.
+        }
+    }, [data?.order?.number, orderId]);
+
+    useEffect(() => {
+        if (isOpen) void loadContract();
+    }, [isOpen, loadContract]);
 
 
     const searchCustomers = async (query: string) => {
@@ -672,8 +775,34 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                 // у себя; сайт не трогаем (решение владельца 02.10.2026).
                 name: decodeEntities(String(item.offer?.displayName || item.offer?.name || item.productName || 'Позиция')),
                 quantity: Number(item.quantity || 0),
-                price: Number(item.initialPrice ?? item.price ?? 0),
-                discount: Number(item.discountManualAmount ?? item.discountTotal ?? 0),
+                /**
+                 * Цена — ВСЕГДА базовая, до скидки.
+                 *
+                 * Если `initialPrice` в позиции нет, восстанавливаем её из цены
+                 * со скидкой: иначе карточка покажет уценённую цену, человек её
+                 * сохранит, и базовая цена потеряется навсегда — скидка окажется
+                 * «вшита» в цену и перестанет убираться (заказ 900055: 96 930
+                 * превратились в 82 390, Ирина Гордеева 06.10.2026 — «убирала
+                 * скидку из позиций, не удалялась»).
+                 */
+                price: Number(item.initialPrice ?? (Number(item.price ?? 0) + Number(item.discountTotal ?? 0))),
+                /**
+                 * Скидка позиции: рублями и процентом — два РАЗНЫХ поля, и они
+                 * складываются.
+                 *
+                 * `discountTotal` — уже посчитанный итог обеих скидок на
+                 * единицу. Поэтому подставлять его в рублёвое поле можно
+                 * только когда процента нет: иначе скидка считается дважды.
+                 * Ирина Гордеева 05.10.2026: «ставлю 15%, сразу даёт 30%
+                 * скидку» — ровно этот случай.
+                 */
+                discount: Number(
+                    item.discountManualAmount
+                    ?? (Number(item.discountManualPercent ?? 0) > 0 ? 0 : (item.discountTotal ?? 0)),
+                ),
+                // Скидка процентом по позиции — третий вид скидки RetailCRM
+                // (`discountManualPercent`). Правится в строке, рядом с рублями.
+                discountPercent: Number(item.discountManualPercent ?? 0),
                 article: item.offer?.article ?? null,
                 // id товара на сайте: по нему строится ссылка на его карточку.
                 siteId: item.offer?.externalId ? String(item.offer.externalId) : null,
@@ -688,8 +817,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                 .then((r) => r.json())
                 .then((payload) => setSellerOptions(payload.sellers || []))
                 .catch(() => setSellerOptions([]));
-            setDraftClientComment(String(payload.customerComment ?? ''));
-            setDraftManagerComment(String(payload.managerComment ?? ''));
+            // Комментарии — из своих полей, а не из снимка (закон 06.10.2026).
+            setDraftClientComment(String(json?.order?.customerComment ?? ''));
+            setDraftManagerComment(String(json?.order?.managerComment ?? ''));
             setDirty(false);
             setSaveNote(null);
             // Проверка контрагента по ИНН — в фоне, не блокирует показ карточки заказа.
@@ -712,7 +842,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     /** Значение поля: сначала из черновика, потом из заказа. */
     const fieldValue = (key: string, original: any) => (key in draftFields ? draftFields[key] : original);
 
-    const changeItem = (index: number, patch: Partial<{ name: string; quantity: number; price: number; discount: number }>) => {
+    const changeItem = (index: number, patch: Partial<{ name: string; quantity: number; price: number; discount: number; discountPercent: number }>) => {
         setDraftItems((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
         setDirty(true);
     };
@@ -725,7 +855,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     const addItem = (item?: { id: string; name: string; price: number; article?: string | null }) => {
         if (!item) return; // товары только из каталога: руками названия не вводим
         // id из каталога — это id товара на сайте: он же ключ к его карточке.
-        setDraftItems((prev) => [...prev, { id: null, name: item.name, quantity: 1, price: item.price, discount: 0, article: item.article ?? null, siteId: item.id, xmlId: item.id }]);
+        setDraftItems((prev) => [...prev, { id: null, name: item.name, quantity: 1, price: item.price, discount: 0, discountPercent: 0, article: item.article ?? null, siteId: item.id, xmlId: item.id }]);
         setDirty(true);
         setCatalogQuery('');
         setCatalogFound([]);
@@ -736,6 +866,16 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         setSavingOrder(true);
         setSaveNote(null);
         setFieldErrors({});
+        /**
+         * Новая запись уезжает вместе с остальным по кнопке «Сохранить».
+         *
+         * Кнопок было две — «Добавить запись» и «Сохранить», — и запись без
+         * второй пропадала (Ирина Гордеева 12.10.2026: «если мы эту не нажмём,
+         * комменты не сохраняются, не удобно»). Одна операция — одна дверь.
+         */
+        const managerComment = newComment.trim()
+            ? prependComment(draftManagerComment, newComment, commentAuthor)
+            : draftManagerComment;
         try {
             const res = await fetch(`/api/orders/${orderId}/edit`, {
                 method: 'POST',
@@ -747,6 +887,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         quantity: row.quantity,
                         price: row.price,
                         discountAmount: row.discount || 0,
+                        discountPercent: row.discountPercent || 0,
                         article: row.article ?? null,
                         siteId: row.siteId ?? null,
                         xmlId: row.xmlId ?? null,
@@ -754,13 +895,26 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     discountAmount: draftOrderDiscount.amount || 0,
                     discountPercent: draftOrderDiscount.percent || 0,
                     customerComment: draftClientComment,
-                    managerComment: draftManagerComment,
+                    managerComment,
                     // Правка остальных полей: раскладываем ключи по местам заказа.
-                    contact: Object.fromEntries(
-                        Object.entries(draftFields)
-                            .filter(([key]) => !key.includes('.'))
-                            .map(([key, value]) => [key, value]),
-                    ),
+                    contact: {
+                        ...Object.fromEntries(
+                            Object.entries(draftFields)
+                                .filter(([key]) => !key.includes('.'))
+                                .map(([key, value]) => [key, value]),
+                        ),
+                        /**
+                         * «Контакт» — ОДНО поле, и в нём всё имя целиком.
+                         *
+                         * Показывается оно как «фамилия имя отчество», а правится
+                         * в firstName. Поэтому мусорная фамилия не стиралась:
+                         * человек убирал «ИИ-Лид Ирина», сохранял, а «ИИ-Лид»
+                         * сидел в lastName и возвращался на экран и в счёт
+                         * (Елена Парфёнова 06.10.2026: «удаляю, сохраняю, не
+                         * убирает»). Правим имя — чистим и остальные части.
+                         */
+                        ...('firstName' in draftFields ? { lastName: '', patronymic: '' } : {}),
+                    },
                     // Юрлицо заказа едет своим полем: в `contact` его класть нельзя —
                     // RetailCRM такого поля у заказа не знает.
                     ...('order.site' in draftFields ? { site: draftFields['order.site'] || null } : {}),
@@ -794,6 +948,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                 throw new Error(payload.error || 'Не удалось сохранить');
             }
             setSaveNote(payload.changed?.length ? `Сохранено: ${payload.changed.join(', ')}` : 'Изменений не было');
+            setDraftManagerComment(managerComment);
+            setNewComment('');
             setDirty(false);
             void fetchDetails();
         } catch (e: any) {
@@ -936,6 +1092,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const address = delivery.address ?? {};
         const contact = payload.contact ?? {};
         const customer = payload.customer ?? {};
+        // Карточку клиента для ссылок ищет сервер: у заказа на живого
+        // человека это компания, где он контактное лицо.
+        const clientCardId = data.clientCardId ?? null;
         const customFields = (payload.customFields ?? {}) as Record<string, any>;
         const paymentSource = payload.payments ?? order.payments ?? {};
         const paymentEntries = toArray(paymentSource);
@@ -963,7 +1122,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const productCategory = names.field('typ_castomer', pickValue(customFields.typ_castomer, customFields.tovarnaya_kategoriya, customFields.product_category, payload.category));
         const nextContact = pickValue(customFields.data_kontakta, customFields.next_contact_date, customFields.follow_up_date);
         const purchaseForm = names.field('typ_customer_margin', pickValue(customFields.typ_customer_margin, customFields.purchase_form, customFields.forma_zakupki));
-        const sphere = names.field('sfera_deiatelnosti', pickValue(customFields.sfera_deiatelnosti, customFields.sfera_deyatelnosti, customFields.sphere_of_activity) || payload.industry);
         // Часовой пояс — справочник chasovoi_poias из RetailCRM, не хардкод.
         const timezoneValue = names.field('chasovoi_poias', pickValue(customFields.chasovoi_poias, customFields.timezone)) || null;
         const logisticDeadline = pickValue(customFields.srok_izgot, shipping.productionDays, delivery.productionDays);
@@ -974,28 +1132,34 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const logisticReceiver = pickValue(customFields.naimenovanie_gruzopoluchatelya);
         const dsDocument = pickValue(customFields.datacheta);
         const marginValue = pickValue(customFields.marzha);
-        const priorityNumber = pickValue(customFields.prioriry_number);
         const contractBasis = names.field('osnovanie_podpisi', pickValue(customFields.osnovanie_podpisi));
-        const changeManager = pickValue(customFields.change_name_manager);
-        const planPurchaseDate = pickValue(customFields.purchase_date, customFields.plan_purchase_date, payload.purchaseDate);
         const logisticAddress = pickValue(address.text, [address.region, address.city, address.street, address.house, address.building].filter(Boolean).join(', '));
         const logisticIndex = pickValue(address.index);
-        const logisticMetro = pickValue(address.metro);
         const logisticCity = pickValue(address.city);
+        // «Город доставки (менеджерам ОП)» — отдельное поле RetailCRM, не адрес.
+        const deliveryCityManager = pickValue(customFields.gorod_dostavki_menedzheram_op);
         const logisticRegion = pickValue(address.region);
         const logisticCost = toNumber(pickValue(delivery.cost, order.delivery_cost));
-        const logisticSelfCost = toNumber(pickValue(delivery.selfCost, customFields.sebestoimost2));
-        const logisticDate = pickValue(delivery.date, customFields.data_otgruzki);
         const logisticTime = pickValue(delivery.time, customFields.vremya_dostavki);
-        const operatorComment = pickValue(payload.managerComment);
-        const clientComment = pickValue(payload.customerComment);
+        const operatorComment = pickValue(order.managerComment);
+        const clientComment = pickValue(order.customerComment);
         const additionalEmail = pickValue(customFields.additional_email, customFields.dopolnitelnyi_email, payload.additionalEmail);
-        const totalSummValue = toNumber(pickValue(payload.totalSumm, order.totalsumm));
-        const orderStatusCode = pickValue(payload.status?.code, payload.status, order.status);
-        const countryValue = formatCountryName(pickValue(payload.countryIso, address.countryIso));
-        const createdDate = formatDateTime(pickValue(payload.createdAt, order.created_at));
+        const totalSummValue = toNumber(order.totalsumm);
+        /**
+         * Статус берём ТОЛЬКО из колонки заказа — она единственный источник
+         * правды (закон владельца 06.10.2026).
+         *
+         * Раньше читали сначала копию внутри raw_payload и лишь потом колонку.
+         * Копию обновляет перенос из RetailCRM, а колонку — наше приложение;
+         * перенос отключили, копия застыла, и карточка показывала старый
+         * статус. На этом же разъезде я 06.10.2026 затёр статусы 16 заказов:
+         * заказы, переданные в производство, вернулись в «Счёт на оплате».
+         */
+        const orderStatusCode = pickValue(order.status, payload.status?.code, payload.status);
+        const countryValue = formatCountryName(pickValue(order.countryIso, address.countryIso));
+        const createdDate = formatDateTime(order.created_at);
         const statusUpdated = formatDateTime(pickValue(payload.statusUpdatedAt, order.updated_at));
-        const privilegeType = pickValue(payload.privilegeType);
+        const privilegeType = pickValue(order.privilegeType);
         // Имя контакта: сначала то, что стоит в самом заказе — его правит
         // менеджер в этой карточке. `contact` приезжает из RetailCRM и держит
         // латиницу («Belyaeva Irina»), поэтому он только запасной вариант:
@@ -1024,14 +1188,14 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     <CardSection id="order-common" title="Основное">
                         <div className="grid gap-2 md:grid-cols-2">
                             <InfoField label="Страна" required value={countryValue} />
-                            <InfoField label="Тип заказа" value={names.resolve('orderType', payload.orderType) || 'Не указан'} />
+                            <InfoField label="Тип заказа" value={names.resolve('orderType', order.orderType) || 'Не указан'} />
                             {/* Менеджер меняется прямо здесь, с причиной: раньше
                                 менеджер писал владельцу в Telegram, а тот переводил
                                 руками (решение владельца 05.10.2026). */}
                             <ManagerTransfer
                                 orderKey={orderId}
                                 currentManagerId={order.manager_id}
-                                currentManagerName={order.manager_name || changeManager || null}
+                                currentManagerName={order.manager_name || null}
                                 onDone={() => void fetchDetails()}
                             />
                             {/* Юрлицо заказа: от него идут реквизиты продавца, расчётный
@@ -1055,6 +1219,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     </CardSection>
 
                     <CardSection id="order-control" title="Контроль">
+                        {/* Дата следующего контакта стоит в двух местах: здесь и
+                            у комментария менеджера. Поле одно и то же — правка в
+                            любом из них одна и та же (Ирина Гордеева
+                            12.10.2026: «надо было оставить и там и там»). */}
                         <div className="grid md:grid-cols-3 gap-2">
                             <EditField fieldKey="cf.typ_castomer"
                                 label="Категория товара"
@@ -1063,15 +1231,19 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 options={names.fieldOptions('typ_castomer')}
                                 onChange={(v) => setField('cf.typ_castomer', v)}
                             />
-                            <EditField fieldKey="cf.data_kontakta" label="Дата следующего контакта" type="date" value={fieldValue('cf.data_kontakta', String(customFields.data_kontakta || '').slice(0, 10))} onChange={(v) => setField('cf.data_kontakta', v)} />
-                            <InfoField label="Сегмент клиента" value={segments || '—'} />
+                            <EditField
+                                fieldKey="cf.data_kontakta"
+                                label="Дата следующего контакта"
+                                type="date"
+                                value={fieldValue('cf.data_kontakta', String(customFields.data_kontakta || '').slice(0, 10))}
+                                onChange={(v) => setField('cf.data_kontakta', v)}
+                            />
                             <EditField fieldKey="cf.typ_customer_margin"
                                 label="Форма закупки"
                                 value={fieldValue('cf.typ_customer_margin', customFields.typ_customer_margin || '')}
                                 options={names.fieldOptions('typ_customer_margin')}
                                 onChange={(v) => setField('cf.typ_customer_margin', v)}
                             />
-                            <InfoField label="Сегмент покупателя" value={sphere || 'Требуется уточнить'} />
                         </div>
                     </CardSection>
                 </section>
@@ -1086,8 +1258,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         title="Клиент"
                         action={
                             <div className="flex items-center gap-3 text-xs">
-                                {customer.id && (
-                                    <a href={`/clients/${customer.id}`} className="text-blue-700 hover:underline">
+                                {clientCardId && (
+                                    <a href={`/clients/${clientCardId}`} className="text-blue-700 hover:underline">
                                         карточка заказчика
                                     </a>
                                 )}
@@ -1135,7 +1307,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         )}
 
                         <div className="grid md:grid-cols-2 gap-2">
-                            <InfoField label="Тип клиента" value={customer.type === 'customer_corporate' ? 'Юридическое лицо' : 'Клиент'} />
                             <InfoField label="Компания" value={companyName || '—'} />
                             <EditField fieldKey="firstName" label="Контакт" value={fieldValue('firstName', contactName)} onChange={(v) => setField('firstName', v)} />
                             <EditField fieldKey="email" label="Email" value={fieldValue('email', payload.email || contact.email || customer.email || '')} onChange={(v) => setField('email', v)} />
@@ -1166,49 +1337,33 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 action={<PhoneFieldCall phone={String(fieldValue('cf.dop_telefon3', customFields.dop_telefon3 || thirdPhone || '') ?? '')} managerId={callManagerId} orderId={String(orderId)} />}
                             />
                             <EditField fieldKey="cf.poshta" label="Доп. Email" value={fieldValue('cf.poshta', additionalEmail || '')} onChange={(v) => setField('cf.poshta', v)} />
-                            <InfoField label="Диалоги" value={payload.dialogsCount ? `${payload.dialogsCount} открыто` : 'Нет открытых диалогов'} />
-                            <InfoField label="Партнёр" value={customer.partner || '—'} />
                         </div>
 
-                        {/* Реквизиты — того же заказчика, поэтому здесь же.
-                            Хозяин их — карточка клиента, в заказ подтягиваются сами. */}
-                        <div className="mt-4 border-t border-gray-200 pt-3">
-                            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                                <h4 className="text-sm font-semibold text-gray-900">Реквизиты заказчика</h4>
-                                {customer.id && (
-                                    <a href={`/clients/${customer.id}`} className="text-xs text-blue-700 hover:underline">
-                                        править в карточке клиента
-                                    </a>
+                        {/* Реквизиты заказчика из карточки заказа убраны по
+                            решению владельца 06.10.2026: «реквизиты компании тут
+                            не надо отображать, достаточно контактов и
+                            наименования». Хозяин реквизитов — карточка клиента,
+                            в счёт и КП они подставляются оттуда сами.
+
+                            Осталось одно предупреждение и только когда
+                            реквизитов нет НИГДЕ: без него счёт ушёл бы клиенту
+                            пустым, и менеджер узнал бы об этом только от него. */}
+                        {requisites
+                            && requisites.client?.source !== 'client'
+                            && requisites.client?.source !== 'order' && (
+                            <p className="mt-3 border-t border-gray-200 pt-3 text-xs text-amber-800">
+                                Реквизитов нет ни в карточке клиента, ни в заказе — счёт и договор
+                                напечатаются без них.
+                                {clientCardId && (
+                                    <>
+                                        {' '}
+                                        <a href={`/clients/${clientCardId}`} className="text-blue-700 hover:underline">
+                                            Внести в карточке клиента
+                                        </a>
+                                    </>
                                 )}
-                            </div>
-
-                            <div className="grid md:grid-cols-2 gap-2">
-                                <InfoField label="Юридическое название" value={requisites?.client?.legalName || requisites?.inOrder?.legalName || '—'} />
-                                <InfoField label="ИНН" value={requisites?.client?.inn || requisites?.inOrder?.inn || '—'} />
-                                <InfoField label="КПП" value={requisites?.client?.kpp || requisites?.inOrder?.kpp || '—'} />
-                                <InfoField label="ОГРН / ОГРНИП" value={requisites?.client?.ogrn || requisites?.client?.ogrnip || requisites?.inOrder?.ogrn || requisites?.inOrder?.ogrnip || '—'} />
-                                {/* Подписант договора — из карточки клиента: в заказе
-                                    этих данных нет (просьба Лены Парфёновой 05.10.2026). */}
-                                <InfoField
-                                    label="Подписант договора"
-                                    value={[requisites?.client?.signerTitle, requisites?.client?.signerName].filter(Boolean).join(', ') || '—'}
-                                />
-                                <InfoField label="Действует на основании" value={requisites?.client?.signerBasis || '—'} />
-                                <InfoField label="Юридический адрес" value={requisites?.client?.legalAddress || requisites?.inOrder?.legalAddress || '—'} />
-                                <InfoField label="Банк" value={requisites?.client?.bank || requisites?.inOrder?.bank || '—'} />
-                                <InfoField label="Расчётный счёт" value={requisites?.client?.bankAccount || requisites?.inOrder?.bankAccount || '—'} />
-                                <InfoField label="БИК" value={requisites?.client?.bik || requisites?.inOrder?.bik || '—'} />
-                                <InfoField label="Корреспондентский счёт" value={requisites?.client?.corrAccount || requisites?.inOrder?.corrAccount || '—'} />
-                            </div>
-
-                            <p className="mt-2 text-xs text-gray-500">
-                                {requisites?.client?.source === 'client'
-                                    ? 'Из карточки клиента — в заказ подтягиваются сами, счёт и КП печатаются ими.'
-                                    : requisites?.client?.source === 'order'
-                                        ? `В карточке клиента реквизитов ещё нет — показаны из заказа №${requisites?.client?.fromOrderNumber ?? '—'}. Внесите их в карточку клиента, чтобы они подставлялись сами.`
-                                        : 'Реквизитов нет ни в карточке клиента, ни в заказе. Внесите их в карточке клиента.'}
                             </p>
-                        </div>
+                        )}
                     </CardSection>
 
                     <CardSection id="order-client-extra" title="Дополнительно о клиенте">
@@ -1243,7 +1398,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 value={fieldValue('cf.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete', customFields.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete || logisticBuyerType || '')}
                                 onChange={(v) => setField('cf.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete', v)}
                             />
-                            <EditField fieldKey="cf.adres_fakt" label="Адрес фактический" value={fieldValue('cf.adres_fakt', customFields.adres_fakt || logisticAddress || '')} onChange={(v) => setField('cf.adres_fakt', v)} />
+                            {/* Адрес доставки сюда НЕ подставляем: это разные вещи.
+                                При самовывозе менеджер писал в доставку наш адрес, и
+                                он показывался как фактический адрес заказчика (Ирина
+                                Гордеева 12.10.2026). Пусто — значит пусто. */}
+                            <EditField fieldKey="cf.adres_fakt" label="Адрес фактический" value={fieldValue('cf.adres_fakt', customFields.adres_fakt || '')} onChange={(v) => setField('cf.adres_fakt', v)} />
                         </div>
                     </CardSection>
                 </section>
@@ -1266,10 +1425,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 options={names.fieldOptions('prichiny_otmeny')}
                                 onChange={(v) => setField('cf.prichiny_otmeny', v)}
                             />
-                            <InfoField label="Плановая дата закупки" value={formatDate(planPurchaseDate)} />
-                            <EditField fieldKey="cf.marzha" label="Маржа, %" value={fieldValue('cf.marzha', customFields.marzha || '')} onChange={(v) => setField('cf.marzha', v)} />
                             <EditField fieldKey="cf.datacheta" label="Датасчёт" type="date" value={fieldValue('cf.datacheta', String(customFields.datacheta || '').slice(0, 10))} onChange={(v) => setField('cf.datacheta', v)} />
-                            <InfoField label="Изменение менеджера" value={changeManager || '—'} />
                         </div>
                     </CardSection>
                 </section>
@@ -1413,7 +1569,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                                 id: found.id,
                                                                 // Название с размером: по нему человек
                                                                 // и узнаёт позицию в составе заказа.
-                                                                name: `${found.name} ${variant.name}`.replace(/\s+/g, ' ').trim(),
+                                                                name: itemNameWithVariant(found.name, variant.name),
                                                                 price: variant.price || found.price,
                                                                 article: variant.article ?? found.article ?? null,
                                                             });
@@ -1433,6 +1589,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         </div>
 
                         <div className="overflow-x-auto p-6">
+                            {/* Поля в строке подстраиваются под своё содержимое
+                                (`fit-content-field`), поэтому таблица остаётся по
+                                ширине экрана и ничего не режет: скидка в рублях
+                                схлопывалась именно из-за дележа фиксированной
+                                ширины (Лена Парфёнова 12.10.2026). */}
                             <table className="min-w-full text-sm">
                                 <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                                     <tr>
@@ -1440,9 +1601,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                         <th className="w-8 px-2 py-3 text-left">№</th>
                                         <th className="w-14 px-1 py-3 text-left">Фото</th>
                                         <th className="px-3 py-3 text-left">Товар / услуга</th>
-                                        <th className="w-24 px-3 py-3 text-right">Кол-во</th>
-                                        <th className="w-32 px-3 py-3 text-right">Цена</th>
-                                        <th className="w-32 px-3 py-3 text-right">Скидка</th>
+                                        <th className="w-20 px-3 py-3 text-right">Кол-во</th>
+                                        <th className="w-28 px-3 py-3 text-right">Цена</th>
+                                        {/* Под рубли и проценты сразу: в 8 рем поле
+                                            скидки схлопывалось (12.10.2026). */}
+                                        <th className="w-48 px-3 py-3 text-right">Скидка</th>
                                         <th className="w-36 px-3 py-3 text-right">Стоимость</th>
                                         <th className="w-10 px-3 py-3"></th>
                                     </tr>
@@ -1467,12 +1630,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                         || (row.siteId && catalogLinks[`id:${row.siteId}`])
                                                         || (row.article && catalogLinks[`art:${row.article}`])
                                                         || null;
+                                                    // При наведении фото увеличивается — как было в
+                                                    // RetailCRM (просьба Ирины Гордеевой 05.10.2026):
+                                                    // по клетке 48×48 шкаф от стеллажа не отличить.
                                                     return found?.image ? (
-                                                        <img
-                                                            src={found.image}
-                                                            alt=""
-                                                            className="h-12 w-12 border border-gray-200 object-contain"
-                                                        />
+                                                        <ItemPhoto src={found.image} alt={row.name} />
                                                     ) : null;
                                                 })()}
                                             </td>
@@ -1519,28 +1681,54 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                 <NumberInput
                                                     value={row.quantity}
                                                     onChange={(v: number | null) => changeItem(index, { quantity: Number(v) || 0 })}
-                                                    className="w-full border border-gray-300 px-2 py-1 text-right"
+                                                    className="fit-content-field w-full border border-gray-300 px-2 py-1 text-right"
                                                 />
                                             </td>
                                             <td className="px-3 py-2">
+                                                {/* Копейки не режем: цена со скидкой бывает дробной
+                                                    (82 390,50), и округление до рублей при каждом
+                                                    сохранении уводило сумму заказа (06.10.2026). */}
                                                 <NumberInput
                                                     value={row.price}
+                                                    maxFractionDigits={2}
                                                     onChange={(v: number | null) => changeItem(index, { price: Number(v) || 0 })}
-                                                    className="w-full border border-gray-300 px-2 py-1 text-right"
+                                                    className="fit-content-field w-full border border-gray-300 px-2 py-1 text-right"
                                                 />
                                             </td>
-                                            {/* Скидка на единицу товара — рублями, как в RetailCRM
-                                                (их `discountManualAmount`). Правится здесь же. */}
+                                            {/* Скидка на единицу товара — рублями и процентом, как в
+                                                RetailCRM (`discountManualAmount` и
+                                                `discountManualPercent`). Они складываются: так же
+                                                считает и сама CRM. */}
+                                            {/* Колонка не ужимается: поле скидки в рублях
+                                                схлопывалось до пары символов, и введённую
+                                                сумму не было видно (Лена Парфёнова
+                                                12.10.2026). Рубли шире процентов: там
+                                                шестизначные суммы. */}
                                             <td className="px-3 py-2">
-                                                <NumberInput
-                                                    value={row.discount}
-                                                    onChange={(v: number | null) => changeItem(index, { discount: Math.max(0, Number(v) || 0) })}
-                                                    className="w-full border border-gray-300 px-2 py-1 text-right"
-                                                />
+                                                <div className="flex flex-wrap items-center justify-end gap-1">
+                                                    <NumberInput
+                                                        value={row.discount}
+                                                        maxFractionDigits={2}
+                                                        onChange={(v: number | null) => changeItem(index, { discount: Math.max(0, Number(v) || 0) })}
+                                                        className="fit-content-field border border-gray-300 px-2 py-1 text-right"
+                                                    />
+                                                    <span className="text-xs text-gray-400">₽</span>
+                                                    <NumberInput
+                                                        value={row.discountPercent}
+                                                        onChange={(v: number | null) => changeItem(index, { discountPercent: Math.min(100, Math.max(0, Number(v) || 0)) })}
+                                                        className="fit-content-field border border-gray-300 px-2 py-1 text-right"
+                                                    />
+                                                    <span className="text-xs text-gray-400">%</span>
+                                                </div>
                                             </td>
                                             <td className="px-3 py-2 text-right font-semibold text-gray-900">
-                                                {formatCurrency(Math.max(0, (row.price - row.discount) * row.quantity))}
-                                                {row.discount > 0 && (
+                                                {formatCurrency(itemTotalWithDiscount({
+                                                    price: row.price,
+                                                    quantity: row.quantity,
+                                                    discountAmount: row.discount,
+                                                    discountPercent: row.discountPercent,
+                                                }))}
+                                                {(row.discount > 0 || row.discountPercent > 0) && (
                                                     <div className="text-xs font-normal text-gray-400 line-through">
                                                         {formatCurrency(Math.max(0, row.price * row.quantity))}
                                                     </div>
@@ -1568,7 +1756,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             // Скидки считает общий модуль (lib/own-crm/discount.ts) —
                             // тем же счётом, что уходит в базу, КП и счёт.
                             const totals = orderTotals(
-                                draftItems.map((row) => ({ price: row.price, quantity: row.quantity, discountAmount: row.discount })),
+                                draftItems.map((row) => ({ price: row.price, quantity: row.quantity, discountAmount: row.discount, discountPercent: row.discountPercent })),
                                 {
                                     discountAmount: draftOrderDiscount.amount,
                                     discountPercent: draftOrderDiscount.percent,
@@ -1582,7 +1770,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             // Итог, который знает RetailCRM: колонку обновляет синхронизация,
                             // а снимок состава (raw_payload) бывает старее её. Расхождение не
                             // прячем — иначе «скидка исчезла» выглядит как ошибка счёта.
-                            const crmTotal = Number(toNumber(pickValue(order.totalsumm, payload.totalSumm)) ?? 0);
+                            const crmTotal = Number(toNumber(order.totalsumm) ?? 0);
                             const stale = crmTotal > 0 && Math.abs(crmTotal - ourTotal) > 1;
 
                             return (
@@ -1615,7 +1803,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                         Сумма скидок по заказу: {discountTotal > 0 ? `−${formatCurrency(discountTotal)}` : formatCurrency(0)}
                                     </div>
                                     <div>Стоимость доставки: {formatCurrency(delivery)}</div>
-                                    <div>Себестоимость: {formatCurrency(logisticSelfCost)}</div>
                                     <div className="font-semibold text-gray-900">
                                         Итого: {formatCurrency(ourTotal)}
                                     </div>
@@ -1650,29 +1837,13 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 писал «05.10» руками и терялся, где свежее. */}
                             <textarea
                                 value={newComment}
-                                onChange={(e) => setNewComment(e.target.value)}
+                                onChange={(e) => { setNewComment(e.target.value); setDirty(true); }}
                                 rows={3}
                                 placeholder="Новая запись: что сделали, о чём договорились"
                                 className="w-full border border-gray-300 bg-white p-3 text-sm text-gray-800"
                             />
-                            <div className="mt-2 flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    disabled={!newComment.trim()}
-                                    onClick={() => {
-                                        setDraftManagerComment(
-                                            prependComment(draftManagerComment, newComment, commentAuthor),
-                                        );
-                                        setNewComment('');
-                                        setDirty(true);
-                                    }}
-                                    className="bg-blue-600 px-3 py-1 text-xs font-semibold text-white disabled:bg-gray-300"
-                                >
-                                    Добавить запись
-                                </button>
-                                <span className="text-[11px] text-gray-500">
-                                    Дату, время и фамилию подставит система — писать их не нужно
-                                </span>
+                            <div className="mt-2 text-[11px] text-gray-500">
+                                Запись ляжет наверх по кнопке «Сохранить». Дату, время и фамилию подставит система — писать их не нужно.
                             </div>
                             <textarea
                                 value={draftManagerComment}
@@ -1681,6 +1852,17 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 placeholder="Договорённости, обещания, что делать дальше"
                                 className="mt-3 w-full border border-gray-200 bg-white p-3 text-sm text-gray-800"
                             />
+                            {/* Дата следующего шага — здесь же: её назначают,
+                                дописав разговор, а не в шапке карточки. */}
+                            <div className="mt-3">
+                                <EditField
+                                    fieldKey="cf.data_kontakta"
+                                    label="Дата следующего контакта"
+                                    type="date"
+                                    value={fieldValue('cf.data_kontakta', String(customFields.data_kontakta || '').slice(0, 10))}
+                                    onChange={(v) => setField('cf.data_kontakta', v)}
+                                />
+                            </div>
                         </div>
                         {/* Советы бота-РОПа — своим окном рядом (решение владельца
                             05.10.2026). Раньше они дописывались в комментарий
@@ -1711,22 +1893,42 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     {/* Складских полей здесь нет: склада у компании нет, всё идёт
                         прямо с производства (решение владельца 30.09.2026). */}
                     <CardSection id="order-shipping" title="Отгрузка и доставка">
-                        <div className="grid md:grid-cols-2 gap-2">
-                            <InfoField label="Дата отгрузки" value={formatDate(shipping.date || logisticDate)} />
-                            <EditField fieldKey="cf.srok_izgot" label="Срок изготовления, дней" type="number" value={fieldValue('cf.srok_izgot', customFields.srok_izgot ?? '')} onChange={(v) => setField('cf.srok_izgot', v)} />
+                        {/* Срок и единица — в одну строку и узкими: вносят туда
+                            мало, а занимали полблока (решение владельца
+                            06.10.2026). «Дата отгрузки» убрана — её не
+                            заполняет ничто, пусто у всех 1830 заказов за
+                            полгода, и такого поля нет в справочнике RetailCRM. */}
+                        <div className="flex flex-wrap items-start gap-2">
+                            <div className="w-36">
+                                <EditField fieldKey="cf.srok_izgot" label="Срок изготовления, дней" type="number" value={fieldValue('cf.srok_izgot', customFields.srok_izgot ?? '')} onChange={(v) => setField('cf.srok_izgot', v)} />
+                            </div>
                             {/* Какие это дни — «80» само по себе читается двояко
                                 (замечание Евгении 05.10.2026). Единица идёт в КП,
                                 счёт и договор. */}
-                            <EditField fieldKey="order.srok_izgot_edinica"
-                                label="Дни считаем"
-                                value={fieldValue('order.srok_izgot_edinica', order?.srok_izgot_edinica || 'kalendarnye')}
-                                onChange={(v) => setField('order.srok_izgot_edinica', v)}
-                                options={[
-                                    { value: 'kalendarnye', label: 'Календарные' },
-                                    { value: 'rabochie', label: 'Рабочие' },
-                                ]}
+                            <div className="w-44">
+                                <EditField fieldKey="order.srok_izgot_edinica"
+                                    label="Дни считаем"
+                                    value={fieldValue('order.srok_izgot_edinica', order?.srok_izgot_edinica || 'kalendarnye')}
+                                    onChange={(v) => setField('order.srok_izgot_edinica', v)}
+                                    options={[
+                                        { value: 'kalendarnye', label: 'Календарные' },
+                                        { value: 'rabochie', label: 'Рабочие' },
+                                    ]}
+                                />
+                            </div>
+                        </div>
+                        {/* Логисту пишут длинным текстом — поле в несколько строк,
+                            как комментарий оператору (решение владельца 06.10.2026).
+                            Сюда же слито «Примечание по отгрузке»: это было о том
+                            же самом, и менеджеры не знали, какое из двух полей
+                            заполнять. Заполненное перенесено, 15 заказов. */}
+                        <div className="mt-2">
+                            <EditField fieldKey="cf.komment_diveleri"
+                                label="Комментарий логисту"
+                                multiline
+                                value={fieldValue('cf.komment_diveleri', customFields.komment_diveleri || '')}
+                                onChange={(v) => setField('cf.komment_diveleri', v)}
                             />
-                            <EditField fieldKey="cf.komment_diveleri" label="Комментарий логисту" value={fieldValue('cf.komment_diveleri', customFields.komment_diveleri || '')} onChange={(v) => setField('cf.komment_diveleri', v)} />
                         </div>
                     </CardSection>
 
@@ -1738,16 +1940,27 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 options={names.enumOptions('deliveryType')}
                                 onChange={(v) => setField('delivery.code', v)}
                             />
-                            <EditField fieldKey="delivery.date" label="Дата доставки" type="date" value={fieldValue('delivery.date', String(delivery.date || expectedDelivery || '').slice(0, 10))} onChange={(v) => setField('delivery.date', v)} />
-                            <EditField fieldKey="delivery.time" label="Время доставки" value={fieldValue('delivery.time', logisticTime || '')} onChange={(v) => setField('delivery.time', v)} />
-                            <EditField fieldKey="delivery.cost" label="Стоимость доставки" type="number" value={fieldValue('delivery.cost', logisticCost ?? 0)} onChange={(v) => setField('delivery.cost', v)} />
-                            <InfoField label="Себестоимость" value={formatCurrency(logisticSelfCost)} />
+                            {/* Дата, время и стоимость доставки убраны из карточки
+                                08.10.2026 по просьбе менеджеров: их никто не
+                                заполняет. Замер на боевой базе — дата стоит у 3
+                                заказов из 30 207, стоимость у 24, время ни у
+                                одного; за последние 90 дней — ни одного по всем
+                                трём. Данные в базе не трогали: если поле снова
+                                понадобится, вернуть его — одна строка. */}
                             <EditField fieldKey="delivery.region" label="Регион" value={fieldValue('delivery.region', logisticRegion || '')} onChange={(v) => setField('delivery.region', v)} />
                             <EditField fieldKey="delivery.city" label="Город" value={fieldValue('delivery.city', logisticCity || '')} onChange={(v) => setField('delivery.city', v)} />
-                            <InfoField label="Метро" value={logisticMetro || '—'} />
+                            {/* Отдельное поле RetailCRM, его заполняет менеджер ОП:
+                                в заявке город известен раньше адреса доставки. В
+                                карточке ОКК его не было — просьба менеджеров
+                                07.10.2026. Подпись берём из каталога полей CRM. */}
+                            <EditField
+                                fieldKey="cf.gorod_dostavki_menedzheram_op"
+                                label={names.fieldLabel('gorod_dostavki_menedzheram_op', 'Город доставки (менеджерам ОП)')}
+                                value={fieldValue('cf.gorod_dostavki_menedzheram_op', deliveryCityManager || '')}
+                                onChange={(v) => setField('cf.gorod_dostavki_menedzheram_op', v)}
+                            />
                             <EditField fieldKey="delivery.index" label="Индекс" value={fieldValue('delivery.index', logisticIndex || '')} onChange={(v) => setField('delivery.index', v)} />
                             <EditField fieldKey="cf.consignee" label="Получатель" value={fieldValue('cf.consignee', customFields.consignee || logisticReceiver || '')} onChange={(v) => setField('cf.consignee', v)} />
-                            <InfoField label="Коммент клиента" value={delivery.comment || '—'} />
                         </div>
 
                         {/* Адрес одной строкой и разбор по частям — как в RetailCRM:
@@ -1804,17 +2017,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             </div>
                         </div>
 
-                        {/* Общее поле под габариты и состав: по шкафам его
-                            постоянно спрашивают при самовывозе. Поле заказа
-                            «Примечание по отгрузке» — не заводим новое. */}
-                        <div className="mt-3">
-                            <EditField
-                                fieldKey="cf.primecanie_po_otgruzke"
-                                label="Примечание по отгрузке (габариты, состав, что сказать заказчику)"
-                                value={fieldValue('cf.primecanie_po_otgruzke', customFields.primecanie_po_otgruzke || '')}
-                                onChange={(v) => setField('cf.primecanie_po_otgruzke', v)}
-                            />
-                        </div>
                     </CardSection>
 
                     <div className="bg-white border border-gray-200 p-4">
@@ -1880,21 +2082,46 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                             ×
                                         </button>
                                     </div>
+                                    {/* Стандартные условия списком: те же, по которым
+                                        отдел продаж работал в RetailCRM. Такой договор
+                                        юристу не нужен — это согласованная редакция
+                                        (решение владельца 07.10.2026). */}
                                     <p className="mb-2 text-sm text-gray-600">
-                                        Напишите условия своими словами — например «70 предоплата, 30 перед отгрузкой».
-                                        Остальное подставится из заказа: реквизиты, предмет, сроки изготовления.
-                                        Готовый договор уйдёт юристу на согласование.
+                                        Выберите условия оплаты — договор составится сразу, без юриста.
+                                        Реквизиты, предмет и сроки изготовления подставятся из заказа.
                                     </p>
-                                    <textarea
-                                        value={contractTerms}
-                                        onChange={(e) => setContractTerms(e.target.value)}
-                                        rows={5}
-                                        placeholder="70 предоплата в течение 5 банковских дней, 30 перед отгрузкой"
-                                        className="w-full border border-gray-200 px-3 py-2 text-sm"
-                                    />
+                                    <select
+                                        value={contractTermCode}
+                                        onChange={(e) => {
+                                            setContractTermCode(e.target.value);
+                                            if (e.target.value) setContractTerms('');
+                                        }}
+                                        className="mb-3 w-full border border-gray-300 px-2 py-2 text-sm"
+                                    >
+                                        <option value="">Свои условия — напишу сам</option>
+                                        {STANDARD_CONTRACT_TERMS.map((term) => (
+                                            <option key={term.code} value={term.code}>{term.label}</option>
+                                        ))}
+                                    </select>
+
+                                    {!contractTermCode && (
+                                        <>
+                                            <p className="mb-2 text-sm text-gray-600">
+                                                Напишите условия своими словами — например «70 предоплата, 30 перед
+                                                отгрузкой». Такой договор уйдёт юристу на согласование.
+                                            </p>
+                                            <textarea
+                                                value={contractTerms}
+                                                onChange={(e) => setContractTerms(e.target.value)}
+                                                rows={5}
+                                                placeholder="70 предоплата в течение 5 банковских дней, 30 перед отгрузкой"
+                                                className="w-full border border-gray-200 px-3 py-2 text-sm"
+                                            />
+                                        </>
+                                    )}
                                     <div className="mt-3 flex flex-wrap items-center gap-2">
                                         <button
-                                            disabled={contractSaving || !contractTerms.trim()}
+                                            disabled={contractSaving || (!contractTermCode && !contractTerms.trim())}
                                             onClick={async () => {
                                                 setContractSaving(true);
                                                 setContractNote(null);
@@ -1903,7 +2130,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                         method: 'POST',
                                                         headers: { 'Content-Type': 'application/json' },
                                                         body: JSON.stringify({
-                                                            terms: contractTerms.trim(),
+                                                            terms: contractTerms.trim() || 'стандартные условия',
+                                                            termCode: contractTermCode || null,
                                                             seller: sellerCode || null,
                                                             orderId: Number(orderId),
                                                         }),
@@ -1911,6 +2139,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                     const payload = await res.json();
                                                     if (!res.ok) throw new Error(payload.error || 'Договор не составился');
                                                     setContractNote(payload.note || 'Договор отправлен юристу.');
+                                                    setContractReview(payload.review ?? null);
+                                                    setContractId(payload.id ?? null);
                                                     setContractTerms('');
                                                 } catch (e: any) {
                                                     setContractNote(e.message);
@@ -1920,10 +2150,83 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                             }}
                                             className="bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                                         >
-                                            {contractSaving ? 'Составляю…' : 'Составить и отправить юристу'}
+                                            {contractSaving
+                                                ? 'Составляю…'
+                                                : contractTermCode ? 'Составить договор' : 'Составить и отправить юристу'}
                                         </button>
                                         {contractNote && <span className="text-sm text-gray-700">{contractNote}</span>}
+                                        {/* Сам документ: без ссылки менеджер видел только
+                                            замечания ИИ и спрашивал, где взять файл
+                                            (08.10.2026). Файл с подписью и печатью лежит
+                                            и во вкладке «Файлы» этого заказа. */}
+                                        {Number(contractId) > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => openOrderDocument('contract', `/api/orders/${encodeURIComponent(String(data.order?.number ?? orderId))}/contract/file?id=${contractId}`)}
+                                                className="text-sm font-semibold text-blue-700 hover:underline disabled:text-gray-400"
+                                            >
+                                                Открыть договор (PDF)
+                                            </button>
+                                        )}
+                                        {/* Комплект как в RetailCRM: счёт, договор и
+                                            спецификация одним файлом (эталон — заказ
+                                            54729). Файл ложится в «Файлы» заказа, и
+                                            его можно приложить к письму галочкой. */}
+                                        {Number(contractId) > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => openOrderDocument('kit', `/api/orders/${encodeURIComponent(String(data.order?.number ?? orderId))}/contract/kit?id=${contractId}`)}
+                                                className="text-sm font-semibold text-blue-700 hover:underline disabled:text-gray-400"
+                                            >
+                                                Счёт + договор + спецификация (PDF)
+                                            </button>
+                                        )}
+                                        {documentNote && (
+                                            <span className="text-sm text-gray-600">{documentNote}</span>
+                                        )}
                                     </div>
+
+                                    {/* Замечания ИИ-юрисконсульта (Лев) — к каждому
+                                        договору (требование владельца 07.10.2026).
+                                        Это подсказка, а не запрет: договор уже
+                                        составлен, решение за менеджером. */}
+                                    {contractReview && (
+                                        <div
+                                            className={`mt-3 border p-3 text-sm ${
+                                                contractReview.level === 'risk'
+                                                    ? 'border-red-300 bg-red-50'
+                                                    : contractReview.level === 'ok'
+                                                        ? 'border-green-300 bg-green-50'
+                                                        : 'border-amber-300 bg-amber-50'
+                                            }`}
+                                        >
+                                            <div className="mb-1 flex items-baseline justify-between gap-2">
+                                                <span className="font-semibold text-gray-900">
+                                                    Комментарий ИИ-юриста
+                                                </span>
+                                                <span className="text-[11px] uppercase tracking-wide text-gray-500">
+                                                    {contractReview.level === 'risk'
+                                                        ? 'лучше показать юристу'
+                                                        : contractReview.level === 'ok'
+                                                            ? 'можно отправлять'
+                                                            : 'стоит глянуть'}
+                                                </span>
+                                            </div>
+                                            <p className="text-gray-800">{contractReview.summary}</p>
+                                            {contractReview.notes.length > 0 && (
+                                                <ul className="mt-2 list-disc space-y-1 pl-5 text-gray-800">
+                                                    {contractReview.notes.map((note, i) => (
+                                                        <li key={i}>{note}</li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                            {!contractReview.byAi && (
+                                                <p className="mt-2 text-[11px] text-gray-500">
+                                                    Договор не проверен — ИИ-юрисконсульт был недоступен.
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -2015,11 +2318,27 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                     <p className="whitespace-pre-line text-sm text-gray-800">
                                                         <TextWithOrderLinks text={email.body || 'Текст этого письма у нас не сохранён — в ленте есть только факт отправки.'} />
                                                     </p>
-                                                    {email.attachments > 0 && (
+                                                    {/* Вложения письма: PDF и картинки открываются
+                                                        всплывающим окном, остальное скачивается
+                                                        (решение владельца 05.10.2026). */}
+                                                    {email.attachmentList?.length ? (
+                                                        <div className="mt-2">
+                                                            <AttachmentList
+                                                                files={email.attachmentList}
+                                                                href={email.emailId
+                                                                    ? (name: string) => orderFileHref({
+                                                                        orderNumber: String(data.order?.number ?? orderId),
+                                                                        emailId: email.emailId,
+                                                                        name,
+                                                                    })
+                                                                    : null}
+                                                            />
+                                                        </div>
+                                                    ) : email.attachments > 0 ? (
                                                         <p className="mt-2 text-xs text-gray-500">
                                                             Вложений: {email.attachments} — они в разделе «Файлы» заказа.
                                                         </p>
-                                                    )}
+                                                    ) : null}
                                                     <div className="mt-2 flex items-center gap-3">
                                                         <button
                                                             type="button"
@@ -2069,14 +2388,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     <div className="bg-white border border-gray-200 p-4">
                         <h3 className="text-base font-semibold text-gray-900 mb-2">Оплата</h3>
                         <div className="grid md:grid-cols-3 gap-2">
-                            <InfoField label="Сумма заказа" value={formatCurrency(totalSummValue)} />
-                            <InfoField label="Предоплата" value={formatCurrency(toNumber(payload.prepaySum))} />
-                            <InfoField label="Ожидается" value={formatCurrency(toNumber(payload.purchaseSumm))} />
-                            <InfoField label="Статус оплаты" value={names.resolve('paymentStatus', payload.payment?.status) || 'Не указан'} />
-                            <InfoField label="Дата оплаты" value={formatDate(payload.payment?.date)} />
-                            <InfoField label="Комментарий" value={payload.payment?.comment || '—'} />
-                            <InfoField label="Приоритет" value={priorityNumber || '—'} />
-                            <InfoField label="Дата передачи в производство" value={formatDate(customFields.data_peredachi_v_proizvodstvo || payload.productionDate)} />
+                            <InfoField label="Предоплата" value={formatCurrency(toNumber(order.prepaySum))} />
+                            <InfoField label="Ожидается" value={formatCurrency(toNumber(order.purchaseSumm))} />
                         </div>
                     </div>
 
@@ -2121,6 +2434,40 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
      * данные не спрятаны: открыть можно одной вкладкой.
      */
     /** Содержимое вкладки «Для производства» — одним запросом. */
+    /**
+     * Приложить файл прямо отсюда.
+     *
+     * Евгения Матвеева 09.10.2026: «заказ оплачен, заказчики меняют габариты,
+     * отправила новое КП — в комментариях производству новые файлы не
+     * подтягиваются. Можно сделать кнопку, чтобы файл с компа самому
+     * приложить?». Раньше за этим приходилось уходить во вкладку «Файлы» и
+     * возвращаться. Тип файла не ограничиваем: цеху возят и чертежи, и
+     * фотографии, и архивы.
+     */
+    const uploadProductionFile = async (file: File) => {
+        setProductionUploading(true);
+        setProductionMessage(null);
+        try {
+            const body = new FormData();
+            body.append('file', file);
+            const res = await fetch(`/api/orders/${encodeURIComponent(String(data?.order?.number ?? orderId))}/files/upload`, {
+                method: 'POST',
+                body,
+            });
+            const payload = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(payload?.error || 'Файл не загрузился');
+
+            // Файл для цеха — сразу отмечаем: за этим его и прикладывают.
+            if (payload?.file?.id) await toggleProductionFile(Number(payload.file.id), true);
+            await loadProduction();
+            setProductionMessage(`Файл «${file.name}» приложен и отмечен для цеха`);
+        } catch (e: any) {
+            setProductionMessage(e.message || 'Файл не загрузился');
+        } finally {
+            setProductionUploading(false);
+        }
+    };
+
     const loadProduction = useCallback(async () => {
         const orderNumber = String(data?.order?.number ?? orderId);
         try {
@@ -2238,12 +2585,33 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         уходят вместе с заказом; остальные остаются только у нас.
                     </p>
 
+                    <label className={`mt-3 inline-block cursor-pointer border px-3 py-2 text-sm font-semibold ${
+                        productionUploading
+                            ? 'border-gray-200 text-gray-400'
+                            : 'border-blue-600 text-blue-700 hover:bg-blue-50'
+                    }`}>
+                        {productionUploading ? 'Загружаю…' : 'Приложить файл'}
+                        <input
+                            type="file"
+                            className="hidden"
+                            disabled={productionUploading}
+                            onChange={(event) => {
+                                const picked = event.target.files?.[0];
+                                event.target.value = '';
+                                if (picked) void uploadProductionFile(picked);
+                            }}
+                        />
+                    </label>
+
                     {files.length === 0 ? (
                         <p className="mt-3 text-sm text-gray-500">
-                            Файлов по этому заказу нет — приложите их во вкладке «Файлы».
+                            Файлов по этому заказу нет — приложите кнопкой выше или во вкладке «Файлы».
                         </p>
                     ) : (
-                        <div className="mt-3 divide-y divide-gray-100 border border-gray-200">
+                        /* Список не прячем под короткую прокрутку: файлов по
+                           заказу бывает дюжина, и человек должен видеть, что
+                           отмечено, целиком. */
+                        <div className="mt-3 max-h-[420px] overflow-y-auto divide-y divide-gray-100 border border-gray-200">
                             {files.map((file) => (
                                 <label key={file.id} className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-gray-50">
                                     <input
@@ -2254,7 +2622,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                     />
                                     <span className="flex-1 truncate text-sm text-gray-800">{file.fileName}</span>
                                     <a
-                                        href={`/api/orders/${encodeURIComponent(orderNumber)}/files/download?fileId=${file.id}`}
+                                        href={orderFileHref({ orderNumber, fileId: file.id })}
                                         target="_blank"
                                         rel="noreferrer"
                                         onClick={(event) => event.stopPropagation()}
@@ -2279,13 +2647,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         const order = json?.order ?? {};
         const contact = payload.contact ?? {};
         const customer = payload.customer ?? {};
-        const createdDate = formatDateTime(pickValue(payload.createdAt, order.created_at));
+        const createdDate = formatDateTime(order.created_at);
         const statusUpdated = formatDateTime(pickValue(payload.statusUpdatedAt, order.updated_at));
-        const privilegeType = pickValue(payload.privilegeType);
-        const documentFlow = formatBooleanYesNo(customFields.dokumentooborot);
+        const privilegeType = pickValue(order.privilegeType);
         const documentsViaEDO = formatBooleanYesNo(customFields.dokumentooborot_cherez_edo);
         const invoiceValidDays = pickValue(customFields.schiot_deistvitelen_v_techenie_dnei);
-        const roistat = pickValue(customFields.roistat, payload.roistat);
+        const selfCost = toNumber(pickValue(payload.delivery?.selfCost, customFields.sebestoimost2));
 
         return (
             <div className="bg-white border border-gray-200 p-4">
@@ -2294,7 +2661,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         значения тянем из синканутого каталога. */}
                     <EditField fieldKey="orderMethod"
                         label="Способ оформления"
-                        value={fieldValue('orderMethod', payload.orderMethod || '')}
+                        value={fieldValue('orderMethod', order.orderMethod || '')}
                         options={names.enumOptions('orderMethod')}
                         onChange={(v) => setField('orderMethod', v)}
                     />
@@ -2303,10 +2670,30 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     <InfoField label="Дата поступления" value={createdDate} />
                     <InfoField label="Обновлён" value={statusUpdated} />
                     <InfoField label="Привилегия" value={privilegeType || '—'} />
-                    <InfoField label="Документооборот" value={documentFlow} />
                     <InfoField label="Документооборот через ЭДО" value={documentsViaEDO} />
                     <InfoField label="Счёт действителен (дней)" value={invoiceValidDays || '—'} />
-                    <InfoField label="Roistat" value={roistat || '—'} />
+                    {/* Перенесено с рабочего экрана по решению владельца
+                        06.10.2026. Поля настоящие, но в работе не нужны: маржа
+                        заполнена у 20 заказов из 1831, себестоимость — у 278, а
+                        статус и дата оплаты, диалоги и партнёр не приходят из
+                        RetailCRM ни по одному заказу (настоящие оплаты показаны
+                        списком в блоке «Оплата»). */}
+                    <EditField fieldKey="cf.marzha"
+                        label="Маржа, %"
+                        value={fieldValue('cf.marzha', customFields.marzha || '')}
+                        onChange={(v) => setField('cf.marzha', v)}
+                    />
+                    <InfoField label="Себестоимость" value={formatCurrency(selfCost)} />
+                    <InfoField label="Статус оплаты" value={names.resolve('paymentStatus', payload.payment?.status) || 'Не указан'} />
+                    <InfoField label="Дата оплаты" value={formatDate(payload.payment?.date)} />
+                    <InfoField label="Комментарий к оплате" value={payload.payment?.comment || '—'} />
+                    <InfoField label="Диалоги" value={payload.dialogsCount ? `${payload.dialogsCount} открыто` : 'Нет открытых диалогов'} />
+                    <InfoField label="Партнёр" value={customer.partner || '—'} />
+                    {/* Тип клиента — в технические по решению владельца
+                        06.10.2026: «у нас всегда один тип». Заказы на физлицо
+                        всё же встречаются (79 из 1831 за полгода), поэтому поле
+                        не удалено — его видно здесь. */}
+                    <InfoField label="Тип клиента" value={customer.type === 'customer_corporate' ? 'Юридическое лицо' : 'Клиент'} />
                 </div>
                 <p className="mt-2 text-xs text-gray-500">
                     Здесь то, что в работе с заказом не нужно: служебные пометки и метка рекламной
@@ -2434,7 +2821,15 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                     <span className={`text-[9px] font-black px-1.5 py-0.5 uppercase ${call.direction === 'outgoing' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
                                                         {call.direction === 'outgoing' ? 'Исходящий' : 'Входящий'}
                                                     </span>
-                                                    <span className="text-[10px] text-gray-400 font-mono">{call.duration_sec}s</span>
+                                                    {/* Закон владельца 05.10.2026: звонок состоялся, только если
+                                                        был разговор с клиентом. Попытку дозвона Телфин отдаёт
+                                                        как отвеченный звонок с длительностью — её временем не
+                                                        подписываем, иначе выдаём за разговор. */}
+                                                    {call.answered === false ? (
+                                                        <span className="text-[9px] font-black text-amber-700 bg-amber-50 px-1.5 py-0.5 uppercase">Дозвона не было</span>
+                                                    ) : (
+                                                        <span className="text-[10px] text-gray-400 font-mono">{call.duration_sec}s</span>
+                                                    )}
                                                 </div>
                                                 <div className="text-xs font-semibold text-gray-800 flex justify-between">
                                                     <span>{new Date(call.started_at).toLocaleDateString('ru-RU')}</span>
@@ -2637,6 +3032,25 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
             role="dialog"
             aria-modal="true"
             data-ui-audit="order-modal"
+            /**
+             * Enter сохраняет карточку, кнопка «Сохранить» остаётся на месте
+             * (просьба Ирины Гордеевой 12.10.2026).
+             *
+             * В обычном поле достаточно Enter. В многострочных (комментарии,
+             * новая запись) Enter обязан переносить строку, поэтому там
+             * сохраняет Ctrl/Cmd + Enter.
+             */
+            onKeyDown={(event) => {
+                if (event.key !== 'Enter' || event.shiftKey || savingOrder) return;
+                const target = event.target as HTMLElement;
+                const tag = target.tagName;
+                if (tag === 'BUTTON' || tag === 'A') return;
+                const multiline = tag === 'TEXTAREA';
+                if (multiline && !(event.ctrlKey || event.metaKey)) return;
+                if (!multiline && (tag !== 'INPUT' && tag !== 'SELECT')) return;
+                event.preventDefault();
+                void saveOrder();
+            }}
             // Цвет — от статуса заказа, еле заметный; размеры — по рабочей области.
             style={{
                 backgroundColor: tintFromColor(data?.statusColor, 0.07) || '#ffffff',
@@ -2796,6 +3210,15 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                     </div>
                                 )}
                             </div>
+                            {/* Переписка по заказу тредами: раздел «Переписка»
+                                (docs/order-mail/TZ.md). Счётчик — непрочитанные
+                                письма клиента. */}
+                            <button
+                                onClick={() => setPanel(panel === 'mail' ? null : 'mail')}
+                                className={`shrink-0 whitespace-nowrap border ${panel === 'mail' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                            >
+                                Переписка{mailUnread ? ` · ${mailUnread}` : ''}
+                            </button>
                             <button
                                 onClick={() => setPanel(panel === 'tasks' ? null : 'tasks')}
                                 className={`shrink-0 whitespace-nowrap border ${panel === 'tasks' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
@@ -2846,6 +3269,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             statusPalette={data?.statusPalette}
                             onClose={() => setPanel(null)}
                             onTasksChanged={(done, total) => setTaskCount({ done, total })}
+                            onMailUnread={setMailUnread}
                         />
                     </div>
                 )}
@@ -2938,6 +3362,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         </button>
                         {saveNote && <span className="text-[11px] text-gray-600">{saveNote}</span>}
                         {dirty && !saveNote && <span className="text-[11px] text-amber-700">Есть несохранённые изменения</span>}
+                        <span className="text-[11px] text-gray-500">Enter тоже сохраняет; в комментарии — Ctrl + Enter</span>
                     </div>
                     <button onClick={onClose} className="border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50">Закрыть</button>
                 </footer>

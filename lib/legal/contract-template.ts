@@ -1,3 +1,4 @@
+import { titleToGenitive, toGenitive } from '@/lib/legal/name-case';
 /**
  * Шаблон нашего договора купли-продажи.
  *
@@ -74,9 +75,14 @@ function requisites(party: ContractFill['seller'] | ContractFill['buyer'], name:
 export function buildContractText(fill: ContractFill): string {
     const seller = fill.seller;
     const buyer = fill.buyer;
-    const sellerIntro = `${seller.shortName}, далее «Продавец», в лице ${seller.signerTitle} ${seller.signerName}, действующего на основании Устава, с одной стороны`;
+    /**
+     * В преамбуле ФИО стоит в родительном падеже («в лице Директора Шуняевой
+     * Фаузили Рифовны»), а в строке подписи — в именительном. В карточке
+     * храним именительный, склоняем здесь (Лена Парфёнова 12.10.2026).
+     */
+    const sellerIntro = `${seller.shortName}, далее «Продавец», в лице ${titleToGenitive(seller.signerTitle)} ${toGenitive(seller.signerName)}, действующего на основании Устава, с одной стороны`;
     const buyerIntro = buyer.signerName
-        ? `${buyer.name}, именуемое в дальнейшем «Покупатель», в лице ${buyer.signerTitle || 'руководителя'} ${buyer.signerName}, действующего на основании ${buyer.signerBasis || 'Устава'}, с другой стороны`
+        ? `${buyer.name}, именуемое в дальнейшем «Покупатель», в лице ${titleToGenitive(buyer.signerTitle) || 'руководителя'} ${toGenitive(buyer.signerName)}, действующего на основании ${buyer.signerBasis || 'Устава'}, с другой стороны`
         : `${buyer.name}, именуемое в дальнейшем «Покупатель», с другой стороны`;
 
     return `ДОГОВОР КУПЛИ-ПРОДАЖИ № ${fill.number}

@@ -5,7 +5,7 @@ import { telegramBotToken } from '@/lib/telegram';
 import { formatWeekReview, lastWeek, loadWeek, recommend } from '@/lib/sales-rop/load-review';
 import { loadSettings, notifyOwnerFailure } from '@/lib/sales-rop/service';
 import { createProposal } from '@/lib/settings-registry/proposals';
-import { localToday } from '@/app/api/cron/rop-morning/route';
+import { localToday } from '@/lib/sales-rop/local-day';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;

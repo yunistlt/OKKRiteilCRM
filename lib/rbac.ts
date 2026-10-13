@@ -1,6 +1,6 @@
 import type { AppSession, AppRole } from '@/lib/auth';
 
-export const APP_ROLES: AppRole[] = ['admin', 'okk', 'rop', 'manager', 'jurist', 'demo'];
+export const APP_ROLES: AppRole[] = ['admin', 'okk', 'rop', 'manager', 'jurist', 'logistics', 'logistics_view', 'buhgalter', 'demo'];
 
 export type RouteRule = {
     prefix: string;
@@ -9,6 +9,26 @@ export type RouteRule = {
     category: string;
     allowed: AppRole[];
 };
+
+/**
+ * Сервисные маршруты: обслуживают саму механику экранов — состав выпадающих
+ * списков фильтра, сохранённые наборы фильтров, список менеджеров для фильтра.
+ * Данных заказа или денег они не отдают, поэтому правом в реестре доступов не
+ * являются: иначе каждая новая роль открывает страницу заказов с мёртвой
+ * панелью фильтров и человек видит пустой экран вместо работы (решение
+ * владельца 13.10.2026).
+ *
+ * Доступны любой вошедшей роли — саму сессию по-прежнему проверяет middleware.
+ */
+export const SERVICE_ROUTES = [
+    '/api/okk/filter-options',
+    '/api/okk/filter-presets',
+    '/api/okk/managers',
+];
+
+export function isServiceRoute(pathname: string): boolean {
+    return SERVICE_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+}
 
 export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/agents/katerina', label: 'API настроек Катерины', description: 'Адреса отделов и режимы пересылки/заказов агента-секретаря.', category: 'Управление', allowed: ['admin', 'rop'] },
@@ -21,25 +41,39 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/telegram', label: 'API Telegram-ботов', description: 'Вебхуки Telegram (ассистент РОПа); проверка — секрет вебхука.', category: 'Управление', allowed: ['admin'] },
     { prefix: '/api/calls', label: 'API телефона', description: 'Звонки менеджера из интерфейса: начать звонок, история, поток событий.', category: 'Управление', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/api/assistant', label: 'API помощника менеджера', description: 'Действия, которые помощник подготовил: письмо клиенту и звонок — выполняются только после подтверждения человеком.', category: 'Управление', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
-    { prefix: '/api/orders', label: 'API заказов', description: 'Данные заказа, документы (КП и счёт), письма и задачи по заказу.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
+    { prefix: '/api/orders', label: 'API заказов', description: 'Данные заказа, документы (КП и счёт), письма и задачи по заказу.', category: 'ОКК', allowed: ['admin', 'buhgalter', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/settings/legal-entities', label: 'Наши юрлица', description: 'Карточки наших юрлиц: ставка НДС, подписанты, связь с магазином RetailCRM.', category: 'Система', allowed: ['admin', 'rop'] },
     { prefix: '/api/settings/legal-entities', label: 'API наших юрлиц', description: 'Чтение и правка карточек юрлиц.', category: 'Система', allowed: ['admin', 'rop'] },
     { prefix: '/orders/new', label: 'Новый заказ', description: 'Создание заказа менеджером: клиент, состав из каталога сайта, комментарий.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/api/orders/create', label: 'API создания заказа', description: 'Заводит заказ в RetailCRM из нашего интерфейса.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
-    { prefix: '/help', label: 'Справка по работе системы', description: 'Инструкции для сотрудников: как пользоваться системой. Открыта всем ролям.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view', 'jurist', 'demo'] },
-    { prefix: '/notifications', label: 'Оповещения', description: 'Лента писем, задач и звонков по заказам человека.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
-    { prefix: '/api/notifications', label: 'API центра оповещений', description: 'Лента писем, задач и звонков по заказам человека с отметкой «прочитано».', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
+    { prefix: '/help', label: 'Справка по работе системы', description: 'Инструкции для сотрудников: как пользоваться системой. Открыта всем ролям.', category: 'ОКК', allowed: ['admin', 'buhgalter', 'okk', 'rop', 'manager', 'logistics', 'logistics_view', 'jurist', 'demo'] },
+    { prefix: '/notifications', label: 'Оповещения', description: 'Лента писем, задач и звонков по заказам человека.', category: 'ОКК', allowed: ['admin', 'buhgalter', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
+    { prefix: '/api/notifications', label: 'API центра оповещений', description: 'Лента писем, задач и звонков по заказам человека с отметкой «прочитано».', category: 'ОКК', allowed: ['admin', 'buhgalter', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/api/calls/alerts', label: 'API оповещений о звонках', description: 'Входящие звонки для всплывающего оповещения: кто звонит и по какому заказу.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/api/orders/bulk-email', label: 'API письма по нескольким заказам', description: 'Массовая отправка писем по выбранным заказам и перенос даты контакта.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/orders/task-alerts', label: 'API оповещений о задачах', description: 'Новые задачи по заказам — для всплывающего оповещения.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/api/address/parse', label: 'API разбора адреса', description: 'Разбор скопированного адреса доставки на область, город и индекс (Dadata).', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/api/catalog', label: 'API каталога сайта', description: 'Поиск товара на сайте для состава заказа.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
-    { prefix: '/clients', label: 'Клиенты', description: 'Реестр клиентов и карточка клиента: реквизиты, связанные карточки одного юрлица, заказы.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
+    { prefix: '/clients', label: 'Клиенты', description: 'Реестр клиентов и карточка клиента: реквизиты, связанные карточки одного юрлица, заказы.', category: 'ОКК', allowed: ['admin', 'buhgalter', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/api/clients/create', label: 'API создания клиента', description: 'Заведение нового клиента вручную.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/clients/requisites-lookup', label: 'API реквизитов по ИНН', description: 'Государственные данные компании по ИНН для карточки клиента.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics'] },
     { prefix: '/api/clients/requisites-from-file', label: 'API реквизитов из файла', description: 'Разбор присланной карточки предприятия.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics'] },
-    { prefix: '/api/clients', label: 'API клиентов', description: 'Данные реестра и карточки клиента.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
-    { prefix: '/orders', label: 'Заказы', description: 'Рабочий список заказов с панелью фильтров и статусами, карточка заказа, правка состава и комментариев.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
+    { prefix: '/api/payments/upload-statement', label: 'API загрузки выписки', description: 'Загрузка банковской выписки файлом, когда обмена с банком нет.', category: 'Платежи', allowed: ['admin', 'rop', 'okk'] },
+    { prefix: '/api/calls/active', label: 'API звонков, идущих сейчас', description: 'Всплывающее окно о звонке: кто звонит и по какому заказу.', category: 'Звонки', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics'] },
+    { prefix: '/api/company-groups', label: 'API групп компаний', description: 'Поиск групп компаний для объединения карточек одного покупателя.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
+    { prefix: '/files', label: 'Файлы', description: 'Все файлы заказов одним списком с поиском по названию файла и номеру заказа.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
+    { prefix: '/api/files', label: 'API файлов', description: 'Список всех файлов заказов для раздела «Файлы».', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
+    { prefix: '/api/files/search', label: 'API поиска файлов', description: 'Поиск файла по названию во всех заказах — чтобы найти паспорт изделия, не помня номер заказа.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
+    { prefix: '/api/clients', label: 'API клиентов', description: 'Данные реестра и карточки клиента.', category: 'ОКК', allowed: ['admin', 'buhgalter', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
+    /**
+     * Уставные документы компании для клиента. Маршрут публичный — его
+     * пропускает middleware, сессии у клиента нет. Правило нужно, чтобы
+     * маршрут не падал в корневое «admin/okk/rop»: иначе наш же интерфейс,
+     * открывший ссылку под менеджером, получит 403 (грабля расхождения
+     * страница/API).
+     */
+    { prefix: '/api/public/docs', label: 'API уставных документов', description: 'Отдаёт клиенту документы нашей компании по публичной ссылке /docs/<код>.', category: 'Публичное', allowed: ['admin', 'buhgalter', 'okk', 'rop', 'manager', 'jurist', 'logistics', 'logistics_view', 'demo'] },
+    { prefix: '/orders', label: 'Заказы', description: 'Рабочий список заказов с панелью фильтров и статусами, карточка заказа, правка состава и комментариев.', category: 'ОКК', allowed: ['admin', 'buhgalter', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/agents', label: 'Каталог ИИ-агентов', description: 'Справочная страница со всеми агентами, их ролями, связями и prompt contract.', category: 'Управление', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/settings/ai/training-examples', label: 'Примеры обучения', description: 'Управление обучающими примерами и датасетом.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/settings/training-examples', label: 'API примеров обучения', description: 'Серверные операции для примеров обучения.', category: 'Система', allowed: ['admin'] },
@@ -51,6 +85,10 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/cron/crm-reconcile-deleted', label: 'Крон: сверка удалённых заказов', description: 'Проверяет, жив ли заказ в RetailCRM, и помечает удалённые.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/cron/rop-relations', label: 'Крон: отношения с клиентами', description: 'Ночной пересчёт снимка отношений с клиентами для утреннего плана.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/cron/tamara-outfit', label: 'Крон: образ дня Тамары', description: 'Ночью выбирает из гардероба, во что Тамара оденется, по сезону, дню недели и погоде.', category: 'Система', allowed: ['admin'] },
+    { prefix: '/sales-rop/read-gate', label: 'Чтение разборов', description: 'Кто открыл утренний разбор, когда подтвердил и сколько читал. Повод для разговора, не метрика.', category: 'Управление', allowed: ['admin', 'rop'] },
+    { prefix: '/api/read-gate/report', label: 'API отчёта о чтении разборов', description: 'Сводка по прочтению обязательных документов.', category: 'Управление', allowed: ['admin', 'rop'] },
+    { prefix: '/read-gate', label: 'Обязательное прочтение', description: 'Документ, который нужно прочитать до начала работы: разбор дня, изменённый регламент.', category: 'Управление', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view', 'jurist', 'buhgalter'] },
+    { prefix: '/api/read-gate', label: 'API обязательного прочтения', description: 'Отметка времени чтения и подтверждение прочтения.', category: 'Управление', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view', 'jurist', 'buhgalter'] },
     { prefix: '/settings/sales-rop', label: 'Настройки бота-РОПа', description: 'Нагрузка отдела, нормы дня, пороги напоминаний и тексты бота-РОПа.', category: 'Система', allowed: ['admin', 'rop'] },
     { prefix: '/api/sales-rop/settings', label: 'API настроек бота-РОПа', description: 'Чтение и правка настроек утренних планов и вечернего разбора.', category: 'Система', allowed: ['admin', 'rop'] },
     { prefix: '/api/sales-rop/run', label: 'API ручного прогона бота-РОПа', description: 'Собрать и разослать утренние планы вручную, когда крон не отработал.', category: 'Система', allowed: ['admin', 'rop'] },
@@ -90,6 +128,8 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/orders', label: 'API карточки заказа', description: 'Чтение карточки заказа и её анализ (используется в ОКК и отчётах ЗП).', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view', 'demo'] },
     { prefix: '/analytics', label: 'Мой день', description: 'Рабочий стол менеджера: очередь действий, план месяца, воронка.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/api/analysis', label: 'API аналитики', description: 'Серверные маршруты аналитики.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop'] },
+    { prefix: '/legal/knowledge', label: 'Правила юротдела', description: 'Правила, по которым ИИ-юрисконсульт проверяет договоры: что норма, что красная линия.', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },
+    { prefix: '/api/legal/knowledge', label: 'API правил юротдела', description: 'Чтение и правка правил проверки договоров.', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },
     { prefix: '/legal', label: 'Юридический отдел', description: 'Реестр исполнительных производств (ИП ФССП).', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },
     { prefix: '/legal/helpdesk', label: 'Юридический помощник', description: 'Дарья (helpdesk по базе знаний) и загрузка договоров на анализ.', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view', 'jurist'] },
     { prefix: '/legal/matters', label: 'Претензионно-исковая работа', description: 'Реестр дел: претензии, переговоры, суды и взыскание как стадии одного спора.', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },
@@ -107,13 +147,33 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/calls', label: 'Звонки', description: 'Разговоры отдела продаж с записями и расшифровками.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/messenger', label: 'Мессенджер', description: 'Рабочий раздел внутренних диалогов.', category: 'Связь', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/api/messenger', label: 'API мессенджера', description: 'Серверные методы мессенджера.', category: 'Связь', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
+    /**
+     * Бухгалтер видит деньги целиком, но не трогает их.
+     *
+     * Правило длиннее родительского перекрывает его, поэтому опасные действия
+     * вынесены отдельными строками ВЫШЕ общего /api/salary: закрытие и
+     * переоткрытие периода, пересчёт, ставки мотивации и ручная отправка
+     * ведомости остаются за админом и РОПом. Решение владельца 07.10.2026:
+     * главбуху нужен просмотр, а не управление.
+     */
+    { prefix: '/api/salary/close', label: 'API закрытия периода ЗП', description: 'Фиксирует расчёт месяца и отправляет ведомость в бухгалтерию. Необратимо без переоткрытия.', category: 'Зарплата', allowed: ['admin', 'rop'] },
+    { prefix: '/api/salary/reopen', label: 'API переоткрытия периода ЗП', description: 'Снимает заморозку с закрытого месяца.', category: 'Зарплата', allowed: ['admin'] },
+    { prefix: '/api/salary/recalc', label: 'API пересчёта ЗП', description: 'Перезаписывает снимок расчёта за месяц.', category: 'Зарплата', allowed: ['admin', 'rop'] },
+    { prefix: '/api/salary/send-to-accounting', label: 'API отправки ведомости', description: 'Ручная отправка расчётной ведомости в чат бухгалтерии.', category: 'Зарплата', allowed: ['admin', 'rop'] },
+    { prefix: '/api/salary/config', label: 'API правил мотивации', description: 'Ставки, пороги и коэффициенты — числа, по которым считается ЗП.', category: 'Зарплата', allowed: ['admin', 'rop'] },
+    { prefix: '/api/salary/schemes', label: 'API схем мотивации', description: 'Состав блоков схемы и назначение схем менеджерам.', category: 'Зарплата', allowed: ['admin', 'rop'] },
+    { prefix: '/api/salary/blocks', label: 'API блоков мотивации', description: 'Каталог бонус-блоков конструктора мотивации.', category: 'Зарплата', allowed: ['admin', 'rop'] },
+    { prefix: '/api/salary/plans', label: 'API планов продаж', description: 'Личные планы и план отдела по месяцам.', category: 'Зарплата', allowed: ['admin', 'rop'] },
+    { prefix: '/api/salary/grades', label: 'API грейдов', description: 'Уровни менеджеров и политика повышения.', category: 'Зарплата', allowed: ['admin', 'rop'] },
+    { prefix: '/api/salary/duty', label: 'API дежурств', description: 'Табель дежурств, из которого считается доплата.', category: 'Зарплата', allowed: ['admin', 'rop'] },
+    { prefix: '/salary/settings', label: 'Настройки мотивации', description: 'Конструктор схем, ставки, пороги, планы и грейды.', category: 'Зарплата', allowed: ['admin', 'rop'] },
     { prefix: '/salary/my', label: 'Моя зарплата', description: 'Просмотр собственной зарплаты и разбивки менеджером.', category: 'Зарплата', allowed: ['admin', 'rop', 'manager'] },
     { prefix: '/api/salary/my', label: 'API моей зарплаты', description: 'Чтение собственной зарплаты менеджером.', category: 'Зарплата', allowed: ['admin', 'rop', 'manager'] },
     { prefix: '/api/salary/sim-manager', label: 'API персонального симулятора ЗП', description: 'Срез показателей менеджера для симулятора ЗП (менеджер — только свой).', category: 'Зарплата', allowed: ['admin', 'rop', 'manager'] },
-    { prefix: '/salary', label: 'Зарплата', description: 'Расчёт ЗП менеджеров, настройки мотивации, закрытие периода.', category: 'Зарплата', allowed: ['admin', 'rop'] },
-    { prefix: '/api/salary', label: 'API зарплаты', description: 'Серверные методы расчёта ЗП и конфигурации мотивации.', category: 'Зарплата', allowed: ['admin', 'rop'] },
-    { prefix: '/payments', label: 'Платежи', description: 'Распределение банковских платежей «с точки» по заказам и ручной разбор.', category: 'Финансы', allowed: ['admin', 'rop'] },
-    { prefix: '/api/payments', label: 'API платежей', description: 'Серверные методы сервиса распределения платежей (список, привязка, разбор).', category: 'Финансы', allowed: ['admin', 'rop'] },
+    { prefix: '/salary', label: 'Зарплата', description: 'Ведомость и дашборд ЗП отдела. Закрытие периода и настройки мотивации — отдельными правилами, бухгалтеру они закрыты.', category: 'Зарплата', allowed: ['admin', 'rop', 'buhgalter'] },
+    { prefix: '/api/salary', label: 'API зарплаты', description: 'Чтение расчёта ЗП и выгрузка ведомости.', category: 'Зарплата', allowed: ['admin', 'rop', 'buhgalter'] },
+    { prefix: '/payments', label: 'Платежи', description: 'Распределение банковских платежей «с точки» по заказам и ручной разбор.', category: 'Финансы', allowed: ['admin', 'rop', 'buhgalter'] },
+    { prefix: '/api/payments', label: 'API платежей', description: 'Серверные методы сервиса распределения платежей (список, привязка, разбор).', category: 'Финансы', allowed: ['admin', 'rop', 'buhgalter'] },
     { prefix: '/', label: 'Центр управления', description: 'Главная страница и дашборд офиса.', category: 'Управление', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/admin', label: 'Раздел admin', description: 'Прочие административные страницы.', category: 'Система', allowed: ['admin'] },
 ];
@@ -158,6 +218,8 @@ export function getDefaultPathForRole(role: AppRole | null | undefined): string 
     if (role === 'okk') return '/okk';
     if (role === 'demo') return '/okk';
     if (role === 'jurist') return '/legal';
+    // Бухгалтер начинает с платежей — это его ежедневная работа.
+    if (role === 'buhgalter') return '/payments';
     // Логистика начинает с заказов: отгрузка и доставка живут там.
     if (role === 'logistics' || role === 'logistics_view') return '/orders';
     return '/';
@@ -176,6 +238,8 @@ export function getAllowedRolesForPath(pathname: string): AppRole[] | null {
 }
 
 export function canAccessPathWithRules(role: AppRole | null | undefined, pathname: string, rules: RouteRule[]): boolean {
+    if (isServiceRoute(pathname)) return true;
+
     const allowed = getAllowedRolesForPathFromRules(pathname, rules);
     if (!allowed) return true;
     return hasRole(role, allowed);

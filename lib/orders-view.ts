@@ -49,6 +49,7 @@ export const FILTER_FIELDS: ViewItem[] = [
     { key: 'sum', label: 'Сумма заказа', group: 'Стоимость' },
     { key: 'statuses', label: 'Статус заказа', group: 'Основное' },
     { key: 'categories', label: 'Категория товара', group: 'Товары' },
+    { key: 'itemName', label: 'Наименование товара', group: 'Товары' },
     { key: 'sferas', label: 'Сфера деятельности', group: 'Покупатель' },
     { key: 'control', label: 'КОНТРОЛЬ', group: 'Основное' },
     { key: 'contragent', label: 'Наименование контрагента', group: 'Контрагент' },
@@ -58,6 +59,7 @@ export const FILTER_FIELDS: ViewItem[] = [
     { key: 'managerComment', label: 'Комментарий оператора', group: 'Комментарии' },
     { key: 'customerComment', label: 'Комментарий клиента', group: 'Комментарии' },
     { key: 'overdueOnly', label: 'Просроченные по нормативу', group: 'Даты' },
+    { key: 'duplicatesOnly', label: 'Только возможные дубли', group: 'Основное' },
 ];
 
 export const DEFAULT_FILTER_FIELDS = FILTER_FIELDS.map((f) => f.key);

@@ -10,6 +10,7 @@ import { getSession } from '@/lib/auth';
 import { orderDocumentData } from '@/lib/own-crm/documents';
 import { supabase } from '@/utils/supabase';
 import { buildOrderDocumentPdf } from '@/lib/own-crm/order-document-pdf';
+import { keepOrderDocument } from '@/lib/orders/keep-document';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -29,15 +30,24 @@ export async function GET(request: Request, { params }: { params: { id: string }
      * менеджер получал «Неверный номер заказа» (Ирина 02.10.2026).
      */
     const raw = decodeURIComponent(String(params.id));
-    let orderId = Number(raw);
-    if (!Number.isFinite(orderId)) {
-        const { data: found } = await supabase
-            .from('orders')
-            .select('order_id')
-            .eq('number', raw)
-            .maybeSingle();
-        orderId = Number(found?.order_id);
-    }
+
+    /**
+     * Сначала ищем по НОМЕРУ, и только потом считаем, что пришёл id.
+     *
+     * Свои заказы нумеруются 900089 — число, но не идентификатор (настоящий
+     * `order_id` у него 900000089). Проверка «не число — значит номер»
+     * работала, пока свои номера были с кириллической «А»; после перехода на
+     * шестизначные номер молча уходил в поиск по id, заказ не находился, и
+     * кнопка «Приложить КП» давала «Заказ не найден» (Ирина Гордеева
+     * 08.10.2026).
+     */
+    const { data: byNumber } = await supabase
+        .from('orders')
+        .select('order_id')
+        .eq('number', raw)
+        .maybeSingle();
+
+    const orderId = Number((byNumber as any)?.order_id ?? raw);
     if (!Number.isFinite(orderId)) {
         return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 });
     }
@@ -60,6 +70,25 @@ export async function GET(request: Request, { params }: { params: { id: string }
     }
 
     const built = await buildOrderDocumentPdf(data, kind);
+
+    /**
+     * Показали документ — он же остаётся в файлах заказа.
+     *
+     * Раньше счёт ложился в заказ, только если уходил письмом: менеджер
+     * выставлял счёт, а в «Файлах» его не было (Ирина Гордеева 12.10.2026).
+     * Сохранение не должно мешать показу, поэтому его отказ только пишется
+     * в журнал (это внутри keepOrderDocument).
+     */
+    await keepOrderDocument(
+        String(data.orderNumber ?? decodeURIComponent(String(params.id))),
+        kind,
+        {
+            filename: built.fileName,
+            content: Buffer.from(new Uint8Array(built.content)),
+            contentType: built.contentType ?? 'application/pdf',
+        },
+        session.user.email || session.user.username || null,
+    );
 
     return new NextResponse(new Uint8Array(built.content), {
         headers: {

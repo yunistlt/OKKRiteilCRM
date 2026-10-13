@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import MailComposer from 'nodemailer/lib/mail-composer';
 import { randomUUID } from 'crypto';
+import { linkifyHtml } from '@/lib/html-links';
 import { brandAttachment, wrapInBrand } from '@/lib/email-brand';
 import { appendToSentFolder } from './email/imap';
 
@@ -13,15 +14,36 @@ export function isEmailConfigured(): boolean {
     return Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
+/**
+ * Соединение с почтовым сервером.
+ *
+ * Адрес берём из окружения, а не из кода: 12.10.2026 Яндекс перестал пускать
+ * наш сервер к `smtp.yandex.ru` (таймаут с Vercel, при этом gmail и mail.ru с
+ * той же машины отвечают за миллисекунды). Запасной путь — отправка через наш
+ * российский VPS: там же стоит обратный прокси. Переключается переменными
+ * `SMTP_HOST`/`SMTP_PORT`, перекладывать код для этого не придётся.
+ *
+ * `servername` пиним на настоящее имя почтового сервера: соединение идёт
+ * сквозным TLS до Яндекса, даже когда адрес — наш VPS, и пароль по дороге
+ * никто не видит.
+ */
 function createTransporter() {
+    const host = process.env.SMTP_HOST || 'smtp.yandex.ru';
+    const port = Number(process.env.SMTP_PORT || 465);
+    const servername = process.env.SMTP_SERVERNAME || 'smtp.yandex.ru';
+
     return nodemailer.createTransport({
-        host: 'smtp.yandex.ru',
-        port: 465,
-        secure: true,
+        host,
+        port,
+        secure: port === 465,
         auth: {
             user: process.env.SMTP_USER, // rop@zmktlt.ru
             pass: process.env.SMTP_PASS, // пароль приложения Яндекс 360
         },
+        tls: { servername },
+        // Не ждём минуту на мёртвом соединении: человек стоит над письмом.
+        connectionTimeout: 15_000,
+        greetingTimeout: 15_000,
     });
 }
 
@@ -52,7 +74,7 @@ export async function sendAppEmail({ to, subject, html, fromName = 'OKKRiteil CR
             from: `"${fromName}" <${process.env.SMTP_USER}>`,
             to,
             subject,
-            html: wrapInBrand(html),
+            html: wrapInBrand(linkifyHtml(html)),
             replyTo,
             attachments: [brandAttachment(), ...(attachments || []).map((a) => ({
                 filename: a.filename || 'attachment',
@@ -107,11 +129,23 @@ export interface SendOrderEmailInput {
     fromName?: string;
     replyTo?: string;             // по умолчанию НЕ задаём: ответ должен вернуться в ящик rop@ для привязки в CRM
     attachments?: EmailAttachment[];
+    /**
+     * Копия и скрытая копия.
+     *
+     * Со стороны клиента в переписке обычно несколько человек — снабженец,
+     * бухгалтер, начальник. Ответ только отправителю разваливает разговор на
+     * два (ТЗ §4). Скрытая копия нужна реже, но нужна: руководителю показать
+     * письмо, не втягивая его в переписку.
+     */
+    cc?: string[];
+    bcc?: string[];
 }
 
 export interface SendOrderEmailResult {
     sent: boolean;
     appendedToSent: boolean;      // легла ли копия в «Отправленные» (нужно для видимости в CRM)
+    /** Копия в «Отправленные» встала в очередь и уйдёт туда фоном, в ближайшую минуту. */
+    appendQueued?: boolean;
     subject: string;
     messageId?: string;
     sentFolder?: string;
@@ -146,8 +180,10 @@ export async function sendOrderEmail(input: SendOrderEmailInput): Promise<SendOr
         const composer = new MailComposer({
             from: `"${fromName}" <${user}>`,
             to: input.to,
+            ...(input.cc?.length ? { cc: input.cc.join(', ') } : {}),
+            ...(input.bcc?.length ? { bcc: input.bcc.join(', ') } : {}),
             subject,
-            html: wrapInBrand(input.html),
+            html: wrapInBrand(linkifyHtml(input.html)),
             // Текстовая часть обязательна: без неё письмо в папке «Отправленные»
             // лежит одним HTML, и лента переписки по заказу показывает пустоту.
             text: htmlToPlainText(input.html),
@@ -175,13 +211,41 @@ export async function sendOrderEmail(input: SendOrderEmailInput): Promise<SendOr
     // 1) Отправка по SMTP той самой собранной копии.
     try {
         const transporter = createTransporter();
-        await transporter.sendMail({ envelope: { from: user, to: input.to }, raw });
+        /**
+         * Конверт перечисляем сами: раз письмо собрано заранее, SMTP не
+         * вычитывает из него «Кому» и «Копию». Скрытая копия идёт только в
+         * конверте — в заголовках письма её нет, на то она и скрытая.
+         */
+        const envelopeTo = Array.from(new Set([
+            input.to,
+            ...(input.cc ?? []),
+            ...(input.bcc ?? []),
+        ].map((address) => String(address ?? '').trim()).filter(Boolean)));
+
+        await transporter.sendMail({ envelope: { from: user, to: envelopeTo }, raw });
     } catch (error: any) {
         console.error('[email] sendOrderEmail SMTP error:', error?.message || error);
         return { sent: false, appendedToSent: false, subject, messageId, error: error?.message || 'send_failed' };
     }
 
-    // 2) Дозапись копии в «Отправленные» (best-effort: видимость в почте и импорт в RetailCRM).
+    /**
+     * 2) Копия в «Отправленные» — ФОНОМ.
+     *
+     * Это отдельное соединение с ящиком: TLS, вход и заливка всего письма с
+     * вложениями. Секунды, которые менеджер стоял и ждал уже отправленное
+     * письмо («быстрее отправку писем можно сделать?» — Лена Парфёнова
+     * 09.10.2026). Для клиента копия в Sent ничего не меняет: письмо у него
+     * уже есть.
+     *
+     * Кладём письмо в очередь задач — её разбирает крон раз в минуту. Если
+     * очередь недоступна, дозаписываем здесь же: лучше подождать, чем
+     * потерять копию.
+     */
+    const queued = await queueSentAppend(raw, messageId, subject);
+    if (queued) {
+        return { sent: true, appendedToSent: false, appendQueued: true, subject, messageId };
+    }
+
     const appended = await appendToSentFolder(raw);
     if (!appended.appended) {
         console.warn('[email] sendOrderEmail: письмо отправлено, но НЕ дозаписано в Sent:', appended.error);
@@ -195,4 +259,53 @@ export async function sendOrderEmail(input: SendOrderEmailInput): Promise<SendOr
         sentFolder: appended.folder,
         appendError: appended.appended ? undefined : appended.error,
     };
+}
+
+/** Где лежат письма, ждущие дозаписи в «Отправленные». */
+export const SENT_QUEUE_BUCKET = 'okk-assets';
+export const SENT_QUEUE_PREFIX = 'outgoing-mime';
+
+/**
+ * Положить готовое письмо в очередь на дозапись в «Отправленные».
+ *
+ * Само письмо кладём в хранилище, а в задачу — путь: MIME с вложениями весит
+ * мегабайты, в поле задачи ему не место.
+ *
+ * Возвращает true, если задача встала в очередь.
+ */
+async function queueSentAppend(raw: Buffer, messageId: string, subject: string): Promise<boolean> {
+    try {
+        const { supabase } = await import('@/utils/supabase');
+        const { safeEnqueueSystemJob } = await import('@/lib/system-jobs');
+
+        const key = messageId.replace(/[<>]/g, '').replace(/[^a-zA-Z0-9._@-]/g, '-');
+        const path = `${SENT_QUEUE_PREFIX}/${key}.eml`;
+
+        const upload = await supabase.storage
+            .from(SENT_QUEUE_BUCKET)
+            .upload(path, new Uint8Array(raw), { contentType: 'message/rfc822', upsert: true });
+        if (upload.error) {
+            console.warn('[email] письмо не легло в хранилище для дозаписи:', upload.error.message);
+            return false;
+        }
+
+        const job = await safeEnqueueSystemJob({
+            jobType: 'email_sent_append',
+            payload: { path, messageId, subject },
+            priority: 40,
+            // Одно письмо — одна дозапись, сколько бы раз задача ни повторилась.
+            idempotencyKey: `email_sent_append:${key}`,
+            maxAttempts: 5,
+        });
+
+        if (!job) {
+            await supabase.storage.from(SENT_QUEUE_BUCKET).remove([path]).catch(() => undefined);
+            return false;
+        }
+
+        return true;
+    } catch (e: any) {
+        console.warn('[email] очередь дозаписи недоступна, пишем в Sent сразу:', e?.message ?? e);
+        return false;
+    }
 }

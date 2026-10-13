@@ -44,7 +44,9 @@ export type Task = {
         | 'reactivation'
         | 'client_touch'
         // Закрыт без разговора с клиентом — возвращён в работу.
-        | 'cancel_unconfirmed';
+        | 'cancel_unconfirmed'
+        // Клиент написал письмо, а мы не ответили (ТЗ переписки §9, этап 3).
+        | 'mail_unanswered';
     reasonText: string;
     weight: number;
 };
@@ -232,6 +234,9 @@ export function buildPlan(
             // недоделанная старая, и откладывать её значит согласиться, что
             // клиента потеряли молча.
             cancel_unconfirmed: -1,
+            // Письмо клиента без ответа — сразу за ним: клиент уже обратился
+            // сам, молчать в ответ хуже, чем не позвонить первым.
+            mail_unanswered: 0,
             invoice_stale: 0,
             contact_overdue: 1,
             contact_today: 2,

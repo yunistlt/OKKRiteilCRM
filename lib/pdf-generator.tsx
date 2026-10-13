@@ -11,6 +11,7 @@ import {
     Circle,
     G,
     Image,
+    Link,
 } from '@react-pdf/renderer';
 import path from 'path';
 import { BRAND, LOGO_DATA_URL } from '@/lib/brand';
@@ -54,6 +55,11 @@ export interface ProposalItem {
     discount?: number;
     /** Фото товара с его карточки на сайте. */
     image?: string | null;
+    /**
+     * Ссылка на карточку товара на сайте: название в документе кликабельно.
+     * Просьба Ирины Гордеевой 05.10.2026 — так было в прежних КП из RetailCRM.
+     */
+    url?: string | null;
 }
 
 export interface ProposalData {
@@ -183,7 +189,7 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: '#f1f5f9',
     },
-    totalLabel: { fontSize: 9, color: '#64748b' },
+    totalLabel: { fontSize: 10, color: '#374151' },
     totalValue: { fontSize: 9, color: '#1e293b' },
     grandTotalRow: {
         flexDirection: 'row',
@@ -230,12 +236,23 @@ function formatMoney(n: number): string {
 
 // ── Компонент PDF ─────────────────────────────────────────────────────────────
 function ProposalPDF({ data }: { data: ProposalData }) {
-    const subtotal = data.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const discountAmt = data.items.reduce((sum, item) => sum + Number(item.discount || 0), 0)
-        || Math.round(subtotal * ((data.discount_pct || 0) / 100));
-    const total = data.items.reduce((sum, item) => sum + Number(item.discount || 0), 0) > 0
-        ? subtotal
-        : subtotal - discountAmt;
+    /**
+     * Счёт как в RetailCRM: подытог по базовым ценам, из него вычитаются скидки
+     * позиций, а разовая скидка на заказ считается от уже уценённой стоимости.
+     *
+     * Раньше подытог считался по ценам СО скидкой, а скидка показывалась рядом
+     * справочно — на глаз выходило, будто её вычтут ещё раз (замечание
+     * владельца 05.10.2026).
+     */
+    const subtotal = data.items.reduce(
+        (sum, item) => sum + (item.initial_price ?? item.price) * item.quantity, 0,
+    );
+    const itemsDiscount = data.items.reduce((sum, item) => sum + Number(item.discount || 0), 0);
+    const orderDiscount = Number(data.discount_amount) > 0
+        ? Number(data.discount_amount)
+        : Math.round((subtotal - itemsDiscount) * ((data.discount_pct || 0) / 100));
+    const discountAmt = itemsDiscount + orderDiscount;
+    const total = Math.max(0, subtotal - discountAmt);
     const vatPct = Number(data.vat_pct ?? 0);
     const vatAmt = vatPct > 0 ? Math.round(total * (vatPct / 100) / (1 + vatPct / 100)) : 0;
 
@@ -322,9 +339,13 @@ function ProposalPDF({ data }: { data: ProposalData }) {
                     <Text style={[invStyles.tblHeaderText, { width: 54 }]}>Фото</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cName]}>Наименование</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cQty]}>Кол-во</Text>
+                    {/* Порядок колонок как в RetailCRM: базовая цена, скидка, сумма
+                        со скидкой. Так строка читается сама: 92 448 − 18 489,6 = 73 958,4.
+                        Раньше в «Цене» стояла цена УЖЕ со скидкой, и арифметика не
+                        сходилась на глаз (замечание владельца 05.10.2026). */}
                     <Text style={[invStyles.tblHeaderText, invStyles.cPrice]}>Цена, ₽</Text>
-                    <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Сумма, ₽</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Скидка, ₽</Text>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Сумма, ₽</Text>
                 </View>
                 {data.items.map((item, idx) => (
                     <View key={idx} style={[invStyles.tblRow, idx % 2 === 1 ? invStyles.tblAlt : {}]} wrap={false}>
@@ -335,14 +356,25 @@ function ProposalPDF({ data }: { data: ProposalData }) {
                             ) : null}
                         </View>
                         <View style={invStyles.cName}>
-                            <Text style={invStyles.cell}>{item.name}</Text>
+                            {item.url ? (
+                                <Link src={item.url} style={invStyles.cellLink}>{item.name}</Link>
+                            ) : (
+                                <Text style={invStyles.cell}>{item.name}</Text>
+                            )}
                             {item.description && <Text style={invStyles.cellGray}>{item.description}</Text>}
                         </View>
                         <Text style={[invStyles.cell, invStyles.cQty]}>{item.quantity} {item.unit || 'шт.'}</Text>
-                        <Text style={[invStyles.cell, invStyles.cPrice]}>{formatMoney(item.price)}</Text>
-                        <Text style={[invStyles.cell, invStyles.cTotal]}>{formatMoney(item.price * item.quantity)}</Text>
+                        {/* Цена — базовая, до скидки: `initial_price`. Если её не
+                            передали (старые документы), берём цену как есть. */}
+                        <Text style={[invStyles.cell, invStyles.cPrice]}>
+                            {formatMoney(item.initial_price ?? item.price)}
+                        </Text>
                         <Text style={[invStyles.cell, invStyles.cTotal]}>
                             {item.discount ? formatMoney(item.discount) : '—'}
+                        </Text>
+                        {/* Сумма — к оплате за строку: цена × количество минус скидка. */}
+                        <Text style={[invStyles.cell, invStyles.cTotal]}>
+                            {formatMoney((item.initial_price ?? item.price) * item.quantity - (item.discount || 0))}
                         </Text>
                     </View>
                 ))}
@@ -384,8 +416,11 @@ function ProposalPDF({ data }: { data: ProposalData }) {
                         : 'Срок действия предложения уточняйте у менеджера'}
                 </Text>
 
-                {/* Подписи и печать */}
-                <View style={invStyles.signBlock}>
+                {/* Подписи и печать.
+                    `wrap={false}` — чтобы блок не разрывался: печать уезжала на
+                    пустой второй лист, и клиенты спрашивали, что за странный
+                    счёт (Елена Парфёнова и Евгения 06.10.2026). */}
+                <View style={invStyles.signBlock} wrap={false}>
                     <View style={invStyles.signCol}>
                         <Text style={invStyles.signLabel}>{data.signer_title || 'Руководитель'}</Text>
                         {data.signature_image ? (
@@ -394,14 +429,11 @@ function ProposalPDF({ data }: { data: ProposalData }) {
                         <View style={invStyles.signLine} />
                         <Text style={invStyles.signName}>{data.signer_name || '____________________'}</Text>
                     </View>
-                    <View style={invStyles.signCol}>
-                        <Text style={invStyles.signLabel}>Менеджер</Text>
-                        <View style={invStyles.signLine} />
-                        <Text style={invStyles.signName}>{data.manager_name || '____________________'}</Text>
-                    </View>
+                    {/* Печать — у подписи руководителя, как её ставят на бумаге
+                        (просьба Евгении 06.10.2026). */}
                     {data.seal_image ? (
                         <View style={invStyles.sealCol}>
-                            <Image src={data.seal_image} style={{ width: 110, height: 110, objectFit: 'contain' }} />
+                            <Image src={data.seal_image} style={{ width: 92, height: 92, objectFit: 'contain' }} />
                         </View>
                     ) : data.seller_has_seal === false ? null : (
                         <View style={invStyles.sealCol}>
@@ -415,6 +447,12 @@ function ProposalPDF({ data }: { data: ProposalData }) {
                             />
                         </View>
                     )}
+
+                    <View style={invStyles.signCol}>
+                        <Text style={invStyles.signLabel}>Менеджер</Text>
+                        <View style={invStyles.signLine} />
+                        <Text style={invStyles.signName}>{data.manager_name || '____________________'}</Text>
+                    </View>
                 </View>
 
                 <View style={invStyles.footer} fixed>
@@ -498,54 +536,59 @@ const invStyles = StyleSheet.create({
     // Шапка
     // Фирменная полоса — синяя, как шапка сайта (брендирование документов,
     // решение владельца 05.10.2026).
-    topBorder: { height: 4, backgroundColor: BRAND.blue, marginBottom: 12 },
-    logo: { width: 150, height: 47, objectFit: 'contain', marginBottom: 10 },
-    headerRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
+    topBorder: { height: 4, backgroundColor: BRAND.blue, marginBottom: 8 },
+    logo: { width: 130, height: 40, objectFit: 'contain', marginBottom: 6 },
+    headerRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
     sellerBlock: { width: '55%' },
     invoiceMeta: { width: '40%', alignItems: 'flex-end' },
     bold: { fontFamily: FONT_FAMILY, fontWeight: 'bold' },
     lg: { fontSize: 18, fontFamily: FONT_FAMILY, fontWeight: 'bold', color: '#0f172a', marginBottom: 4 },
-    sm: { fontSize: 8, color: '#64748b', lineHeight: 1.4 },
+    sm: { fontSize: 9, color: '#374151', lineHeight: 1.45 },
     // Банковские реквизиты
     bankBox: {
         backgroundColor: '#f8fafc',
         border: 1, borderColor: '#e2e8f0', borderRadius: 4,
-        padding: 10, marginBottom: 14,
+        padding: 8, marginBottom: 10,
     },
     bankTitle: { fontSize: 8, fontFamily: FONT_FAMILY, fontWeight: 'bold', color: '#475569', textTransform: 'uppercase', marginBottom: 6, letterSpacing: 0.5 },
-    bankRow: { flexDirection: 'row', marginBottom: 3 },
-    bankLabel: { width: '38%', fontSize: 8, color: '#94a3b8' },
-    bankValue: { width: '62%', fontSize: 8, color: '#1e293b', fontFamily: FONT_FAMILY, fontWeight: 'bold' },
+    bankRow: { flexDirection: 'row', marginBottom: 2 },
+    bankLabel: { width: '38%', fontSize: 9, color: '#4b5563' },
+    bankValue: { width: '62%', fontSize: 9, color: '#111827', fontFamily: FONT_FAMILY, fontWeight: 'bold' },
     // Плательщик
-    payerBox: { border: 1, borderColor: '#e2e8f0', borderRadius: 4, padding: 10, marginBottom: 14 },
+    payerBox: { border: 1, borderColor: '#e2e8f0', borderRadius: 4, padding: 8, marginBottom: 10 },
     payerTitle: { fontSize: 8, fontFamily: FONT_FAMILY, fontWeight: 'bold', color: '#475569', textTransform: 'uppercase', marginBottom: 6 },
-    payerRow: { flexDirection: 'row', marginBottom: 3 },
-    payerLabel: { width: '28%', fontSize: 8, color: '#94a3b8' },
-    payerValue: { width: '72%', fontSize: 8, color: '#1e293b' },
+    payerRow: { flexDirection: 'row', marginBottom: 2 },
+    payerLabel: { width: '28%', fontSize: 9, color: '#4b5563' },
+    payerValue: { width: '72%', fontSize: 9, color: '#111827' },
     // Таблица
     tblHeader: { flexDirection: 'row', backgroundColor: '#0f172a', padding: '6 8', marginBottom: 0 },
-    tblHeaderText: { fontSize: 7.5, color: '#fff', fontFamily: FONT_FAMILY, fontWeight: 'bold', textTransform: 'uppercase' },
+    tblHeaderText: { fontSize: 8.5, color: '#fff', fontFamily: FONT_FAMILY, fontWeight: 'bold', textTransform: 'uppercase' },
     tblRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f1f5f9', padding: '6 8' },
     tblAlt: { backgroundColor: '#f8fafc' },
     cNum: { width: '5%' }, cName: { width: '38%' }, cQty: { width: '9%', textAlign: 'right' },
     cUnit: { width: '9%', textAlign: 'center' }, cPrice: { width: '19%', textAlign: 'right' }, cTotal: { width: '20%', textAlign: 'right' },
-    cell: { fontSize: 8.5, color: '#1e293b' },
-    cellGray: { fontSize: 7.5, color: '#94a3b8', marginTop: 1 },
+    // Размеры и цвет: «сделать больше шрифт, серый шрифт поменять на чёрный»
+    // (Евгения 06.10.2026) — в документ приходилось всматриваться.
+    cell: { fontSize: 9.5, color: '#111827' },
+    cellGray: { fontSize: 8.5, color: '#4b5563', marginTop: 1 },
+    // Название-ссылка на карточку товара: цветом и подчёркиванием, чтобы по нему
+    // было видно, что нажимается (просьба Ирины Гордеевой 05.10.2026).
+    cellLink: { fontSize: 9.5, color: BRAND.blue, textDecoration: 'underline' },
     // Итоги
-    totals: { alignSelf: 'flex-end', width: '44%', marginTop: 8, marginBottom: 14 },
+    totals: { alignSelf: 'flex-end', width: '44%', marginTop: 6, marginBottom: 10 },
     totRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-    totLabel: { fontSize: 8.5, color: '#64748b' },
+    totLabel: { fontSize: 9.5, color: '#374151' },
     totVal: { fontSize: 8.5, color: '#1e293b' },
     grandRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 5, padding: '7 8', backgroundColor: '#0f172a', borderRadius: 3 },
     grandLabel: { fontSize: 9, color: '#fff', fontFamily: FONT_FAMILY, fontWeight: 'bold' },
     grandVal: { fontSize: 11, color: '#10b981', fontFamily: FONT_FAMILY, fontWeight: 'bold' },
     // Подпись
-    signBlock: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 24, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 12 },
-    signCol: { width: '32%' },
-    sealCol: { width: '30%', alignItems: 'center' },
-    signLabel: { fontSize: 8, color: '#94a3b8', marginBottom: 6 },
-    signLine: { borderBottomWidth: 1, borderBottomColor: '#94a3b8', marginBottom: 4 },
-    signName: { fontSize: 8, color: '#475569' },
+    signBlock: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 14, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 8 },
+    signCol: { width: '34%' },
+    sealCol: { width: '28%', alignItems: 'center' },
+    signLabel: { fontSize: 9, color: '#4b5563', marginBottom: 6 },
+    signLine: { borderBottomWidth: 1, borderBottomColor: '#6b7280', marginBottom: 4 },
+    signName: { fontSize: 9.5, color: '#111827' },
     footer: { position: 'absolute', bottom: 28, left: 40, right: 40, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 8, flexDirection: 'row', justifyContent: 'space-between' },
     footerText: { fontSize: 7.5, color: '#94a3b8' },
 });
@@ -656,7 +699,7 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                 )}
 
                 {/* Назначение */}
-                <Text style={[invStyles.sm, invStyles.bold, { marginBottom: 6 }]}>
+                <Text style={[invStyles.sm, invStyles.bold, { marginBottom: 4 }]}>
                     Назначение: {data.title}
                 </Text>
 
@@ -673,7 +716,11 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                     <View key={idx} style={[invStyles.tblRow, idx % 2 === 1 ? invStyles.tblAlt : {}]}>
                         <Text style={[invStyles.cell, invStyles.cNum]}>{idx + 1}</Text>
                         <View style={invStyles.cName}>
-                            <Text style={invStyles.cell}>{item.name}</Text>
+                            {item.url ? (
+                                <Link src={item.url} style={invStyles.cellLink}>{item.name}</Link>
+                            ) : (
+                                <Text style={invStyles.cell}>{item.name}</Text>
+                            )}
                             {item.description && <Text style={invStyles.cellGray}>{item.description}</Text>}
                         </View>
                         <Text style={[invStyles.cell, invStyles.cQty]}>{item.quantity}</Text>
@@ -708,7 +755,7 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                 </View>
 
                 {/* Сумма прописью — placeholder */}
-                <Text style={[invStyles.sm, { marginBottom: data.production_days || data.shipping_terms ? 6 : 16 }]}>
+                <Text style={[invStyles.sm, { marginBottom: data.production_days || data.shipping_terms ? 3 : 8 }]}>
                     Всего наименований {data.items.length}, на сумму {formatMoney(total)}
                 </Text>
 
@@ -720,20 +767,23 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                     </Text>
                 ) : null}
                 {data.shipping_terms ? (
-                    <Text style={[invStyles.sm, { marginBottom: data.shipping_note ? 4 : 16 }]}>
+                    <Text style={[invStyles.sm, { marginBottom: data.shipping_note ? 3 : 8 }]}>
                         Условия получения: {data.shipping_terms}
                     </Text>
                 ) : null}
                 {/* Габариты и состав — менеджер пишет их в заказе; раньше их
                     приходилось вписывать в адрес получения (Лена 05.10.2026). */}
                 {data.shipping_note ? (
-                    <Text style={[invStyles.sm, { marginBottom: 16 }]}>
+                    <Text style={[invStyles.sm, { marginBottom: 8 }]}>
                         По отгрузке: {data.shipping_note}
                     </Text>
                 ) : null}
 
-                {/* Подпись */}
-                <View style={invStyles.signBlock}>
+                {/* Подпись.
+                    `wrap={false}` — блок не разрывается между страницами: печать
+                    уезжала на пустой второй лист, и клиент спрашивал, что это за
+                    счёт (Елена Парфёнова 06.10.2026). */}
+                <View style={invStyles.signBlock} wrap={false}>
                     <View style={invStyles.signCol}>
                         <Text style={invStyles.signLabel}>{data.signer_title || 'Руководитель'}</Text>
                         {/* Подпись — картинкой над линией, если загружена. */}
@@ -743,19 +793,14 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                         <View style={invStyles.signLine} />
                         <Text style={invStyles.signName}>{data.signer_name || '____________________'}</Text>
                     </View>
-                    <View style={invStyles.signCol}>
-                        <Text style={invStyles.signLabel}>Менеджер</Text>
-                        <View style={invStyles.signLine} />
-                        <Text style={invStyles.signName}>{data.manager_name || '____________________'}</Text>
-                    </View>
-                    {/* Печать организации — своя на каждое юрлицо, рисуется по
-                        его реквизитам (решение владельца 02.10.2026). */}
-                    {/* Печать: настоящий оттиск, если загружен в настройках
-                        юрлица; иначе рисунок по реквизитам. У ИП печати нет
-                        вовсе (указание владельца 02.10.2026). */}
+                    {/* Печать стоит у подписи руководителя, а не в углу листа —
+                        как её ставят на бумаге (просьба Евгении 06.10.2026).
+                        Настоящий оттиск, если он загружен в настройках юрлица;
+                        иначе рисунок по его реквизитам. У ИП печати нет вовсе
+                        (указание владельца 02.10.2026). */}
                     {data.seal_image ? (
                         <View style={invStyles.sealCol}>
-                            <Image src={data.seal_image} style={{ width: 110, height: 110, objectFit: 'contain' }} />
+                            <Image src={data.seal_image} style={{ width: 92, height: 92, objectFit: 'contain' }} />
                         </View>
                     ) : data.seller_has_seal === false ? null : (
                         <View style={invStyles.sealCol}>
@@ -769,6 +814,12 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                             />
                         </View>
                     )}
+
+                    <View style={invStyles.signCol}>
+                        <Text style={invStyles.signLabel}>Менеджер</Text>
+                        <View style={invStyles.signLine} />
+                        <Text style={invStyles.signName}>{data.manager_name || '____________________'}</Text>
+                    </View>
                 </View>
 
                 <View style={invStyles.footer} fixed>
@@ -804,7 +855,9 @@ function OrganizationSeal({ fullName, shortName, inn, kpp, ogrn, place }: {
     /** «Российская Федерация, Самарская область, Тольятти». */
     place?: string;
 }) {
-    const size = 150;
+    // 120 точек: при 150 блок подписей не влезал на лист, и печать уезжала на
+    // пустую вторую страницу (жалоба Елены Парфёновой и Евгении 06.10.2026).
+    const size = 92;
     const center = size / 2;
     const ink = '#2347c5';
 

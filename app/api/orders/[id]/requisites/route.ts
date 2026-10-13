@@ -12,14 +12,19 @@ import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { fromOrderContragent, loadClientRequisites, toOrderContragent } from '@/lib/own-crm/client-requisites';
 import { editOrder } from '@/lib/own-crm/edit-order';
+import { resolveOrderRef } from '@/lib/own-crm/order-ref';
 
 export const dynamic = 'force-dynamic';
 
 async function findOrder(id: string) {
+    // Номер или идентификатор — разбирает `resolveOrderRef`.
+    const ref = await resolveOrderRef(id);
+    if (!ref) return null;
+
     const { data } = await supabase
         .from('orders')
         .select('id, order_id, number, raw_payload')
-        .eq('order_id', id)
+        .eq('id', ref.id)
         .maybeSingle();
     return (data as any) ?? null;
 }

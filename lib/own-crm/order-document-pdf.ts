@@ -61,6 +61,8 @@ export async function buildOrderDocumentPdf(
         initial_price: item.initialPrice,
         discount: item.discount,
         image: item.image,
+        // Кликабельное название: ведёт на карточку товара на сайте.
+        url: item.url,
     }));
 
     const pdf = kind === 'invoice'

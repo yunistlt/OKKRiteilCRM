@@ -11,6 +11,19 @@
  */
 import { resolveDate } from './relative-date';
 
+/**
+ * Коды справочников, из которых берутся ЗНАЧЕНИЯ этих полей.
+ *
+ * У «категории товара» имя поля и имя справочника разные: поле зовётся
+ * `typ_castomer`, а список значений лежит в `kategoriya_klienta` (см.
+ * `lib/retailcrm/NAMING.md`). Фильтр спрашивал справочник по имени поля,
+ * находил пусто — и выбрать категорию было нельзя (Лена Парфёнова 12.10.2026).
+ */
+export const CUSTOM_FIELD_DICTIONARIES = {
+    category: 'kategoriya_klienta',
+    sfera: 'sfera_deiatelnosti',
+} as const;
+
 export const CUSTOM_FIELD_CODES = {
     category: 'typ_castomer',
     sfera: 'sfera_deiatelnosti',
@@ -22,6 +35,11 @@ export const CUSTOM_FIELD_CODES = {
 export interface OrdersFilter {
     number: string;
     customer: string;
+    /**
+     * Наименование товара в составе заказа. Просьба Евгении Матвеевой
+     * 06.10.2026: без него не найти дубль заявки по одному и тому же изделию.
+     */
+    itemName: string;
     managers: string[];
     statuses: string[];
     marks: string[];              // vip, bad
@@ -42,18 +60,36 @@ export interface OrdersFilter {
     /** Только заказы, выбившиеся из норматива времени в статусе. */
     overdueOnly: boolean;
     /**
+     * Только возможные дубли: у клиента есть другой незакрытый заказ рядом по
+     * времени (жалоба Ирины Гордеевой 06.10.2026 — «не найти дубли заказов»).
+     */
+    duplicatesOnly: boolean;
+    /**
+     * Номера заказов-кандидатов. Считает их база (`orders_duplicate_ids`), а
+     * маршрут списка подставляет сюда: условие «у клиента есть второй заказ»
+     * одним запросом к таблице не выражается.
+     */
+    duplicateIds?: string[];
+    /**
      * Поля карточки заказа: код дополнительного поля → что ищем. Человек
      * включает их шестерёнкой фильтра (решение владельца 05.10.2026).
      */
     customFields?: Record<string, string>;
+    /**
+     * Карточки клиентов, подошедшие под поле «Покупатель». Заполняет маршрут
+     * списка перед запросом (`clientIdsByText`): искать заказы по клиенту одним
+     * запросом нельзя — карточки лежат в своих таблицах.
+     */
+    customerIds?: string[];
 }
 
 export const EMPTY_FILTER: OrdersFilter = {
-    number: '', customer: '', managers: [], statuses: [], marks: [],
+    number: '', customer: '', itemName: '', managers: [], statuses: [], marks: [],
     sumFrom: '', sumTo: '', categories: [], control: '',
     contactFrom: '', contactTo: '', createdFrom: '', createdTo: '',
     contragent: '', sferas: [], purchaseFrom: '', purchaseTo: '',
-    managerComment: '', customerComment: '', overdueOnly: false, customFields: {},
+    managerComment: '', customerComment: '', overdueOnly: false, duplicatesOnly: false,
+    customFields: {},
 };
 
 /**
@@ -106,6 +142,7 @@ export function parseOrdersFilter(searchParams: URLSearchParams): OrdersFilter {
         customFields,
         number: text('number'),
         customer: text('customer'),
+        itemName: text('itemName'),
         managers: list('managers').length ? list('managers') : list('manager'),
         statuses: list('statuses').length ? list('statuses') : list('status'),
         marks: list('marks'),
@@ -124,6 +161,7 @@ export function parseOrdersFilter(searchParams: URLSearchParams): OrdersFilter {
         managerComment: text('managerComment'),
         customerComment: text('customerComment'),
         overdueOnly: text('overdueOnly') === 'true',
+        duplicatesOnly: text('duplicatesOnly') === 'true',
     };
 }
 
@@ -147,6 +185,19 @@ const COLUMNS = {
     control: 'control',
 } as const;
 
+/**
+ * Образец для поиска по названию товара: знаки препинания — подстановками.
+ *
+ * «Стеллаж СТ-15» и «Стеллаж СТ–15» должны находиться одним запросом, как и в
+ * поиске по каталогу (решение владельца 06.10.2026).
+ */
+export function itemNamePattern(text: string): string {
+    return String(text ?? '')
+        .trim()
+        .replace(/[\\%]/g, (ch) => `\\${ch}`)
+        .replace(/[^a-zа-яё0-9\\%]+/gi, '%');
+}
+
 /** Навешивает условия фильтра на запрос к orders. */
 export function applyOrdersFilter(query: any, filter: OrdersFilter) {
     let q = query;
@@ -155,12 +206,42 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
 
     if (filter.customer) {
         const v = safe(filter.customer);
+        /**
+         * Ищем ТОЛЬКО по полям заказа, не по снимку.
+         *
+         * Жалоба Ксении 07.10.2026: «фильтр работает отвратительно, по 10–15
+         * раз нажимать приходится, сильно лагает». Это была моя регрессия: я
+         * добавил в условие чтение снимка (`raw_payload->>…`) — разбор JSON в
+         * каждой из 30 тысяч строк без индексов, запрос не укладывался в
+         * таймаут. Менеджер видел «заказов нет» вместо найденного заказа.
+         *
+         * У каждого поля здесь есть индекс для поиска по куску слова
+         * (migrations/20261007_orders_search_indexes.sql).
+         */
         const conditions = [
-            `raw_payload->>firstName.ilike.%${v}%`,
-            `raw_payload->>lastName.ilike.%${v}%`,
-            `raw_payload->>email.ilike.%${v}%`,
-            `phone.ilike.%${v}%`,
+            // Одно поле вместо семи: по одному полю поиск 121 мс, те же данные
+            // через ИЛИ по семи — 2 061 мс (замер на боевой базе 07.10.2026).
+            `search_text.ilike.%${v.toLowerCase()}%`,
         ];
+
+        /**
+         * Клиент ищется и по своей карточке, а не только по контакту заказа:
+         * заказ может стоять на человеке, а карточка называться иначе
+         * («Лачинов Вугар» против контакта «Александр Дубровский»).
+         */
+        if (filter.customerIds?.length) {
+            /**
+             * По номеру карточки ищем через `customer->>id` — на это выражение
+             * есть индекс (idx_orders_customer_id). Чтение снимка
+             * (`raw_payload->customer->>id`) индекса не имеет: Postgres
+             * разбирает JSON в каждой из 31 000 строк, запрос не укладывается в
+             * таймаут, и менеджер видит «под этот фильтр заказов нет» вместо
+             * найденных заказов. Жалоба Ксении 07.10.2026 («настройте поиск
+             * клиента по почте, не найти») — это была ровно она: замер того же
+             * запроса — таймаут против 245–390 мс после правки.
+             */
+            conditions.push(`customer->>id.in.(${filter.customerIds.join(',')})`);
+        }
 
         /**
          * Телефон ищем по последним десяти цифрам. В базе он лежит слитно
@@ -168,10 +249,30 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
          * «+7 (995) 344-68-62» — и поиск молча не находил ничего (Елена
          * Парфёнова 05.10.2026).
          */
+        // Телефон по последним цифрам: в поисковой строке номера лежат и как
+        // записаны, и только цифрами.
         const digits = phoneTail(v);
-        if (digits) conditions.push(`phone.ilike.%${digits}%`);
+        if (digits) conditions.push(`search_text.ilike.%${digits}%`);
 
         q = q.or(conditions.join(','));
+    }
+
+    /**
+     * Дубли: список кандидатов уже посчитан базой. Пустой список означает
+     * «дублей нет» — показываем пустую таблицу, а не весь список.
+     */
+    if (filter.duplicatesOnly) {
+        q = filter.duplicateIds?.length ? q.in('order_id', filter.duplicateIds) : q.eq('order_id', -1);
+    }
+
+    /**
+     * Товар ищем по названиям позиций, сложенным в `orders.items_text`.
+     * Знаки препинания не важны: в каталоге одно и то же изделие пишут и через
+     * дефис, и через длинное тире, и через пробел.
+     */
+    if (filter.itemName) {
+        const v = itemNamePattern(filter.itemName);
+        if (v) q = q.ilike('items_text', `%${v}%`);
     }
 
     if (filter.statuses.length) q = q.in('status', filter.statuses);
@@ -246,6 +347,10 @@ export function filterToCountParams(
     return {
         number: filter.number || '',
         customer: filter.customer || '',
+        itemName: filter.itemName || '',
+        // Счётчики статусов и «Итого» считают по тем же карточкам, что и список,
+        // иначе цифры разойдутся с показанными строками.
+        customerIds: filter.customerIds || [],
         managers: filter.managers.filter(Boolean),
         // Статусы нужны «Итого по фильтру» (orders_filter_totals); счётчики
         // колонки их намеренно игнорируют — иначе по колонке не переключиться.
@@ -267,6 +372,8 @@ export function filterToCountParams(
         managerComment: filter.managerComment || '',
         customerComment: filter.customerComment || '',
         overdueOnly: Boolean(filter.overdueOnly),
+        duplicatesOnly: Boolean(filter.duplicatesOnly),
+        duplicateIds: filter.duplicateIds || [],
         norms,
     };
 }

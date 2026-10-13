@@ -449,8 +449,8 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                         <table className="w-full text-sm">
                             <thead className="sticky top-0 z-10 bg-gray-50">
                                 <tr className="text-left text-[10px] uppercase tracking-widest text-gray-500">
-                                    <th className="px-4 py-3 font-black">Логин</th>
                                     <th className="px-4 py-3 font-black">Имя</th>
+                                    <th className="px-4 py-3 font-black">Логин</th>
                                     <th className="px-4 py-3 font-black">Почта</th>
                                     <th className="px-4 py-3 font-black">Роль</th>
                                     <th className="px-4 py-3 font-black">Менеджер в CRM</th>
@@ -475,8 +475,15 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                                                 openAccount === key ? 'bg-blue-50' : index % 2 ? 'bg-gray-50/60' : 'bg-white'
                                             }`}
                                         >
-                                            <td className="px-4 py-3 font-semibold text-gray-900">{account.username || account.email || 'Без имени'}</td>
-                                            <td className="px-4 py-3 text-gray-700">{fullName || <span className="text-gray-300">—</span>}</td>
+                                            {/* Сначала человек, потом логин: «service_test»
+                                                первой колонкой — это код в интерфейсе
+                                                (закон «только человеческий язык»). */}
+                                            <td className="px-4 py-3 font-semibold text-gray-900">
+                                                {fullName || account.email || account.username || 'Без имени'}
+                                            </td>
+                                            <td className="px-4 py-3 text-gray-500">
+                                                {account.username || <span className="text-gray-300">—</span>}
+                                            </td>
                                             <td className="px-4 py-3 text-gray-700">{account.email || <span className="text-gray-300">—</span>}</td>
                                             <td className="px-4 py-3 text-gray-700">{ROLE_LABELS[account.role]}</td>
                                             <td className="px-4 py-3 text-gray-700">{managerLabel || <span className="text-gray-300">—</span>}</td>

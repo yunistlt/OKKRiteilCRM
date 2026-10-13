@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { resolveOrderRef } from '@/lib/own-crm/order-ref';
 import { calculationsForOrder } from '@/lib/own-crm/calc-link';
 import { editOrder, type EditableItem } from '@/lib/own-crm/edit-order';
 
@@ -22,12 +23,15 @@ const bodySchema = z.object({
     id: z.string().trim().min(1).max(64),
 });
 
-/** Заказ ищем по номеру RetailCRM — так его открывает карточка. */
+/** Заказ по номеру или идентификатору: разбирает `resolveOrderRef`. */
 async function findOrder(id: string) {
+    const ref = await resolveOrderRef(id);
+    if (!ref) return null;
+
     const { data } = await supabase
         .from('orders')
         .select('id, order_id, number, raw_payload')
-        .eq('order_id', id)
+        .eq('id', ref.id)
         .maybeSingle();
     return (data as any) ?? null;
 }

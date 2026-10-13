@@ -97,8 +97,10 @@ export const NOTIFY_TYPES: NotifyTypeDef[] = [
       + 'Повод проверить оформление — состав, сроки, реквизиты заказчика.',
     group: 'quality',
     bot: 'igor',
+    // Только владельцу: отделу продаж это сообщение не нужно — заказ уже
+    // передан в производство, и менеджеру оно ничего не меняет (решение
+    // владельца 09.10.2026, в чате продаж спрашивали «что это?»).
     target: 'owner_dm',
-    copyTo: 'group_sales',
   },
   {
     code: 'tseh.order_rejected',
@@ -115,6 +117,16 @@ export const NOTIFY_TYPES: NotifyTypeDef[] = [
     code: 'system.crm_site_missing',
     name: 'Магазин заявок пропал в RetailCRM',
     description: 'RetailCRM перестала принимать настроенный магазин — заявки с почты заводятся в запасном. Нужно проверить магазин в CRM.',
+    group: 'system',
+    bot: 'igor',
+    target: 'owner_dm',
+  },
+  {
+    code: 'mail.sent_copy_missing',
+    name: 'Письмо не попало в «Отправленные»',
+    description:
+      'Письмо клиенту ушло, но копия не легла в почтовый ящик: в почте его не видно, '
+      + 'и ответ клиента может не найти заказ. Чинится повтором дозаписи или руками.',
     group: 'system',
     bot: 'igor',
     target: 'owner_dm',
@@ -204,6 +216,14 @@ export const NOTIFY_TYPES: NotifyTypeDef[] = [
     group: 'sales',
     bot: 'payments',
     target: 'owner_dm',
+  },
+  {
+    code: 'sales.read_gate_deferred',
+    name: 'Разбор отложен менеджером',
+    description: 'Менеджер нажал «срочное дело, прочитаю позже»: работа открыта на час, разбор не прочитан.',
+    group: 'sales',
+    bot: 'payments',
+    target: 'group_sales',
   },
   {
     code: 'sales.orphan_orders',

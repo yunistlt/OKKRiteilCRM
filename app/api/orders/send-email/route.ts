@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
-import { sendOrderEmail } from '@/lib/email';
-import { getLastOrderEmailSend, recordOrderEmailSend } from '@/lib/order-email-log';
-import { buildOrderDocumentPdf, loadOrderDocumentData } from '@/lib/own-crm/order-document-pdf';
+import { findSendByClientKey, getLastOrderEmailSend } from '@/lib/order-email-log';
+import { deliverOrderLetter, LetterProblem, nextThreadSeq } from '@/lib/orders/deliver-letter';
+import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -47,76 +47,83 @@ const BodySchema = z.object({
      * видел «Unexpected token 'R'… is not valid JSON» (Ирина 02.10.2026).
      */
     documents: z.array(z.enum(['proposal', 'invoice'])).max(2).optional(),
+    /** Человек увидел предупреждение про чужой адрес и подтвердил отправку. */
+    allowForeignRecipient: z.boolean().optional(),
     /** Файлы, которые уже лежат в карточке заказа: берём их из хранилища. */
     orderFileIds: z.array(z.number().int().positive()).max(10).optional(),
+    /**
+     * Ключ письма от браузера: одно нажатие «Отправить» — одно письмо.
+     * Повтор того же ключа (двойной щелчок, повтор запроса, отправка при
+     * закрытии вкладки) ничего не отправляет второй раз.
+     */
+    /** Копия и скрытая копия: со стороны клиента в переписке обычно несколько человек. */
+    cc: z.array(z.string().trim().email()).max(20).optional(),
+    bcc: z.array(z.string().trim().email()).max(20).optional(),
+    /**
+     * Когда отправить. Пусто — сейчас. Время в будущем ставит письмо в
+     * очередь: уйдёт само, даже если ОКК закрыт и компьютер выключен.
+     */
+    sendAt: z.string().datetime({ offset: true }).optional(),
+    clientKey: z.string().trim().max(100).optional(),
 });
 
 
-/** КП или счёт по заказу — тем же кодом, что и кнопки в карточке. */
-async function buildOrderDocument(
-    orderNumber: string,
-    kind: 'proposal' | 'invoice',
-): Promise<{ filename: string; content: Buffer<ArrayBuffer>; contentType: string } | null> {
+/**
+ * Принадлежит ли адрес клиенту этого заказа.
+ *
+ * 08.10.2026 письмо по заказу 900081 (ООО «БИР») ушло на почту клиента
+ * другого заказа: в адресе страницы залип `replyTo` от прошлого письма.
+ * Ответ клиента вернулся по цепочке в чужой заказ, и менеджеры увидели
+ * «сдвоенные» заказы. Адрес проверяем по самому заказу, по карточке его
+ * клиента и по тем, с кем по заказу уже переписывались.
+ */
+async function addressBelongsToOrder(orderNumber: string, email: string): Promise<boolean> {
+    const target = email.trim().toLowerCase();
+    if (!target) return false;
+
     const { data: order } = await supabase
         .from('orders')
-        .select('order_id')
+        .select('raw_payload, customer')
         .eq('number', orderNumber)
         .maybeSingle();
-    const orderId = Number((order as any)?.order_id ?? orderNumber);
-    if (!Number.isFinite(orderId)) return null;
 
-    const data = await loadOrderDocumentData(orderId);
-    if (!data) return null;
-
-    const built = await buildOrderDocumentPdf(data, kind);
-    return {
-        filename: built.fileName,
-        content: Buffer.from(new Uint8Array(built.content)),
-        contentType: built.contentType,
+    const payload = (order as any)?.raw_payload ?? {};
+    const known = new Set<string>();
+    const add = (value: unknown) => {
+        const text = String(value ?? '').trim().toLowerCase();
+        if (text) known.add(text);
     };
-}
 
-/** Файл из карточки заказа как вложение письма. */
-async function orderFileAttachment(
-    orderNumber: string,
-    fileId: number,
-): Promise<{ filename: string; content: Buffer<ArrayBuffer>; contentType: string } | null> {
-    const { data: row } = await supabase
-        .from('order_files')
-        .select('order_number, file_name, content_type, storage_bucket, storage_path')
-        .eq('id', fileId)
-        .is('deleted_at', null)
-        .maybeSingle();
-    // Чужой файл к письму не приложим: номер заказа должен совпадать.
-    if (!row || String(row.order_number) !== String(orderNumber)) return null;
+    add(payload.email);
+    for (const contact of (payload.contacts ?? [])) add(contact?.email);
 
-    const file = await supabase.storage.from(row.storage_bucket || 'okk-assets').download(row.storage_path);
-    if (file.error || !file.data) return null;
-
-    return {
-        filename: row.file_name,
-        content: Buffer.from(new Uint8Array(await file.data.arrayBuffer())),
-        contentType: row.content_type || 'application/octet-stream',
-    };
-}
-
-/** Следующий порядковый номер сообщения в переписке по заказу (по тегам `[#N/order]` во входящих). */
-async function nextThreadSeq(orderNumber: string): Promise<number> {
-    try {
-        const { data } = await supabase
-            .from('incoming_emails')
-            .select('subject')
-            .ilike('subject', `%/${orderNumber}]%`)
-            .limit(200);
-        let max = 0;
-        for (const row of (data || []) as Array<{ subject: string | null }>) {
-            const m = (row.subject || '').match(new RegExp(`\\[#(\\d+)\\/${orderNumber}\\]`));
-            if (m) max = Math.max(max, Number(m[1]));
-        }
-        return max + 1;
-    } catch {
-        return 1;
+    const clientId = (order as any)?.customer?.id ?? payload.customer?.id;
+    if (clientId) {
+        const { data: client } = await supabase
+            .from('clients')
+            .select('email, contact_email')
+            .eq('id', clientId)
+            .maybeSingle();
+        add((client as any)?.email);
+        add((client as any)?.contact_email);
     }
+
+    // С кем уже переписывались по этому заказу — тоже свои.
+    const { data: letters } = await supabase
+        .from('incoming_emails')
+        .select('from_email')
+        .eq('created_crm_order_number', orderNumber)
+        .limit(50);
+    for (const row of ((letters ?? []) as any[])) add(row.from_email);
+
+    return known.has(target);
+}
+
+
+/** Сбой связи с почтовым сервером: лечится повтором, а не правкой письма. */
+function isConnectionProblem(error: unknown): boolean {
+    return /ETIMEDOUT|ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|ESOCKET|socket close|timeout/i
+        .test(String(error ?? ''));
 }
 
 export async function POST(req: Request) {
@@ -132,6 +139,22 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'invalid_body', details: e?.errors ?? String(e) }, { status: 400 });
     }
 
+    // Это письмо уже уходило — второй раз не шлём, отвечаем как в первый.
+    if (body.clientKey) {
+        const already = await findSendByClientKey(body.clientKey);
+        if (already) {
+            return NextResponse.json({
+                ok: true,
+                duplicate: true,
+                sent: true,
+                appendedToSent: true,
+                subject: already.subject,
+                messageId: already.message_id,
+                message: 'Это письмо уже отправлено — второй раз не отправляем.',
+            });
+        }
+    }
+
     // Идемпотентность: если по заказу уже отправляли письмо — блокируем, пока не передан force.
     if (!body.force) {
         const last = await getLastOrderEmailSend(body.orderNumber);
@@ -141,6 +164,21 @@ export async function POST(req: Request) {
                 { status: 409 }
             );
         }
+    }
+
+    /**
+     * Чужой адресат — останавливаемся. Человек подтверждает отправку явно
+     * (`allowForeignRecipient`), и тогда письмо уходит, куда он решил.
+     */
+    if (!body.allowForeignRecipient && !(await addressBelongsToOrder(body.orderNumber, body.to))) {
+        return NextResponse.json(
+            {
+                ok: false,
+                error: 'foreign_recipient',
+                message: `Адрес ${body.to} не числится за клиентом заказа №${body.orderNumber}. Проверьте, тому ли вы пишете.`,
+            },
+            { status: 409 },
+        );
     }
 
     const seq = body.seq ?? (await nextThreadSeq(body.orderNumber));
@@ -154,72 +192,104 @@ export async function POST(req: Request) {
         );
     }
 
-    const attachments = (body.attachments || []).map((file) => ({
-        filename: file.filename,
-        content: Buffer.from(file.contentBase64, 'base64'),
-        contentType: file.contentType,
-    }));
+    /**
+     * Отложенная отправка (ТЗ §4).
+     *
+     * Письмо не держим в браузере: человек уйдёт домой, и оно не уедет.
+     * Кладём в очередь задач — её разбирает крон, и письмо уходит само.
+     * Повтора не будет: ключ письма тот же, что при обычной отправке.
+     */
+    if (body.sendAt) {
+        const when = new Date(body.sendAt);
+        if (when.getTime() > Date.now() + 30_000) {
+            /**
+             * Файлы в отложенное письмо кладём ссылками на файлы заказа, а не
+             * содержимым: мегабайты в очереди задач — это раздутая таблица и
+             * медленный разбор. Карточка так и делает, этот запрет — для
+             * прочих вызовов.
+             */
+            if ((body.attachments || []).length) {
+                return NextResponse.json(
+                    { ok: false, error: 'Для отложенного письма сначала приложите файлы к заказу, а потом выберите их галочкой' },
+                    { status: 400 },
+                );
+            }
 
-    // КП и счёт собираем здесь же: они делаются из самого заказа, гонять их
-    // через браузер незачем.
-    for (const kind of body.documents || []) {
-        try {
-            const pdf = await buildOrderDocument(body.orderNumber, kind);
-            if (pdf) attachments.push(pdf);
-        } catch (e: any) {
-            console.error('[send-email] документ не собрался:', kind, e?.message || e);
+            const job = await safeEnqueueSystemJob({
+                jobType: 'email_scheduled_send',
+                payload: { letter: { ...body, seq }, actor: session.user.email || session.user.username || session.user.role },
+                priority: 30,
+                idempotencyKey: body.clientKey ? `email_scheduled_send:${body.clientKey}` : undefined,
+                availableAt: when.toISOString(),
+                maxAttempts: 5,
+            });
+
+            if (job) {
+                return NextResponse.json({
+                    ok: true,
+                    scheduled: true,
+                    sendAt: when.toISOString(),
+                    message: `Письмо уйдёт ${when.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}. До этого времени его можно отменить в заказе.`,
+                });
+            }
+
+            // Очередь недоступна — честно говорим, а не отправляем сейчас:
+            // человек выбрал другое время осознанно.
             return NextResponse.json(
-                { ok: false, error: kind === 'invoice' ? 'Счёт не собрался — отправьте письмо без него' : 'КП не собралось — отправьте письмо без него' },
-                { status: 400 },
+                { ok: false, error: 'Отложенная отправка сейчас недоступна — отправьте письмо сразу или попробуйте позже' },
+                { status: 503 },
             );
         }
     }
 
-    // Файлы заказа тоже лежат у нас — достаём из хранилища, а не из браузера.
-    for (const fileId of body.orderFileIds || []) {
-        const file = await orderFileAttachment(body.orderNumber, fileId);
-        if (file) attachments.push(file);
+    let delivery;
+    try {
+        delivery = await deliverOrderLetter(
+            { ...body, seq },
+            session.user.email || session.user.username || session.user.role,
+        );
+    } catch (e: any) {
+        if (e instanceof LetterProblem) {
+            return NextResponse.json({ ok: false, error: e.message }, { status: 400 });
+        }
+        throw e;
     }
 
-    const result = await sendOrderEmail({
-        to: body.to,
-        orderNumber: body.orderNumber,
-        subjectText: body.subjectText,
-        html: body.html,
-        seq,
-        fromName: body.fromName,
-        replyTo: body.replyTo,
-        attachments,
-    });
+    const result = delivery.result;
+    if (!delivery.ok) {
+        /**
+         * Почта не отвечает — письмо НЕ теряем.
+         *
+         * 12.10.2026 SMTP Яндекса перестал пускать наш сервер (таймаут на 465
+         * и 587 при живом IMAP), и менеджеры увидели «ETIMEDOUT» на уже
+         * написанном письме. Переписывать его потом заново — худшее, что можно
+         * предложить человеку. Ставим в очередь: воркер повторяет каждые
+         * несколько минут и отправит, как только связь вернётся.
+         */
+        if (isConnectionProblem(result.error)) {
+            const job = await safeEnqueueSystemJob({
+                jobType: 'email_scheduled_send',
+                payload: { letter: { ...body, seq }, actor: session.user.email || session.user.username || session.user.role },
+                priority: 20,
+                idempotencyKey: body.clientKey ? `email_scheduled_send:${body.clientKey}` : undefined,
+                availableAt: new Date(Date.now() + 120_000).toISOString(),
+                // Связь возвращается не сразу: пробуем до конца дня.
+                maxAttempts: 40,
+            });
 
-    if (!result.sent) {
+            if (job) {
+                return NextResponse.json({
+                    ok: true,
+                    queuedAfterFailure: true,
+                    message: 'Почта сейчас не отвечает. Письмо встало в очередь и уйдёт само, '
+                        + 'как только связь вернётся — переписывать его не нужно. '
+                        + 'Если дело срочное, напишите клиенту из почтового ящика: письмо всё равно попадёт в заказ.',
+                });
+            }
+        }
+
         return NextResponse.json({ ok: false, ...result }, { status: 502 });
     }
 
-    // Фиксируем отправку в реестр (идемпотентность на будущее).
-    await recordOrderEmailSend({
-        orderNumber: body.orderNumber,
-        orderId: body.orderId ?? null,
-        toEmail: body.to,
-        subject: result.subject,
-        messageId: result.messageId,
-        appendedToSent: result.appendedToSent,
-        sentBy: session.user.email || session.user.role,
-        // Текст кладём сразу: лента переписки иначе ждёт синк «Отправленных»
-        // и до тех пор показывает письмо без текста.
-        bodyHtml: body.html,
-        bodyText: String(body.html || '')
-            .replace(/<br\s*\/?>/gi, '\n')
-            .replace(/<\/p>/gi, '\n\n')
-            .replace(/<[^>]+>/g, '')
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/\n{3,}/g, '\n\n')
-            .trim(),
-    });
-
-    // Отправлено, но если копия не легла в Sent — отдаём 200 с предупреждением (письмо ушло клиенту).
     return NextResponse.json({ ok: true, ...result });
 }

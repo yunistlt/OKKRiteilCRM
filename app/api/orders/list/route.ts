@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { parseOrdersFilter, applyOrdersFilter, applyOverdueFilter, filterToCountParams } from '@/lib/orders-filter';
+import { clientIdsByText } from '@/lib/orders-customer-search';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,13 +22,45 @@ export async function GET(req: Request) {
     const filter = parseOrdersFilter(searchParams);
 
     /**
+     * Поле «Покупатель» ищет и по карточке клиента — её номера подбираем до
+     * запроса. Заказ может стоять на контактном лице, а клиент называться
+     * иначе, и по названию клиента заказ раньше не находился (жалобы
+     * менеджеров 06.10.2026).
+     */
+    if (filter.customer) {
+        filter.customerIds = await clientIdsByText(filter.customer);
+    }
+
+    /**
+     * Возможные дубли считает база: условие «у клиента есть второй незакрытый
+     * заказ рядом по времени» одним запросом к таблице не выражается.
+     */
+    if (filter.duplicatesOnly) {
+        const { data } = await supabase.rpc('orders_duplicate_ids', {});
+        filter.duplicateIds = ((data || []) as any[])
+            .map((row) => String(typeof row === 'object' ? Object.values(row)[0] : row));
+    }
+
+    /**
      * Порядок строк: по любой колонке, вверх или вниз (решение владельца
      * 05.10.2026). Сортируем только по настоящим колонкам таблицы — внутрь
      * `raw_payload` порядок не наводим: на 30 000 заказов это перебор всей
      * таблицы, запрос не укладывается в таймаут и список возвращается пустым.
      */
     const SORTABLE: Record<string, string> = {
-        number: 'number',
+        /**
+         * «Номер» сортируем по `order_id`, а не по колонке `number`.
+         *
+         * Номер — ТЕКСТ, и сортировка по нему идёт по буквам: «10000» выше
+         * «9999», а стрелка «новые сверху» поднимала наверх заказы десятилетней
+         * давности (жалоба менеджера 08.10.2026). `order_id` — число и растёт
+         * со временем, поэтому по убыванию сверху действительно свежие.
+         *
+         * Расхождение есть у 453 заказов из 30 207 — старая серия номеров вида
+         * 1 00x xxx и номера с буквой на конце. Для них порядок «по номеру»
+         * и так не определён, а главный запрос людей — «новые сверху».
+         */
+        number: 'order_id',
         status: 'status',
         createdAt: 'created_at',
         totalSumm: 'totalsumm',

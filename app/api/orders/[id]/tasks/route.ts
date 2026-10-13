@@ -12,9 +12,19 @@ const CreateSchema = z.object({
     dueTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
 });
 
+/**
+ * Правка задачи. `done` — галочка «выполнено», остальное — сама задача.
+ *
+ * Просьба Елены Парфёновой 08.10.2026: «забыла поставить время, а
+ * редактировать не даёт, только удалять и создавать новую». Поэтому текст,
+ * дату и время меняем на месте.
+ */
 const UpdateSchema = z.object({
     id: z.string().uuid(),
-    done: z.boolean(),
+    done: z.boolean().optional(),
+    title: z.string().min(1).max(300).optional(),
+    dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    dueTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
 });
 
 /** Задачи по заказу. */
@@ -95,9 +105,27 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: 'invalid_body', details: e?.errors ?? String(e) }, { status: 400 });
     }
 
+    const patch: Record<string, unknown> = {};
+    if (body.done !== undefined) {
+        patch.done = body.done;
+        patch.done_at = body.done ? new Date().toISOString() : null;
+    }
+    if (body.title !== undefined) patch.title = body.title;
+    // Срок снимается целиком: дата пустая — время тоже, иначе остаётся «в 14:30»
+    // без дня.
+    if (body.dueDate !== undefined) {
+        patch.due_date = body.dueDate;
+        if (!body.dueDate) patch.due_time = null;
+    }
+    if (body.dueTime !== undefined && body.dueDate !== null) patch.due_time = body.dueTime;
+
+    if (!Object.keys(patch).length) {
+        return NextResponse.json({ error: 'nothing_to_update' }, { status: 400 });
+    }
+
     const { data, error } = await supabase
         .from('order_tasks')
-        .update({ done: body.done, done_at: body.done ? new Date().toISOString() : null })
+        .update(patch)
         .eq('id', body.id)
         .select()
         .single();

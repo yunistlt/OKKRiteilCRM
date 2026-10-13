@@ -8,6 +8,8 @@
  * штатную схему 70/30 и помечаем это юристу.
  */
 import { supabase } from '@/utils/supabase';
+import { saveContractFile } from '@/lib/legal/contract-file';
+import { reviewContract, type ContractReview } from '@/lib/legal/contract-review';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { orderDocumentData } from '@/lib/own-crm/documents';
 import { buildContractText, DEFAULT_PAYMENT_TERMS, type ContractFill } from './contract-template';
@@ -17,6 +19,13 @@ export const CONTRACT_STATUS_LABELS: Record<string, string> = {
     on_review: 'На согласовании',
     approved: 'Согласован',
     rework: 'На доработку',
+    /**
+     * Договор по нашей стандартной форме. Согласовывать нечего — менеджер
+     * отправляет его клиенту сам, — но в реестре юротдела он виден наравне с
+     * остальными (решение владельца 12.10.2026: «договор должен автоматом
+     * ложиться в реестр договоров у юриста, не оповещая об этом девочек»).
+     */
+    standard: 'По стандартной форме',
 };
 
 export type ContractRow = {
@@ -39,9 +48,18 @@ export type ContractRow = {
  * формулирует — иначе каждый договор получится своим, и юристу придётся
  * вычитывать всё заново.
  */
-export async function renderPaymentTerms(termsText: string): Promise<{ text: string; byAi: boolean }> {
+export async function renderPaymentTerms(
+    termsText: string,
+    /**
+     * Текст уже готов и согласован — переписывать его нечем и незачем.
+     * Так приходят стандартные условия, выбранные из списка (решение владельца
+     * 07.10.2026): это редакция, по которой отдел продаж работал в RetailCRM.
+     */
+    asIs = false,
+): Promise<{ text: string; byAi: boolean }> {
     const raw = (termsText || '').trim();
     if (!raw) return { text: DEFAULT_PAYMENT_TERMS, byAi: false };
+    if (asIs) return { text: raw, byAi: false };
     if (!isOpenAIConfigured()) return { text: raw, byAi: false };
 
     try {
@@ -77,11 +95,13 @@ export async function buildOrderContract(params: {
     orderNumber: string;
     termsText: string;
     sellerCode?: string | null;
-}): Promise<{ text: string; byAi: boolean; sellerName: string } | null> {
+    /** Текст условий готов и согласован — вставляем как есть, без ИИ. */
+    termsAsIs?: boolean;
+}): Promise<{ text: string; byAi: boolean; sellerName: string; buyerReady: boolean } | null> {
     const data = await orderDocumentData(params.orderId, params.sellerCode ?? null);
     if (!data?.seller) return null;
 
-    const payment = await renderPaymentTerms(params.termsText);
+    const payment = await renderPaymentTerms(params.termsText, params.termsAsIs === true);
     const now = new Date();
     const fill: ContractFill = {
         number: params.orderNumber,
@@ -116,17 +136,33 @@ export async function buildOrderContract(params: {
         productionTerm: data.productionTerm,
     };
 
-    return { text: buildContractText(fill), byAi: payment.byAi, sellerName: data.seller.name };
+    // Без названия и ИНН покупателя договор подписывать не с кем.
+    const buyerReady = Boolean(
+        (data.payerFullName || data.payerCompany) && String(data.payerInn ?? '').trim(),
+    );
+
+    return { text: buildContractText(fill), byAi: payment.byAi, sellerName: data.seller.name, buyerReady };
 }
 
-/** Заводит договор и сразу кладёт его юристу на согласование. */
+/**
+ * Заводит договор по заказу.
+ *
+ * `toLawyer` решает, идёт ли он юристу. Стандартные условия (выбранные из
+ * списка) юристу не нужны — это согласованная редакция, и ждать 1–2 дня из-за
+ * неё нельзя (требование владельца 07.10.2026 по жалобе Евгении Матвеевой).
+ * Свои формулировки по-прежнему уходят на согласование.
+ */
 export async function createOrderContract(params: {
     orderId: number;
     orderNumber: string;
     termsText: string;
     sellerCode?: string | null;
     author: string;
-}): Promise<{ ok: true; id: number; byAi: boolean } | { ok: false; reason: string }> {
+    /** Отправить юристу. По умолчанию да — так было раньше. */
+    toLawyer?: boolean;
+    /** Текст условий готов и согласован — вставляем как есть, без ИИ. */
+    termsAsIs?: boolean;
+}): Promise<{ ok: true; id: number; byAi: boolean; review: ContractReview; file?: string | null } | { ok: false; reason: string }> {
     const built = await buildOrderContract(params);
     if (!built) {
         return {
@@ -134,6 +170,31 @@ export async function createOrderContract(params: {
             reason: 'Не выбрано наше юрлицо — выберите его в списке «Юрлицо заказа» рядом с кнопками документов.',
         };
     }
+
+    /**
+     * Без реквизитов заказчика договор юридически пустой: в нём вместо стороны
+     * стоит слово «Покупатель», нет ИНН и адреса. Нашёл при проверке
+     * 07.10.2026 — на заказе без реквизитов договор молча собирался.
+     * Реквизитов нет у 19 179 заказов, так что случай обычный.
+     */
+    if (!built.buyerReady) {
+        return {
+            ok: false,
+            reason: 'У заказчика не заполнены реквизиты — без них в договоре не будет ни названия, '
+                + 'ни ИНН. Внесите их в карточке клиента и составьте договор заново.',
+        };
+    }
+
+    /**
+     * Замечания ИИ-юрисконсульта — к каждому договору (требование владельца
+     * 07.10.2026). Это подсказка менеджеру, а не запрет: договор сохраняется
+     * в любом случае, даже если проверка не удалась.
+     */
+    const review = await reviewContract(built.text, {
+        // Стандартные условия юрист уже утвердил — обсуждать их заново не нужно.
+        standardTerms: Boolean(params.termsAsIs),
+        sellerName: built.sellerName,
+    });
 
     const title = `Договор купли-продажи № ${params.orderNumber} — ${built.sellerName}`;
     const { data, error } = await supabase
@@ -144,9 +205,17 @@ export async function createOrderContract(params: {
             title,
             terms_text: params.termsText,
             body_text: built.text,
-            status: 'on_review',
-            submitted_at: new Date().toISOString(),
+            // Стандартный договор готов к отправке клиенту сразу; свои условия
+            // ждут юриста.
+            status: params.toLawyer === false ? 'standard' : 'on_review',
+            submitted_at: params.toLawyer === false ? null : new Date().toISOString(),
+            reviewed_at: params.toLawyer === false ? new Date().toISOString() : null,
+            review_comment: params.toLawyer === false
+                ? 'Стандартные условия из списка — согласование юриста не требуется.'
+                : null,
             created_by: params.author,
+            ai_review: review,
+            ai_review_at: new Date().toISOString(),
         })
         .select('id')
         .single();
@@ -164,7 +233,22 @@ export async function createOrderContract(params: {
         author: params.author,
     });
 
-    return { ok: true, id: data.id, byAi: built.byAi };
+    /**
+     * Договор кладём файлом — в «Файлы» заказа и в реестр юротдела
+     * (требование владельца 08.10.2026: «он должен храниться в файлах в
+     * карточке заказа, а также в реестре договоров в юротделе»). Провал файла
+     * не отменяет договор: текст уже сохранён, файл пересоберётся.
+     */
+    const file = await saveContractFile({
+        contractId: String(data.id),
+        orderNumber: params.orderNumber,
+        orderId: params.orderId,
+        title,
+        bodyText: built.text,
+        author: params.author,
+    });
+
+    return { ok: true, id: data.id, byAi: built.byAi, review, file: file.ok ? file.fileName : null };
 }
 
 /** Решение юриста по договору: согласовать или вернуть на доработку. */
@@ -224,6 +308,25 @@ export async function reviseOrderContract(params: {
         change_note: params.note,
         author: params.author,
     });
+
+    // Файл пересобираем под новую версию: иначе в заказе лежит старый договор,
+    // а правка юриста видна только в базе.
+    const { data: head } = await supabase
+        .from('order_contracts')
+        .select('order_number, order_id, title')
+        .eq('id', params.contractId)
+        .maybeSingle();
+    if (head) {
+        await saveContractFile({
+            contractId: String(params.contractId),
+            orderNumber: String((head as any).order_number),
+            orderId: (head as any).order_id ?? null,
+            title: String((head as any).title),
+            bodyText: params.bodyText,
+            version: nextVersion,
+            author: params.author,
+        });
+    }
 
     return { ok: true, version: nextVersion };
 }

@@ -24,6 +24,21 @@ export type DocumentItem = {
     discount: number;
     /** Фото товара с его карточки на сайте, если товар там есть. */
     image: string | null;
+    /**
+     * Ссылка на карточку товара на сайте.
+     *
+     * Ирина Гордеева 05.10.2026: «ранее отправляли КП или счёт, там была ссылка
+     * кликабельная (описание товара), можно было нажать и попадаешь на сайт на
+     * страничку товара, сейчас просто описание». Ссылку мы уже знали — она
+     * приходит из каталога вместе с фото, но до документа не доходила.
+     */
+    url: string | null;
+    /**
+     * Код товара в каталоге сайта (`marketing_products.id`). В документах не печатается —
+     * он нужен производству, чтобы опознать позицию не по названию (просьба ЦехУспеха
+     * 12.10.2026); см. `productId` в CatalogLink.
+     */
+    productId: string | null;
 };
 
 export type Seller = {
@@ -58,6 +73,16 @@ export type OrderDocumentData = {
     payerSignerName: string | null;
     payerSignerTitle: string | null;
     payerSignerBasis: string | null;
+    /**
+     * Банковские реквизиты покупателя. Нужны спецификации и договору: раздел
+     * «Реквизиты Покупателя» состоял из одних ИНН и КПП (Лена Парфёнова
+     * 12.10.2026). Берутся из карточки клиента — там их хозяин.
+     */
+    payerBank: string | null;
+    payerBik: string | null;
+    payerRs: string | null;
+    payerKs: string | null;
+    payerOgrn: string | null;
     seller: Seller | null;
     /**
      * Срок изготовления в днях — «Срок изготовления в днях*» из заказа. Женя
@@ -258,23 +283,30 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
         rows = data || [];
     }
 
-    // Фото берём из карточек товаров сайта: база товаров у нас — это база сайта.
-    // Чего на сайте уже нет (архив), то останется строкой без картинки.
-    const images = await catalogImages(rows);
+    // Фото и ссылку берём из карточек товаров сайта: база товаров у нас — это
+    // база сайта. Чего на сайте уже нет (архив), то останется строкой без
+    // картинки и без ссылки — врать ссылкой в никуда нельзя.
+    const catalog = await catalogByItem(rows);
 
     const items: DocumentItem[] = (rows || []).map((row: any) => ({
         name: row.offer?.displayName || row.offer?.name || row.productName || 'Позиция',
         quantity: Number(row.quantity || 0),
-        // Цена за единицу с учётом скидки по позиции — то, что клиент увидит в счёте.
-        price: Math.max(0, Number(row.initialPrice || 0) - (Number(row.quantity || 0) > 0
-            ? Number(row.discountTotal || 0) / Number(row.quantity)
-            : 0)),
+        /**
+         * `discountTotal` в RetailCRM — скидка НА ЕДИНИЦУ, а не на строку.
+         *
+         * Проверено на боевых заказах 05.10.2026: у 53356, 54650 и 54568 итог
+         * сходится копейка в копейку только так. Раньше здесь скидку делили на
+         * количество, и цена со скидкой выходила завышенной, а в КП сумма
+         * строки считалась так, будто скидку дали один раз на всю партию
+         * (заказ 900055: 595 955,80 вместо 445 666,90).
+         */
+        price: Math.max(0, Number(row.initialPrice || 0) - Number(row.discountTotal || 0)),
         initialPrice: Number(row.initialPrice || 0),
-        discount: Number(row.discountTotal || 0),
-        image: images.get(String(row.offer?.xmlId ?? '').split('#')[0])
-            || images.get(String(row.offer?.externalId ?? ''))
-            || images.get(String(row.offer?.article ?? ''))
-            || null,
+        // В документ отдаём скидку ЗА ВСЮ СТРОКУ: её и ждёт человек в колонке.
+        discount: Number(row.discountTotal || 0) * Number(row.quantity || 0),
+        image: catalogOf(catalog, row)?.image ?? null,
+        url: catalogOf(catalog, row)?.url ?? null,
+        productId: catalogOf(catalog, row)?.productId ?? null,
     }));
 
     const contragent = (order as any).contragent || (order as any).raw_payload?.contragent || {};
@@ -306,6 +338,11 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
     const payerSignerName = clientRequisites?.signerName || null;
     const payerSignerTitle = clientRequisites?.signerTitle || null;
     const payerSignerBasis = clientRequisites?.signerBasis || null;
+    const payerBank = contragent.bank || clientRequisites?.bank || null;
+    const payerBik = contragent.BIK || clientRequisites?.bik || null;
+    const payerRs = contragent.bankAccount || clientRequisites?.bankAccount || null;
+    const payerKs = contragent.corrAccount || clientRequisites?.corrAccount || null;
+    const payerOgrn = contragent.OGRN || clientRequisites?.ogrn || clientRequisites?.ogrnip || null;
 
     const seller = await sellerFromSite(sellerCode || (order as any).site);
 
@@ -321,6 +358,11 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
         payerSignerName,
         payerSignerTitle,
         payerSignerBasis,
+        payerBank,
+        payerBik,
+        payerRs,
+        payerKs,
+        payerOgrn,
         // Юрлицо: по умолчанию то, чьему магазину принадлежит заказ, но счёт
         // можно выставить и от другого — юрлиц у компании несколько.
         seller,
@@ -339,8 +381,17 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
             : 5,
         managerName: await managerNameOf((order as any).manager_id),
         ...(await sellerSealOf(seller)),
-        shippingTerms: await shippingTermsText(delivery),
-        ...(await signerOf(sellerCode || (order as any).site, seller)),
+        ...(await (async () => {
+            const signer = await signerOf(sellerCode || (order as any).site, seller);
+            return {
+                ...signer,
+                /**
+                 * Самовывоз печатается адресом СКЛАДА, а не юридическим: с
+                 * Революционной товар не выдают (Ирина Гордеева 12.10.2026).
+                 */
+                shippingTerms: await shippingTermsText(delivery, signer.shippingAddress),
+            };
+        })()),
         total: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
     };
 }
@@ -364,9 +415,11 @@ export function productionTermText(days: number | null, unit: unknown): string |
     return `${days} ${form}`;
 }
 
-/** Фото позиций с карточек сайта: ключ — id товара на сайте и артикул. */
-async function catalogImages(rows: any[]): Promise<Map<string, string>> {
-    const map = new Map<string, string>();
+type CatalogEntry = { image: string | null; url: string | null; productId: string | null };
+
+/** Карточки товаров сайта по позициям заказа: ключ — id в 1С, id сайта, артикул. */
+async function catalogByItem(rows: any[]): Promise<Map<string, CatalogEntry>> {
+    const map = new Map<string, CatalogEntry>();
     try {
         const links = await catalogLinks({
             xmlIds: rows.map((row) => row?.offer?.xmlId),
@@ -374,14 +427,26 @@ async function catalogImages(rows: any[]): Promise<Map<string, string>> {
             articles: rows.map((row) => row?.offer?.article),
         });
         for (const link of links) {
-            if (!link.image) continue;
             const key = link.key.replace(/^(1c|id|art):/, '');
-            if (!map.has(key)) map.set(key, link.image);
+            const current = map.get(key);
+            map.set(key, {
+                image: current?.image ?? link.image ?? null,
+                url: current?.url ?? link.url ?? null,
+                productId: current?.productId || link.productId || null,
+            });
         }
     } catch {
-        // Каталог не ответил — КП соберётся без картинок, это не повод падать.
+        // Каталог не ответил — документ соберётся без фото и ссылок, это не повод падать.
     }
     return map;
+}
+
+/** Карточка сайта для конкретной позиции заказа. */
+function catalogOf(map: Map<string, CatalogEntry>, row: any): CatalogEntry | null {
+    return map.get(String(row?.offer?.xmlId ?? '').split('#')[0])
+        || map.get(String(row?.offer?.externalId ?? ''))
+        || map.get(String(row?.offer?.article ?? ''))
+        || null;
 }
 
 /**
@@ -389,7 +454,7 @@ async function catalogImages(rows: any[]): Promise<Map<string, string>> {
  * «Доставка Деловые Линии, адрес». Название способа — из справочника RetailCRM
  * (закон «имена из RetailCRM»), адрес — тот, что менеджер ввёл в заказе.
  */
-async function shippingTermsText(delivery: any): Promise<string | null> {
+async function shippingTermsText(delivery: any, sellerAddress?: string | null): Promise<string | null> {
     const code = String(delivery?.code ?? '').trim();
     const address = String(delivery?.address?.text ?? delivery?.address?.building ?? delivery?.address ?? '').trim();
 
@@ -411,10 +476,41 @@ async function shippingTermsText(delivery: any): Promise<string | null> {
         .trim()
         .slice(0, 300);
 
-    const parts = [name || null, oneLine && oneLine !== '[object Object]' ? oneLine : null].filter(Boolean);
+    /**
+     * Самовывоз — пишем, ОТКУДА забирать.
+     *
+     * В КП адрес самовывоза не печатался, и менеджер вписывал наш адрес в
+     * «Адрес доставки» руками — а оттуда он уходил в «Адрес фактический»
+     * заказчика (Ирина Гордеева 12.10.2026). Теперь адрес нашего юрлица
+     * подставляется сам, и поле доставки можно не трогать.
+     */
+    const selfPickup = /^(self-delivery|pickup)$/i.test(code);
+    const managerText = oneLine && oneLine !== '[object Object]' ? oneLine : '';
+    const pickupFrom = String(sellerAddress ?? '').replace(/\s+/g, ' ').trim();
+
+    /**
+     * Менеджер в том же поле пишет транспортные габариты — их печатаем
+     * следом за адресом. Если он вписал адрес склада руками (так делали
+     * раньше), второй раз не повторяем.
+     */
+    const sameAddress = (left: string, right: string) => {
+        const plain = (v: string) => v.toLowerCase().replace(/[^a-zа-я0-9]/gi, '');
+        return Boolean(left && right) && plain(left).includes(plain(right));
+    };
+
+    const parts = selfPickup
+        ? [
+            name || 'Самовывоз',
+            pickupFrom && !sameAddress(managerText, pickupFrom) ? pickupFrom : null,
+            managerText || null,
+        ].filter(Boolean)
+        : [name || null, managerText || null].filter(Boolean);
     if (!parts.length) return null;
     return parts.join(', ');
 }
+
+/** Для теста: условия отгрузки отдельно от сборки всего документа. */
+export const shippingTermsForTest = shippingTermsText;
 
 /** Подписант счёта — из справочника наших юрлиц, по ИНН или коду магазина. */
 async function signerOf(siteCode: string | null | undefined, seller: Seller | null): Promise<{
@@ -423,15 +519,17 @@ async function signerOf(siteCode: string | null | undefined, seller: Seller | nu
     sellerPhone: string | null;
     sellerEmail: string | null;
     sellerSite: string | null;
+    /** Склад, откуда забирают товар. Не юридический адрес. */
+    shippingAddress: string | null;
 }> {
-    const empty = { signerName: null, signerTitle: null, sellerPhone: null, sellerEmail: null, sellerSite: null };
+    const empty = { signerName: null, signerTitle: null, sellerPhone: null, sellerEmail: null, sellerSite: null, shippingAddress: null };
     const inn = seller?.inn?.trim();
     const code = String(siteCode ?? '').trim();
     if (!inn && !code) return empty;
 
     const { data } = await supabase
         .from('legal_entities')
-        .select('inn, site_code, signer_name, signer_title, phone, email, site_url')
+        .select('inn, site_code, signer_name, signer_title, phone, email, site_url, shipping_address')
         .or([inn ? `inn.eq.${inn}` : null, code ? `site_code.eq.${code}` : null].filter(Boolean).join(','))
         .limit(1)
         .maybeSingle();
@@ -445,6 +543,7 @@ async function signerOf(siteCode: string | null | undefined, seller: Seller | nu
         sellerPhone: row?.phone || null,
         sellerEmail: row?.email || null,
         sellerSite: row?.site_url || null,
+        shippingAddress: row?.shipping_address || null,
     };
 }
 

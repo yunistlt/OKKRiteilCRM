@@ -1,5 +1,5 @@
 import { supabase } from '@/utils/supabase';
-import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
+import { editOrder } from '@/lib/own-crm/edit-order';
 import { loadSettings } from '@/lib/sales-rop/service';
 
 // Конвейер заявок: ночью — в пул, днём — пачками обратно.
@@ -24,11 +24,11 @@ export type QueueRow = {
     state: 'parked' | 'released' | 'done' | 'returned' | 'failed';
 };
 
-/** Смена ответственного в CRM. Site обязателен: без него orders/edit не найдёт заказ. */
-async function setManager(orderId: number, site: string, managerId: number): Promise<{ ok: boolean; error?: string }> {
+/** Смена ответственного. Пишем у себя: заказы ведутся только в ОКК (09.10.2026). */
+async function setManager(orderId: number, _site: string, managerId: number): Promise<{ ok: boolean; error?: string }> {
     try {
-        const res = await updateExistingOrderInCrm(orderId, { managerId }, site || undefined);
-        return res.success ? { ok: true } : { ok: false, error: res.errorMsg || 'RetailCRM отказал' };
+        const res = await editOrder(orderId, { managerId });
+        return res.ok ? { ok: true } : { ok: false, error: res.reason };
     } catch (e: any) {
         return { ok: false, error: e.message };
     }

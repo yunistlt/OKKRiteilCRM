@@ -10,7 +10,7 @@ import {
   isSystemJobsPipelineRuntimeEnabled,
   safeEnqueueCallTranscriptionJob,
 } from '@/lib/system-jobs';
-import { matchCallToOrders, RawCall, saveMatches } from '@/lib/call-matching';
+import { bindCallStrict } from '@/lib/call-binding';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
 
@@ -79,22 +79,27 @@ export async function GET(req: NextRequest) {
           throw new Error(`Call ${callId} not found in raw_telphin_calls`);
         }
 
-        const rawCall: RawCall = {
+        /**
+         * Привязка по правилам ОКК, а не догадка по телефону.
+         *
+         * Закон владельца 05.10.2026: «мы уже ничего не матчим». Старый матчинг
+         * угадывал заказ по номеру и ошибался примерно в трети случаев — за 90
+         * дней 1 285 его привязок из 1 776 оказались даже не разговорами, а
+         * попытками дозвона. Теперь звонок привязывается, только когда
+         * толкование одно: клиент опознан и у него ровно один открытый заказ.
+         * Всё остальное указывает менеджер руками в карточке входящего.
+         */
+        const boundOrderIds = await bindCallStrict({
           telphin_call_id: callRow.telphin_call_id,
+          direction: callRow.direction,
           from_number: callRow.from_number,
           to_number: callRow.to_number,
           from_number_normalized: callRow.from_number_normalized,
           to_number_normalized: callRow.to_number_normalized,
-          started_at: callRow.started_at,
-          direction: callRow.direction,
-          raw_payload: callRow.raw_payload,
-        };
+        });
 
-        const matches = await matchCallToOrders(rawCall);
-        if (matches.length > 0) {
-          await saveMatches(matches);
-
-          const uniqueOrderIds = Array.from(new Set(matches.map((match) => match.retailcrm_order_id)));
+        if (boundOrderIds.length > 0) {
+          const uniqueOrderIds = boundOrderIds;
           const { data: workingSettings } = await supabase
             .from('status_settings')
             .select('code')
@@ -155,16 +160,16 @@ export async function GET(req: NextRequest) {
 
         await completeSystemJob(job.id, {
           telphin_call_id: callId,
-          matches_found: matches.length,
-          semantic_rules_enqueued: matches.length > 0 && callRow.transcription_status === 'completed' && !!callRow.transcript,
-          matched_order_ids: matches.map((match) => match.retailcrm_order_id),
+          matches_found: boundOrderIds.length,
+          semantic_rules_enqueued: boundOrderIds.length > 0 && callRow.transcription_status === 'completed' && !!callRow.transcript,
+          matched_order_ids: boundOrderIds,
         });
 
         results.push({
           job_id: job.id,
           telphin_call_id: callId,
           status: 'completed',
-          matches_found: matches.length,
+          matches_found: boundOrderIds.length,
         });
       } catch (error: any) {
         await failSystemJob(job.id, error.message || 'Unknown call match worker error', getRetryDelay(job.attempts || 0));

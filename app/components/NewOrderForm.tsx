@@ -100,7 +100,15 @@ export default function NewOrderForm() {
             });
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || 'Не удалось создать заказ');
-            router.push(`/orders?number=${payload.number}`);
+            /**
+             * Открываем созданный заказ, а не просто список.
+             *
+             * Раньше тут стоял `?number=`, а карточку список открывает по
+             * `?order=` — человек оказывался на общем списке и искал свой заказ
+             * руками (жалоба менеджера 08.10.2026: «завела заказ по звонку, всё
+             * сохранилось, но меня выкинуло на главную страницу, не на заказ»).
+             */
+            router.push(`/orders?order=${encodeURIComponent(String(payload.number))}`);
         } catch (err: any) {
             setError(err.message);
         } finally {

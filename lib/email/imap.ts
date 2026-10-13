@@ -21,6 +21,16 @@ export interface ParsedIncomingEmail {
     fromEmail: string | null;
     fromName: string | null;
     toEmail: string | null;
+    /**
+     * Все получатели письма и копия.
+     *
+     * Раньше брали только первый адрес из «Кому», а «Копию» не сохраняли
+     * вовсе. Из-за этого переписка, где со стороны клиента участвуют
+     * снабженец и бухгалтер, у нас выглядела разговором с одним человеком, и
+     * «ответить всем» делать было не из чего (09.10.2026).
+     */
+    toEmails: string[];
+    ccEmails: string[];
     subject: string | null;
     inReplyTo: string | null;
     references: string | null;
@@ -58,6 +68,25 @@ function firstAddress(addr: any): { email: string | null; name: string | null } 
     return { email: v?.address ?? null, name: v?.name ?? null };
 }
 
+/**
+ * Все адреса поля. Почтовые клиенты кладут их либо одним объектом, либо
+ * списком (так бывает у «Кому» с несколькими получателями).
+ *
+ * Открыта наружу ради проверки: разбор писем локально не погонять (IMAP режет
+ * DPI), а ошибиться здесь — значит молча потерять половину переписки.
+ */
+export function allAddresses(addr: any): string[] {
+    const list = Array.isArray(addr) ? addr : [addr];
+    const out: string[] = [];
+    for (const item of list) {
+        for (const value of (item?.value ?? [])) {
+            const email = String(value?.address ?? '').trim().toLowerCase();
+            if (email) out.push(email);
+        }
+    }
+    return Array.from(new Set(out));
+}
+
 async function parseSource(uid: number, uidValidity: number, source: Buffer): Promise<ParsedIncomingEmail> {
     const parsed = await simpleParser(source);
     const from = firstAddress(parsed.from);
@@ -74,6 +103,8 @@ async function parseSource(uid: number, uidValidity: number, source: Buffer): Pr
         fromEmail: from.email,
         fromName: from.name,
         toEmail: to.email,
+        toEmails: allAddresses(parsed.to),
+        ccEmails: allAddresses(parsed.cc),
         subject: parsed.subject ?? null,
         inReplyTo: (parsed.inReplyTo as string) ?? null,
         references: Array.isArray(parsed.references)
@@ -331,6 +362,8 @@ export async function fetchNewEmails(opts: {
                 fromEmail: from.email,
                 fromName: from.name,
                 toEmail: to.email,
+                toEmails: allAddresses(parsed.to),
+                ccEmails: allAddresses(parsed.cc),
                 subject: parsed.subject ?? null,
                 inReplyTo: (parsed.inReplyTo as string) ?? null,
                 references: Array.isArray(parsed.references)

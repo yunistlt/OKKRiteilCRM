@@ -1,6 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { fetchTelphin, getTelphinToken } from '@/lib/telphin';
 import { safeEnqueueCallTranscriptionJob, safeEnqueueSystemJob } from '@/lib/system-jobs';
+import { telphinCallToRaw } from '@/lib/sync/telphin-map';
 
 // Helper to format date for Telphin: YYYY-MM-DD HH:mm:ss
 function formatTelphinDate(date: Date) {
@@ -13,16 +14,6 @@ function formatTelphinDate(date: Date) {
         pad(date.getUTCMinutes()) + ':' +
         pad(date.getUTCSeconds())
     );
-}
-
-// Normalization helper (Updated to strip 7/8 prefix for 10-digit standard)
-function normalizePhone(val: any) {
-    if (!val) return null;
-    let s = String(val).replace(/[^\d]/g, '');
-    if (s.length === 11 && (s.startsWith('7') || s.startsWith('8'))) {
-        s = s.slice(1);
-    }
-    return s.length >= 10 ? s : null;
 }
 
 export interface SyncResult {
@@ -220,60 +211,7 @@ async function runTelphinCallHistorySync(options: TelphinSyncOptions): Promise<S
         const RUN_DEADLINE = Date.now() + 250_000;  // wall-clock budget (route maxDuration is 300s)
 
         const processBatch = async (calls: any[]): Promise<number> => {
-            const rawCalls = calls.map((r: any) => {
-                const record_uuid = r.call_uuid || r.record_uuid || `rec_${Math.random()}`;
-                const rawFlow = r.flow || r.direction;
-
-                let direction = 'unknown';
-                if (rawFlow === 'out') direction = 'outgoing';
-                else if (rawFlow === 'in') direction = 'incoming';
-                else if (rawFlow === 'incoming' || rawFlow === 'outgoing') direction = rawFlow;
-
-                const startedRaw = r.start_time_gmt || r.init_time_gmt || r.bridged_time_gmt;
-                const callDate = startedRaw ? new Date(startedRaw + (startedRaw.includes('Z') ? '' : 'Z')) : new Date();
-
-                let fromNumber = r.from_number || r.ani_number || r.from_username;
-                let toNumber = r.to_number || r.dest_number || r.to_username;
-
-                if (rawFlow === 'out') {
-                    fromNumber = r.ani_number || r.from_number || r.from_username;
-                    toNumber = r.dest_number || r.to_number || r.to_username;
-                }
-
-                let recordingUrl = r.record_url || r.storage_url || r.url || null;
-                if (!recordingUrl && r.cdr && Array.isArray(r.cdr)) {
-                    const cdrWithStorage = r.cdr.find((c: any) => c.storage_url);
-                    if (cdrWithStorage) {
-                        recordingUrl = cdrWithStorage.storage_url;
-                    }
-                }
-
-                // «Вторая наклейка»: все record_uuid плеч звонка в формате RetailCRM externalId
-                // ("<extId>-<record_uuid>", нижний регистр) — для прямой стыковки с retailcrm_calls.
-                const recordUuids = Array.isArray(r.cdr)
-                    ? Array.from(new Set(
-                        r.cdr
-                            .map((c: any) => c.record_uuid)
-                            .filter(Boolean)
-                            .map((u: any) => String(u).toLowerCase())
-                    ))
-                    : [];
-
-                return {
-                    telphin_call_id: record_uuid,
-                    record_uuids: recordUuids.length ? recordUuids : null,
-                    direction: direction,
-                    from_number: fromNumber || 'unknown',
-                    to_number: toNumber || 'unknown',
-                    from_number_normalized: normalizePhone(fromNumber),
-                    to_number_normalized: normalizePhone(toNumber),
-                    started_at: callDate.toISOString(),
-                    duration_sec: r.duration || 0,
-                    recording_url: recordingUrl,
-                    raw_payload: r,
-                    ingested_at: new Date().toISOString()
-                };
-            });
+            const rawCalls = calls.map((r: any) => telphinCallToRaw(r));
 
             const { error: rawError } = await supabase.from('raw_telphin_calls')
                 .upsert(rawCalls, { onConflict: 'telphin_call_id' });

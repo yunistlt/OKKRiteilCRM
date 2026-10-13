@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { canAccessPathWithRules } from '@/lib/rbac';
@@ -16,7 +16,40 @@ export default function Sidebar() {
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const { user, permissionRules } = useAuth();
+    /**
+     * Свёрнуто ли меню — личная настройка человека, а не состояние страницы:
+     * она переживает обновление и переезжает за ним на другой компьютер
+     * (жалоба владельца 05.10.2026 — «не сохранилась настройка левого меню»).
+     * Хранится там же, где колонки списков, — в личных настройках экрана.
+     */
     const [isCollapsed, setIsCollapsed] = useState(false);
+    /** Пока настройка не прочитана — не сохраняем, иначе затрём её по умолчанию. */
+    const collapsedLoaded = useRef(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        void fetch('/api/settings/view?viewKey=sidebar')
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (!cancelled && typeof data?.settings?.collapsed === 'boolean') {
+                    setIsCollapsed(data.settings.collapsed);
+                }
+            })
+            .catch(() => undefined)
+            .finally(() => { collapsedLoaded.current = true; });
+        return () => { cancelled = true; };
+    }, []);
+
+    const toggleCollapsed = () => {
+        const next = !isCollapsed;
+        setIsCollapsed(next);
+        if (!collapsedLoaded.current) return;
+        void fetch('/api/settings/view', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ viewKey: 'sidebar', settings: { collapsed: next } }),
+        }).catch(() => undefined);
+    };
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     // Пункт, по которому только что кликнули: подсвечиваем сразу, не дожидаясь
     // серверного рендера следующей страницы (иначе кажется, что кнопка не работает).
@@ -163,7 +196,7 @@ export default function Sidebar() {
                         )}
                     </div>
                     <button 
-                        onClick={() => setIsCollapsed(!isCollapsed)}
+                        onClick={toggleCollapsed}
                         className="hidden md:flex h-10 w-10 shrink-0 items-center justify-center border border-white/15 bg-white/15 text-white hover:bg-blue-500 hover:border-blue-300/40"
                         aria-label={isCollapsed ? 'Развернуть меню' : 'Свернуть меню'}
                     >

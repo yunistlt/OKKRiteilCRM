@@ -57,6 +57,17 @@ export type ClientRequisitesCard = Requisites & {
     updatedBy: string | null;
 };
 
+/**
+ * ИНН уже стоит в другой карточке. Отдельный тип ошибки, а не текст: карточка
+ * по нему показывает кнопку «Объединить» — решает человек, а не программа.
+ */
+export class DuplicateInnError extends Error {
+    constructor(message: string, readonly otherClientId: string, readonly otherClientName: string | null) {
+        super(message);
+        this.name = 'DuplicateInnError';
+    }
+}
+
 const EMPTY: Requisites = {
     contragentType: null, legalName: null, fullName: null,
     signerName: null, signerTitle: null, signerBasis: null, inn: null, kpp: null, ogrn: null, ogrnip: null,
@@ -232,30 +243,91 @@ export async function saveClientRequisites(
     const id = Number(clientId);
     if (!Number.isFinite(id)) throw new Error('Не понял, какому клиенту сохранять реквизиты');
 
+    /**
+     * Пишем ТОЛЬКО то, что прислали.
+     *
+     * Раньше сохранялись все поля разом — тем снимком, которым форма
+     * открылась. Если за время правки данные менялись (второй человек, перенос
+     * из заказа, слияние карточек), сохранение затирало их пустотой: у ООО
+     * «УАС» так пропал ОГРН, а до того — банковские реквизиты (жалобы Евгении
+     * Матвеевой 09.10.2026). Теперь поле, которого в запросе нет, остаётся в
+     * базе нетронутым.
+     *
+     * Пустая строка — это осознанная очистка поля человеком, она проходит.
+     */
+    const columns: Array<[keyof Requisites, string]> = [
+        ['contragentType', 'contragent_type'],
+        ['legalName', 'legalName'],
+        ['fullName', 'full_name'],
+        ['signerName', 'signer_name'],
+        ['signerTitle', 'signer_title'],
+        ['signerBasis', 'signer_basis'],
+        ['inn', 'inn'],
+        ['kpp', 'kpp'],
+        ['ogrn', 'OGRN'],
+        ['ogrnip', 'OGRNIP'],
+        ['legalAddress', 'legalAddress'],
+        ['bank', 'bank'],
+        ['bankAccount', 'bankAccount'],
+        ['bik', 'BIK'],
+        ['corrAccount', 'corrAccount'],
+        ['bankAddress', 'bankAddress'],
+    ];
+
     const row: Record<string, unknown> = {
-        contragent_type: text(requisites.contragentType),
-        legalName: text(requisites.legalName),
-        full_name: text(requisites.fullName),
-        signer_name: text(requisites.signerName),
-        signer_title: text(requisites.signerTitle),
-        signer_basis: text(requisites.signerBasis),
-        // `company_name` приезжает из RetailCRM и показывается в списке клиентов:
-        // держим его в согласии с юридическим названием, если его внесли.
-        ...(text(requisites.legalName) ? { company_name: text(requisites.legalName) } : {}),
-        inn: text(requisites.inn),
-        kpp: text(requisites.kpp),
-        OGRN: text(requisites.ogrn),
-        OGRNIP: text(requisites.ogrnip),
-        legalAddress: text(requisites.legalAddress),
-        bank: text(requisites.bank),
-        bankAccount: text(requisites.bankAccount),
-        BIK: text(requisites.bik),
-        corrAccount: text(requisites.corrAccount),
-        bankAddress: text(requisites.bankAddress),
         requisites_updated_by: text(actor),
         requisites_updated_at: new Date().toISOString(),
     };
 
+    for (const [field, column] of columns) {
+        if (requisites[field] === undefined) continue;
+        row[column] = text(requisites[field]);
+    }
+
+    // `company_name` приезжает из RetailCRM и показывается в списке клиентов:
+    // держим его в согласии с юридическим названием, если его внесли.
+    if (text(requisites.legalName)) row.company_name = text(requisites.legalName);
+
+    // Кроме служебных отметок ничего не прислали — сохранять нечего.
+    if (Object.keys(row).length <= 2) return;
+
     const { error } = await supabase.from('clients').update(row).eq('id', id);
-    if (error) throw new Error(`Не удалось сохранить реквизиты: ${error.message}`);
+    if (!error) return;
+
+    /**
+     * ИНН уже стоит в другой карточке.
+     *
+     * Такой ИНН запрещён уникальным индексом `clients_inn_unique` (09.10.2026:
+     * «по ИНН запретить дубли просто»). Но человеку в этот момент нужно
+     * выставить счёт, а не разбираться с дублями: сохраняем всё остальное и
+     * говорим словами, в какой карточке этот ИНН уже стоит. База отдаёт
+     * техническую фразу про индекс — её показывать нельзя.
+     */
+    if (String(error.code) === '23505' && String(error.message).includes('inn')) {
+        const inn = text(requisites.inn);
+        const { data: other } = await supabase
+            .from('clients')
+            .select('id, company_name')
+            .eq('inn', inn)
+            .is('merged_into', null)
+            .maybeSingle();
+
+        delete row.inn;
+        const retry = Object.keys(row).length > 2
+            ? await supabase.from('clients').update(row).eq('id', id)
+            : { error: null };
+
+        const where = other
+            ? `он уже стоит в карточке №${(other as any).id} — ${(other as any).company_name || 'без названия'}`
+            : 'он уже стоит в другой карточке';
+
+        throw new DuplicateInnError(
+            `ИНН ${inn} не сохранён: ${where}. Это одна и та же компания двумя карточками. `
+            + `Остальные реквизиты${retry.error ? ' сохранить не удалось' : ' сохранены'}.`,
+            other ? String((other as any).id) : '',
+            other ? ((other as any).company_name ?? null) : null,
+        );
+    }
+
+    throw new Error(`Не удалось сохранить реквизиты: ${error.message}`);
 }

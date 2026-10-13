@@ -13,6 +13,9 @@ interface OrdersFilterPanelProps {
     managers: Option[];
     statuses: Option[];
     onApply: (filter: OrdersFilter) => void;
+    /** Развёрнут ли фильтр. Запоминается за человеком списком заказов. */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
 }
 
 interface Preset { id: string; name: string; filters: Partial<OrdersFilter>; owner_user_id: string | null }
@@ -21,8 +24,18 @@ interface Preset { id: string; name: string; filters: Partial<OrdersFilter>; own
  * Панель фильтров списка заказов — повторяет экран «Заказы» RetailCRM: те же поля,
  * тот же порядок, полоса сохранённых фильтров справа и шестерёнка выбора полей.
  */
-export default function OrdersFilterPanel({ value, managers, statuses, onApply }: OrdersFilterPanelProps) {
-    const [open, setOpen] = useState(true);
+export default function OrdersFilterPanel({ value, managers, statuses, onApply, open: openProp, onOpenChange }: OrdersFilterPanelProps) {
+    /**
+     * Свёрнут фильтр или нет — личная настройка человека, а не состояние
+     * страницы: она переживает обновление (жалоба владельца 05.10.2026 —
+     * «при каждом обновлении слетают все настройки интерфейса»). Хранит её
+     * список заказов вместе с колонками и ширинами, здесь она только
+     * показывается.
+     */
+    const open = openProp ?? true;
+    const setOpen = (next: boolean | ((prev: boolean) => boolean)) => {
+        onOpenChange?.(typeof next === 'function' ? (next as (prev: boolean) => boolean)(open) : next);
+    };
     const [draft, setDraft] = useState<OrdersFilter>(value);
     const [options, setOptions] = useState<{ categories: Option[]; sferas: Option[] }>({ categories: [], sferas: [] });
     const [presets, setPresets] = useState<Preset[]>([]);
@@ -130,7 +143,7 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                             <Field label="Номер заказа"><Text value={draft.number} onChange={(v) => set({ number: v })} /></Field>
                         )}
                         {show('customer') && (
-                            <Field label="Покупатель"><Text value={draft.customer} onChange={(v) => set({ customer: v })} placeholder="ФИО или телефон или email" /></Field>
+                            <Field label="Покупатель"><Text value={draft.customer} onChange={(v) => set({ customer: v })} placeholder="ФИО, телефон, email или ИНН" /></Field>
                         )}
                         {show('managers') && (
                             <Field label="Менеджеры"><Multi options={managers} selected={draft.managers} onChange={(v) => set({ managers: v })} /></Field>
@@ -204,6 +217,12 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                         {show('managerComment') && (
                             <Field label="Комментарий оператора"><Text value={draft.managerComment} onChange={(v) => set({ managerComment: v })} /></Field>
                         )}
+                        {/* Наименование товара: ищем по составу заказа. Просьба
+                            Евгении Матвеевой 06.10.2026 — иначе дубль заявки по
+                            одному изделию не найти. */}
+                        {show('itemName') && (
+                            <Field label="Наименование товара"><Text value={draft.itemName} onChange={(v) => set({ itemName: v })} placeholder="Часть названия, например «стеллаж»" /></Field>
+                        )}
                         {show('customerComment') && (
                             <Field label="Комментарий клиента"><Text value={draft.customerComment} onChange={(v) => set({ customerComment: v })} /></Field>
                         )}
@@ -217,6 +236,19 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                                         className="h-3.5 w-3.5 border-gray-300 text-blue-600"
                                     />
                                     Только просроченные
+                                </label>
+                            </Field>
+                        )}
+                        {show('duplicatesOnly') && (
+                            <Field label="Дубли заказов">
+                                <label className="flex cursor-pointer items-center gap-1.5 py-1 text-xs text-gray-800">
+                                    <input
+                                        type="checkbox"
+                                        checked={draft.duplicatesOnly}
+                                        onChange={(e) => set({ duplicatesOnly: e.target.checked })}
+                                        className="h-3.5 w-3.5 border-gray-300 text-blue-600"
+                                    />
+                                    Только возможные дубли
                                 </label>
                             </Field>
                         )}

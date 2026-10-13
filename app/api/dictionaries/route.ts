@@ -15,7 +15,7 @@ export async function GET() {
             .from('retailcrm_dictionaries')
             .select('entity_type, dictionary_code, item_code, item_name')
             .eq('active', true),
-        supabase.from('retailcrm_custom_fields').select('entity, code, name, dictionary').not('dictionary', 'is', null),
+        supabase.from('retailcrm_custom_fields').select('entity, code, name, dictionary'),
     ]);
 
     if (dict.error) {
@@ -26,6 +26,12 @@ export async function GET() {
         {
             items: dict.data ?? [],
             fields: (fields.data ?? []).filter((f: { dictionary: string | null }) => f.dictionary),
+            /**
+             * Названия полей заказа — по закону «имена из RetailCRM»: подпись в
+             * карточке берём из каталога, а не придумываем. Здесь все поля, в
+             * том числе строковые (у них справочника нет, но имя есть).
+             */
+            fieldNames: (fields.data ?? []).map((f: any) => ({ code: f.code, name: f.name })),
         },
         { headers: { 'Cache-Control': 'private, max-age=300' } },
     );

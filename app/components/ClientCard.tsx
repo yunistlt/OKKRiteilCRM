@@ -4,11 +4,13 @@
 // и все его заказы. Реквизиты в RetailCRM лежат на заказе, поэтому под ними
 // подписано, из какого заказа они взяты — число должно раскладываться.
 import { useCallback, useEffect, useRef, useState } from 'react';
+import ClientFiles from '@/app/components/ClientFiles';
 import { useRouter } from 'next/navigation';
 import { formatIntRu, formatRub } from '@/lib/format';
 import { isReseller } from '@/lib/own-crm/okved';
 import { sameCompany } from '@/lib/own-crm/same-company';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
+import CompanyGroupPanel from '@/components/clients/CompanyGroupPanel';
 
 type Requisites = {
     contragentType?: string | null;
@@ -69,7 +71,8 @@ type PersonDraft = {
     firstName: string;
     patronymic: string;
     email: string;
-    phone: string;
+    /** Телефонов у человека бывает несколько: рабочий, мобильный, приёмная. */
+    phones: string[];
 };
 
 type CallRow = {
@@ -161,14 +164,42 @@ export default function ClientCard({ clientId }: { clientId: string }) {
     // подтягиваются (решение владельца 02.10.2026).
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState<Requisites | null>(null);
+    /**
+     * Чем форма открылась. Нужен, чтобы отправить на сервер ТОЛЬКО поля,
+     * которые человек правда менял. Иначе открытая заранее форма сохраняет
+     * свой устаревший снимок и затирает то, что внесли за это время, —
+     * так пропал ОГРН у ООО «УАС» 09.10.2026.
+     */
+    const [opened, setOpened] = useState<Requisites | null>(null);
     const [savingRequisites, setSavingRequisites] = useState(false);
     const [requisitesNote, setRequisitesNote] = useState<string | null>(null);
+    /**
+     * Сбой сохранения. Отдельно от подсказок: его показываем прямо под кнопкой
+     * «Сохранить». Раньше любой ответ сервера падал в конец длинной формы —
+     * человек жал «Сохранить», ничего не происходило, и он жал ещё раз
+     * (жалоба 09.10.2026: «кнопка не работает, снова высвечивается синим»).
+     */
+    const [requisitesError, setRequisitesError] = useState<string | null>(null);
+    /**
+     * Карточка, в которой этот ИНН уже стоит. Её предлагаем объединить: одно
+     * юрлицо — одна карточка, но решает человек, а не программа.
+     */
+    const [duplicate, setDuplicate] = useState<{ clientId: string; clientName: string | null } | null>(null);
+    const [merging, setMerging] = useState(false);
     const [relation, setRelation] = useState<Relation | null>(null);
     const [related, setRelated] = useState<Related[]>([]);
     const [orders, setOrders] = useState<OrderRow[]>([]);
     const [calls, setCalls] = useState<CallRow[]>([]);
     const [emails, setEmails] = useState<EmailRow[]>([]);
     const [phone, setPhone] = useState<string | null>(null);
+    /**
+     * Телефоны компании. Их несколько: приёмная, снабжение, мобильный
+     * директора — поэтому список, а не одно поле (просьба менеджеров
+     * 08.10.2026). Пустая строка в конце — это поле «добавить ещё».
+     */
+    const [phones, setPhones] = useState<string[]>([]);
+    const [phonesSaving, setPhonesSaving] = useState(false);
+    const [phonesNote, setPhonesNote] = useState<string | null>(null);
     const [contacts, setContacts] = useState<ContactRow[]>([]);
     // Правка человека: открыт один контакт за раз.
     const [personEditId, setPersonEditId] = useState<number | null>(null);
@@ -183,9 +214,12 @@ export default function ClientCard({ clientId }: { clientId: string }) {
         try {
             const res = await fetch(`/api/clients/${clientId}/requisites`);
             const payload = await res.json();
-            if (res.ok) setRequisites(payload.requisites);
-        } catch {
-            // Молча: карточка и без реквизитов полезна, а ошибку покажем при правке.
+            if (!res.ok) throw new Error(payload.error || 'реквизиты не прочитались');
+            setRequisites(payload.requisites);
+        } catch (e: any) {
+            // Молчать нельзя: пустые поля человек читает как «данных нет» и
+            // вносит их заново — а они на месте, просто не доехали.
+            setRequisitesNote(`Реквизиты не загрузились: ${e.message}. Это сбой чтения, данные на месте — обновите страницу.`);
         }
     }, [clientId]);
 
@@ -250,41 +284,79 @@ export default function ClientCard({ clientId }: { clientId: string }) {
         }
     };
 
+    /**
+     * Объединить эту карточку с той, где уже стоит ИНН. Заказы, контактные
+     * лица и недостающие реквизиты переезжают туда, эта помечается слитой —
+     * удалять нельзя, на неё ссылаются старые документы.
+     */
+    const mergeWithDuplicate = async () => {
+        if (!duplicate) return;
+        setMerging(true);
+        try {
+            const res = await fetch(`/api/clients/${clientId}/merge`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ into: duplicate.clientId }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось объединить карточки');
+            router.replace(`/clients/${duplicate.clientId}`);
+        } catch (e: any) {
+            setRequisitesError(e.message);
+        } finally {
+            setMerging(false);
+        }
+    };
+
     const saveRequisites = async () => {
         if (!draft) return;
+
+        // Отправляем только изменённое: поле, которого нет в запросе, сервер
+        // не трогает. Пустая строка здесь — осознанная очистка человеком.
+        const fields: Array<keyof Requisites> = [
+            'legalName', 'fullName', 'signerName', 'signerTitle', 'signerBasis',
+            'inn', 'kpp', 'ogrn', 'ogrnip', 'legalAddress',
+            'bank', 'bankAccount', 'bik', 'corrAccount', 'bankAddress', 'contragentType',
+        ];
+        const changedFields: Record<string, string> = {};
+        for (const key of fields) {
+            const now = String(draft[key] ?? '');
+            const was = String(opened?.[key] ?? '');
+            if (now !== was) changedFields[key] = now;
+        }
+
+        if (!Object.keys(changedFields).length) {
+            setEditing(false);
+            setDraft(null);
+            setOpened(null);
+            return;
+        }
+
         setSavingRequisites(true);
         setRequisitesNote(null);
+        setRequisitesError(null);
+        setDuplicate(null);
         try {
             const res = await fetch(`/api/clients/${clientId}/requisites`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    legalName: draft.legalName ?? '',
-                    fullName: draft.fullName ?? '',
-                    signerName: draft.signerName ?? '',
-                    signerTitle: draft.signerTitle ?? '',
-                    signerBasis: draft.signerBasis ?? '',
-                    inn: draft.inn ?? '',
-                    kpp: draft.kpp ?? '',
-                    ogrn: draft.ogrn ?? '',
-                    ogrnip: draft.ogrnip ?? '',
-                    legalAddress: draft.legalAddress ?? '',
-                    bank: draft.bank ?? '',
-                    bankAccount: draft.bankAccount ?? '',
-                    bik: draft.bik ?? '',
-                    corrAccount: draft.corrAccount ?? '',
-                    bankAddress: draft.bankAddress ?? '',
-                    contragentType: draft.contragentType ?? '',
-                }),
+                body: JSON.stringify(changedFields),
             });
             const payload = await res.json();
-            if (!res.ok) throw new Error(payload.error || 'Не удалось сохранить реквизиты');
+            if (!res.ok) {
+                // Остальные реквизиты сервер уже сохранил — показываем их,
+                // чтобы человек видел, что работа не пропала.
+                if (payload.requisites) setRequisites(payload.requisites);
+                if (payload.duplicate?.clientId) setDuplicate(payload.duplicate);
+                throw new Error(payload.error || 'Не удалось сохранить реквизиты');
+            }
             setRequisites(payload.requisites);
             void loadRequisites();
             setEditing(false);
             setDraft(null);
+            setOpened(null);
         } catch (e: any) {
-            setRequisitesNote(e.message);
+            setRequisitesError(e.message);
         } finally {
             setSavingRequisites(false);
         }
@@ -303,11 +375,31 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                 firstName: payload.person.firstName || '',
                 patronymic: payload.person.patronymic || '',
                 email: payload.person.email || '',
-                phone: (payload.person.phones || [])[0] || '',
+                phones: (payload.person.phones || []).filter(Boolean),
             });
         } catch (e: any) {
             setPersonNote(e.message);
             setPersonEditId(null);
+        }
+    };
+
+    const savePhones = async () => {
+        setPhonesSaving(true);
+        setPhonesNote(null);
+        try {
+            const res = await fetch(`/api/clients/${clientId}/phones`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phones }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось сохранить');
+            setPhones(payload.phones || []);
+            setPhonesNote('Сохранено');
+        } catch (e: any) {
+            setPhonesNote(e.message);
+        } finally {
+            setPhonesSaving(false);
         }
     };
 
@@ -324,7 +416,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                     firstName: personDraft.firstName,
                     patronymic: personDraft.patronymic,
                     email: personDraft.email,
-                    phones: personDraft.phone ? [personDraft.phone] : [],
+                    phones: personDraft.phones.map((p) => p.trim()).filter(Boolean),
                 }),
             });
             const payload = await res.json();
@@ -350,6 +442,11 @@ export default function ClientCard({ clientId }: { clientId: string }) {
             const response = await fetch(`/api/clients/${clientId}`);
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || 'Не удалось открыть карточку клиента');
+            // Карточку объединили с другой — ведём туда: здесь работы больше нет.
+            if (payload.mergedInto) {
+                router.replace(`/clients/${payload.mergedInto}`);
+                return;
+            }
             setClient(payload.client);
             setRequisites(payload.requisites);
             setRelation(payload.relation || null);
@@ -358,6 +455,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
             setCalls(payload.calls || []);
             setEmails(payload.emails || []);
             setPhone(payload.phone || null);
+            setPhones(Array.isArray(payload.client?.phones) ? payload.client.phones.filter(Boolean) : []);
             setContacts(payload.contacts || []);
             setError(null);
         } catch (err: any) {
@@ -421,7 +519,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                                     {savingRequisites ? 'Сохраняем…' : 'Сохранить'}
                                 </button>
                                 <button
-                                    onClick={() => { setEditing(false); setDraft(null); }}
+                                    onClick={() => { setEditing(false); setDraft(null); setOpened(null); }}
                                     className="text-[11px] font-bold normal-case text-gray-500 hover:underline"
                                 >
                                     Отменить
@@ -429,13 +527,41 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                             </span>
                         ) : (
                             <button
-                                onClick={() => { setDraft({ ...(requisites ?? {}) } as Requisites); setEditing(true); }}
+                                onClick={() => {
+                                    setRequisitesError(null);
+                                    setDraft({ ...(requisites ?? {}) } as Requisites);
+                                    setOpened({ ...(requisites ?? {}) } as Requisites);
+                                    setEditing(true);
+                                }}
                                 className="text-[11px] font-bold normal-case text-blue-700 hover:underline"
                             >
                                 Править
                             </button>
                         )}
                     </div>
+
+                    {/* Сбой сохранения — сразу под кнопкой, а не в конце длинной
+                        формы: иначе человек не видит ответа и жмёт ещё раз. */}
+                    {requisitesError && (
+                        <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-[11px] text-red-800">
+                            <div>{requisitesError}</div>
+                            {duplicate && (
+                                <div className="mt-2 flex flex-wrap items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={mergeWithDuplicate}
+                                        disabled={merging}
+                                        className="border border-red-700 px-3 py-1 text-[11px] font-semibold text-red-800 hover:bg-red-100 disabled:border-gray-300 disabled:text-gray-400"
+                                    >
+                                        {merging ? 'Объединяем…' : `Это та же компания — объединить с №${duplicate.clientId}`}
+                                    </button>
+                                    <a href={`/clients/${duplicate.clientId}`} className="font-semibold underline">
+                                        Открыть карточку {duplicate.clientName || `№${duplicate.clientId}`}
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Заполнить реквизиты, а не переписывать их руками: по ИНН из
                         реестра или из присланной карточки предприятия (решение
@@ -481,7 +607,10 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                                 // Подписант договора: без него договор не
                                 // составить (просьба Лены 05.10.2026).
                                 ['signerTitle', 'Должность подписанта'],
-                                ['signerName', 'ФИО подписанта'],
+                                // Именительный падеж: в договоре он сам встанет в
+                                // нужный («в лице Директора Шуняевой Фаузили Рифовны»),
+                                // а в строке подписи останется как есть.
+                                ['signerName', 'ФИО подписанта (как в паспорте: Шуняева Фаузиля Рифовна)'],
                                 ['signerBasis', 'Действует на основании'],
                                 ['legalAddress', 'Юридический адрес'],
                                 ['bank', 'Банк'],
@@ -566,6 +695,65 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                         </div>
                     )}
 
+                    {/* Файлы компании и признак «наше юрлицо» — здесь же, в
+                        карточке: отдельный раздел владельцу не нужен
+                        (решение 08.10.2026). */}
+                    <ClientFiles clientId={String(clientId)} />
+
+                    {/* Телефоны компании: их несколько, и менеджер добавляет
+                        столько, сколько нужно (просьба 08.10.2026). Номер в
+                        карточке — это ещё и будущая кнопка «позвонить» из
+                        реестра звонков: звоним только по тому, что здесь. */}
+                    <div className="border-y border-gray-200 bg-gray-100 px-4 py-2 font-bold uppercase tracking-wide text-gray-700">
+                        Телефоны компании
+                    </div>
+                    <div className="space-y-1.5 px-4 py-3">
+                        {phones.length === 0 && (
+                            <div className="text-gray-500">Телефонов не записано.</div>
+                        )}
+                        {phones.map((value, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                                <input
+                                    value={value}
+                                    onChange={(e) => setPhones(phones.map((p, i) => (i === index ? e.target.value : p)))}
+                                    placeholder="+7 (999) 000-00-00"
+                                    className="w-full max-w-xs border border-gray-300 px-2 py-1"
+                                />
+                                <a
+                                    href={`tel:${value.replace(/[^\d+]/g, '')}`}
+                                    className="text-[11px] font-bold text-blue-700 hover:underline"
+                                >
+                                    позвонить
+                                </a>
+                                <button
+                                    onClick={() => setPhones(phones.filter((_, i) => i !== index))}
+                                    className="text-[11px] font-bold text-gray-500 hover:underline"
+                                >
+                                    убрать
+                                </button>
+                            </div>
+                        ))}
+                        <div className="flex items-center gap-3 pt-1">
+                            <button
+                                onClick={() => setPhones([...phones, ''])}
+                                className="text-[11px] font-bold text-blue-700 hover:underline"
+                            >
+                                Добавить телефон
+                            </button>
+                            <button
+                                onClick={savePhones}
+                                disabled={phonesSaving}
+                                className="text-[11px] font-bold text-blue-700 hover:underline disabled:text-gray-400"
+                            >
+                                {phonesSaving ? 'Сохраняем…' : 'Сохранить'}
+                            </button>
+                            {phonesNote && <span className="text-[11px] text-gray-500">{phonesNote}</span>}
+                        </div>
+                        {phone && !phones.length && (
+                            <div className="text-[11px] text-gray-500">Из последнего заказа: {phone}</div>
+                        )}
+                    </div>
+
                     <div className="border-y border-gray-200 bg-gray-100 px-4 py-2 font-bold uppercase tracking-wide text-gray-700">
                         Контактные лица
                     </div>
@@ -587,9 +775,8 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                                         ['lastName', 'Фамилия'],
                                         ['firstName', 'Имя'],
                                         ['patronymic', 'Отчество'],
-                                        ['phone', 'Телефон'],
                                         ['email', 'Почта'],
-                                    ] as Array<[keyof PersonDraft, string]>).map(([key, label]) => (
+                                    ] as Array<['lastName' | 'firstName' | 'patronymic' | 'email', string]>).map(([key, label]) => (
                                         <label key={key} className="flex items-center gap-2">
                                             <span className="w-24 shrink-0 text-gray-500">{label}</span>
                                             <input
@@ -599,6 +786,45 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                                             />
                                         </label>
                                     ))}
+
+                                    {/* Телефонов столько, сколько нужно: у человека
+                                        бывает рабочий, мобильный и приёмная. */}
+                                    {(personDraft.phones.length ? personDraft.phones : ['']).map((value, index) => (
+                                        <label key={index} className="flex items-center gap-2">
+                                            <span className="w-24 shrink-0 text-gray-500">
+                                                {index === 0 ? 'Телефон' : 'Ещё телефон'}
+                                            </span>
+                                            <input
+                                                value={value}
+                                                onChange={(e) => {
+                                                    const next = personDraft.phones.length ? [...personDraft.phones] : [''];
+                                                    next[index] = e.target.value;
+                                                    setPersonDraft({ ...personDraft, phones: next });
+                                                }}
+                                                className="w-full border border-gray-300 px-2 py-1"
+                                            />
+                                            {personDraft.phones.length > 1 && (
+                                                <button
+                                                    onClick={() => setPersonDraft({
+                                                        ...personDraft,
+                                                        phones: personDraft.phones.filter((_, i) => i !== index),
+                                                    })}
+                                                    className="shrink-0 text-[11px] font-bold text-gray-500 hover:underline"
+                                                >
+                                                    убрать
+                                                </button>
+                                            )}
+                                        </label>
+                                    ))}
+                                    <button
+                                        onClick={() => setPersonDraft({
+                                            ...personDraft,
+                                            phones: [...(personDraft.phones.length ? personDraft.phones : ['']), ''],
+                                        })}
+                                        className="text-[11px] font-bold text-blue-700 hover:underline"
+                                    >
+                                        Добавить телефон
+                                    </button>
                                     <div className="flex items-center gap-3 pt-1">
                                         <button
                                             onClick={savePerson}
@@ -627,7 +853,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                                         </button>
                                     </div>
                                     <div className="text-[11px] text-gray-500">
-                                        {person.phones[0] || 'телефон неизвестен'}
+                                        {person.phones.length ? person.phones.join(' · ') : 'телефон неизвестен'}
                                         {person.email ? ` · ${person.email}` : ''}
                                     </div>
                                     <div className="text-[11px] text-gray-500">
@@ -690,6 +916,15 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                             Карточки не объединяются автоматически — решение за менеджером.
                         </div>
                     )}
+
+                    {/* Группа компаний: разные юрлица одного покупателя считаются
+                        одним клиентом (решение владельца 06.10.2026). Стоит сразу
+                        под найденными карточками — там и видно, что объединять. */}
+                    <CompanyGroupPanel
+                        clientId={clientId}
+                        clientName={client?.company_name || ''}
+                        onChanged={() => void load()}
+                    />
                 </div>
 
                 <div className="bg-white text-xs lg:col-span-1">

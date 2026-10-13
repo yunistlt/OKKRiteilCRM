@@ -245,18 +245,31 @@ export async function syncTsehSchemaToKb(
     const articles = buildSchemaArticles(tables);
     const report: SchemaSyncReport = { tables: tables.length, inserted: [], updated: [], unchanged: [], deactivated: [] };
 
-    const existing = await sql<{ slug: string; fp: string | null }[]>`
-        SELECT slug, metadata_fingerprint AS fp
+    const existing = await sql<{ slug: string; fp: string | null; isActive: boolean }[]>`
+        SELECT slug, metadata_fingerprint AS fp, is_active AS "isActive"
           FROM public.shtab_kb
          WHERE slug LIKE ${SCHEMA_SLUG_PREFIX + '%'}
     `;
     const fpBySlug = new Map(existing.map((r) => [r.slug, r.fp]));
+    const activeBySlug = new Map(existing.map((r) => [r.slug, r.isActive]));
 
     for (const a of articles) {
         const text = formatArticleForEmbedding(a);
         const fp = kbFingerprint(text);
 
         if (fpBySlug.get(a.slug) === fp) {
+            // Погашенный снимок возвращаем без пересчёта: схема та же, эмбеддинг
+            // в строке верный. Иначе снимок, погашенный чужим засевом, ночной
+            // крон уже не оживит — он видит совпавший отпечаток и проходит мимо.
+            if (activeBySlug.get(a.slug) === false) {
+                await sql`
+                    UPDATE public.shtab_kb
+                       SET is_active = true, updated_at = now()
+                     WHERE slug = ${a.slug}
+                `;
+                report.updated.push(a.slug);
+                continue;
+            }
             report.unchanged.push(a.slug);
             continue;
         }

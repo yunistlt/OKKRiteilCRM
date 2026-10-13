@@ -24,8 +24,16 @@ const THRESHOLDS = {
     emailPollMinutes: 45,
     /** письмо со status='new' ждёт разбора в том же заходе крона */
     emailStuckMinutes: 120,
-    /** воркеры очереди работают круглосуточно, раз в 1–2 минуты */
+    /** воркеры очереди работают раз в 1–2 минуты, пока есть что делать */
     jobsFinishedMinutes: 45,
+    /**
+     * Ночью тишина в очереди — это ночь, а не авария: работы ставят люди, а
+     * вечером их нет. Решение владельца 05.10.2026: окно с 19:00 до 8:00 по
+     * Москве. В эти часы молчание очереди не поднимает тревогу — иначе сторож
+     * будит владельца всю ночь тем, что никто не работает.
+     */
+    quietFromHourMsk: 19,
+    quietToHourMsk: 8,
     /** работа в очереди не должна ждать исполнителя часами */
     jobsQueuedMinutes: 120,
     /**
@@ -34,9 +42,20 @@ const THRESHOLDS = {
      * норматив объявлял бы их вставшими каждый день после обеда.
      */
     jobTypeDeadHours: 26,
-    /** синхронизация заказов из RetailCRM идёт круглосуточно */
-    ordersMinutes: 180,
 } as const;
+
+/**
+ * Ночь по-московски: с 19:00 до 8:00 очередь может молчать — работы ставят люди.
+ * Считаем по Москве, а не по часам сервера: он живёт в Гринвиче.
+ */
+function isQuietHours(now: Date): boolean {
+    const mskHour = Number(
+        new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', hour12: false }).format(now),
+    );
+    const { quietFromHourMsk: from, quietToHourMsk: to } = THRESHOLDS;
+    // Окно переходит через полночь, поэтому считаем по кругу.
+    return from <= to ? mskHour >= from && mskHour < to : mskHour >= from || mskHour < to;
+}
 
 export type PulseCheck = {
     /** Технический код — для сравнения снаружи */
@@ -179,31 +198,19 @@ async function stalledJobTypes(now: Date): Promise<string[]> {
     return stalled;
 }
 
-async function lastOrderTouch(): Promise<string | null> {
-    // nullsFirst: false обязателен — в Postgres при DESC пустые значения идут первыми,
-    // и запрос возвращал заказ без updated_at, то есть «никогда».
-    const { data } = await supabase
-        .from('orders')
-        .select('updated_at')
-        .not('updated_at', 'is', null)
-        .order('updated_at', { ascending: false, nullsFirst: false })
-        .limit(1)
-        .maybeSingle();
-    return data?.updated_at ?? null;
-}
-
 /**
  * Снимок живости конвейера. Ничего не чинит и не запускает — только смотрит.
  */
 export async function collectPipelinePulse(): Promise<PipelinePulse> {
     const now = new Date();
 
-    const [emailPoll, stuckEmail, jobFinished, stalledTypes, orderTouch] = await Promise.all([
+    const quiet = isQuietHours(now);
+
+    const [emailPoll, stuckEmail, jobFinished, stalledTypes] = await Promise.all([
         lastEmailPoll(),
         oldestUnclassifiedEmail(),
         lastFinishedJob(),
         stalledJobTypes(now),
-        lastOrderTouch(),
     ]);
 
     const checks: PulseCheck[] = [
@@ -219,19 +226,25 @@ export async function collectPipelinePulse(): Promise<PipelinePulse> {
             key: 'jobs_finished',
             title: 'Очередь работ',
             lastAt: jobFinished,
-            limitMinutes: THRESHOLDS.jobsFinishedMinutes,
+            // Ночью порог снимаем: пустая очередь в семь вечера — это конец
+            // рабочего дня, а не поломка.
+            limitMinutes: quiet ? Number.MAX_SAFE_INTEGER : THRESHOLDS.jobsFinishedMinutes,
             now,
             verb: 'ничего не доделала за',
         }),
-        silenceCheck({
-            key: 'orders_sync',
-            title: 'Заказы из RetailCRM',
-            lastAt: orderTouch,
-            limitMinutes: THRESHOLDS.ordersMinutes,
-            now,
-            verb: 'не обновлялись',
-        }),
     ];
+
+    /**
+     * Проверки «Заказы из RetailCRM» здесь больше нет.
+     *
+     * Она следила за тем, что приём изменений из RetailCRM жив. Приём выключен
+     * решением владельца 05.10.2026 («никаких изменений по заказам в ритейле
+     * уже не должно быть, все правки в ОКК»), и сторож начал будить владельца
+     * каждые пятнадцать минут тем, что мы отключили сами.
+     *
+     * Заказы теперь живут у нас: за их движением следят оценки ОКК и план дня,
+     * а молчание ночью — не авария, а ночь.
+     */
 
     // Затор: письма и работы, которые лежат дольше норматива, — признак того, что
     // крон ходит, но конвейер внутри стоит (ИИ отвалился, ключ протух и т.п.).

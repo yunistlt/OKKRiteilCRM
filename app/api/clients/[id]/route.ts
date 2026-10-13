@@ -4,7 +4,8 @@
  */
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { clientRequisites, relatedClients } from '@/lib/own-crm/clients';
+import { relatedClients } from '@/lib/own-crm/clients';
+import { loadClientRequisites } from '@/lib/own-crm/client-requisites';
 import { clientCalls, clientEmails, clientPhone, clientContacts } from '@/lib/own-crm/client-activity';
 
 export const dynamic = 'force-dynamic';
@@ -22,11 +23,44 @@ export async function GET(_request: Request, { params }: { params: { id: string 
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
     if (!client) {
-        return NextResponse.json({ error: 'Клиент не найден' }, { status: 404 });
+        /**
+         * Объясняем словами, что делать: чаще всего это не сбой программы, а
+         * незаполненные данные — заказ заведён на живого человека, а компании
+         * у него нет (решение владельца 05.10.2026, жалоба Евгении).
+         */
+        const { data: person } = await supabase
+            .from('customers')
+            .select('"firstName", "lastName", email')
+            .eq('id', id)
+            .maybeSingle();
+
+        const who = person
+            ? [(person as any).lastName, (person as any).firstName].filter(Boolean).join(' ')
+                || (person as any).email
+                || 'Этот человек'
+            : null;
+
+        return NextResponse.json(
+            {
+                error: who
+                    ? `Карточки компании нет. ${who} заведён у нас как контактное лицо, но ни к одной компании не привязан. Это не ошибка программы, а незаполненные данные: заведите компанию в разделе «Клиенты» и добавьте его в её контактные лица — после этого кнопка откроет карточку.`
+                    : 'Контактное лицо не найдено — введите его в карточке компании. Это не ошибка программы, а незаполненные данные: откройте раздел «Клиенты», найдите компанию заказчика и добавьте человека в её контактные лица.',
+            },
+            { status: 404 },
+        );
+    }
+
+    /**
+     * Слитая карточка: ведём на главную. Открывать её незачем — заказы,
+     * контакты и реквизиты переехали, а здесь человек увидел бы остатки и
+     * решил, что данные пропали.
+     */
+    if ((client as any).merged_into) {
+        return NextResponse.json({ mergedInto: String((client as any).merged_into) }, { status: 200 });
     }
 
     const [requisites, related, ordersRes] = await Promise.all([
-        clientRequisites(id),
+        loadClientRequisites(id),
         relatedClients(id),
         supabase
             .from('orders')

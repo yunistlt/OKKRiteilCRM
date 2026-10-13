@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { alertAudience } from '@/lib/alerts/audience';
 import { supabase } from '@/utils/supabase';
+import { clientsByOrderNumbers } from '@/lib/orders/order-client';
+import { keepUnseen } from '@/lib/alerts/seen';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,17 +22,17 @@ export async function GET(req: Request) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
 
-    const { searchParams } = new URL(req.url);
-    const since = searchParams.get('since');
-    // Первый заход после открытия системы: берём последний час, чтобы не
-    // вываливать человеку всё, что пришло за ночь.
-    const from = since && !Number.isNaN(Date.parse(since))
-        ? new Date(since)
-        : new Date(Date.now() - 60 * 60 * 1000);
+    /**
+     * Окно свежести — часовое и жёсткое. Что человеку уже показывали, помнит
+     * система (`alert_seen`), а не браузер: «since» от клиента здесь больше
+     * ничего не решает. Письмо старше часа — не новость, оно и так лежит в
+     * заказе (решение владельца 09.10.2026).
+     */
+    const from = new Date(Date.now() - 60 * 60 * 1000);
 
-    const managerId = session.user.retail_crm_manager_id;
-    // Руководителю и ОКК показываем письма по всем заказам, менеджеру — по своим.
-    const onlyMine = session.user.role === 'manager' && managerId;
+    // Оповещение — тому, кто ведёт заказ (см. lib/alerts/audience.ts).
+    const audience = alertAudience(session);
+    if (!audience) return NextResponse.json({ letters: [], checkedAt: new Date().toISOString() });
 
     const { data: letters, error } = await supabase
         .from('incoming_emails')
@@ -51,25 +54,33 @@ export async function GET(req: Request) {
     const numbers = Array.from(new Set(rows.map((row) => String(row.created_crm_order_number))));
     let allowed = new Set(numbers);
 
-    if (onlyMine) {
-        const { data: orders } = await supabase
-            .from('orders')
-            .select('number')
-            .in('number', numbers)
-            .eq('manager_id', managerId);
-        allowed = new Set(((orders || []) as any[]).map((row) => String(row.number)));
-    }
+    const { data: orders } = await supabase
+        .from('orders')
+        .select('number')
+        .in('number', numbers)
+        .eq('manager_id', audience.managerId);
+    allowed = new Set(((orders || []) as any[]).map((row) => String(row.number)));
 
-    return NextResponse.json({
-        letters: rows
+    // Чей это заказ: в оповещении имя клиента ведёт в его карточку.
+    const clients = await clientsByOrderNumbers(Array.from(allowed));
+
+    const fresh = rows
             .filter((row) => allowed.has(String(row.created_crm_order_number)))
             .map((row) => ({
                 id: row.id,
                 orderNumber: String(row.created_crm_order_number),
+                clientId: clients.get(String(row.created_crm_order_number))?.clientId ?? null,
+                clientName: clients.get(String(row.created_crm_order_number))?.clientName ?? null,
                 subject: row.subject || 'Без темы',
                 from: row.from_name || row.from_email || 'Неизвестный отправитель',
                 receivedAt: row.received_at,
-            })),
+            }));
+
+    // Отдаём только то, чего человек ещё не видел, и сразу это запоминаем.
+    const viewer = session.user.email || session.user.username || session.user.id;
+
+    return NextResponse.json({
+        letters: await keepUnseen(viewer, fresh),
         checkedAt: new Date().toISOString(),
     });
 }

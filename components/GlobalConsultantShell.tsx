@@ -16,9 +16,18 @@ import { useDayPlan } from '@/components/sales-rop/DayPlanContext';
  * «Мой день» — сам по себе рабочий стол: план и очередь там крупнее и полнее,
  * чем в узкой колонке, и дублировать их справа незачем (решение владельца
  * 01.10.2026).
+ *
+ * Штаб — кабинет владельца, и наставник там один: Тамара. План отдела продаж и
+ * чат Семёна — инструменты менеджера, на этом экране они отнимали треть ширины
+ * у схемы постов и карт разбора (решение владельца 13.10.2026).
  */
 function hideConsultantPath(pathname: string): boolean {
-    return pathname === '/login' || pathname.startsWith('/messenger') || pathname.startsWith('/analytics');
+    return (
+        pathname === '/login' ||
+        pathname.startsWith('/messenger') ||
+        pathname.startsWith('/analytics') ||
+        pathname.startsWith('/shtab')
+    );
 }
 
 function GlobalConsultantShellContent({ children }: { children: React.ReactNode }) {

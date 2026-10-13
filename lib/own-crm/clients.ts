@@ -14,47 +14,22 @@
  * `external_id` заполнена лишь у 640 карточек из 20 695 и опорой быть не может.
  */
 import { supabase } from '@/utils/supabase';
+import { loadClientRequisites } from './client-requisites';
 
 export { isReseller } from './okved';
 
-export type ClientRequisites = {
-    inn: string | null;
-    kpp: string | null;
-    legalName: string | null;
-    legalAddress: string | null;
-    /** Номер заказа, из которого взяты реквизиты — чтобы цифра раскладывалась. */
-    fromOrderNumber: string | null;
-};
-
-/** Реквизиты клиента: из карточки, а чего нет — из последнего заказа с реквизитами. */
-export async function clientRequisites(customerId: number | string): Promise<ClientRequisites> {
-    const id = String(customerId);
-
-    const { data: card } = await supabase
-        .from('clients')
-        .select('inn, kpp, company_name')
-        .eq('id', id)
-        .maybeSingle();
-
-    const { data: orders } = await supabase
-        .from('orders')
-        .select('number, "contragent", "createdAt"')
-        .filter('customer->>id', 'eq', id)
-        .not('contragent->>INN', 'is', null)
-        .order('createdAt', { ascending: false })
-        .limit(1);
-
-    const last = (orders || [])[0] as any;
-    const fromOrder = last?.contragent || {};
-
-    return {
-        inn: (card as any)?.inn || fromOrder.INN || null,
-        kpp: (card as any)?.kpp || fromOrder.KPP || null,
-        legalName: fromOrder.legalName || (card as any)?.company_name || null,
-        legalAddress: fromOrder.legalAddress || null,
-        fromOrderNumber: last?.number || null,
-    };
-}
+/**
+ * Реквизиты клиента — ОДИН читатель на весь проект:
+ * `loadClientRequisites` в `client-requisites.ts`.
+ *
+ * Здесь когда-то жила своя урезанная версия на четыре поля (ИНН, КПП,
+ * название, юрадрес). Карточка клиента читала обе: полную — отдельным
+ * запросом, урезанную — вместе с заказами и звонками. Ответы приходили
+ * вперемешку, урезанный приходил последним и затирал банк, ОГРН и подписанта
+ * — в карточке они то были, то пропадали (жалоба 09.10.2026). Второго
+ * читателя быть не должно.
+ */
+export { loadClientRequisites } from './client-requisites';
 
 export type RelatedClient = {
     customerId: string;
@@ -93,7 +68,7 @@ export async function relatedClients(customerId: number | string): Promise<Relat
         }
     }
 
-    const { inn } = await clientRequisites(id);
+    const { inn } = await loadClientRequisites(id);
     if (inn) {
         const { data: sameInn } = await supabase
             .from('clients')
@@ -125,3 +100,43 @@ export async function relatedClients(customerId: number | string): Promise<Relat
     }));
 }
 
+
+/**
+ * Компания контактного лица.
+ *
+ * Заказ бывает заведён не на компанию, а на живого человека: в `customer`
+ * стоит контактное лицо, и ссылка «карточка заказчика» вела на экран юрлиц,
+ * где его нет, — менеджер видел «Клиент не найден» (жалоба Евгении 05.10.2026,
+ * заказ 900024). Связь человек → компания уже посчитана в `client_contacts`
+ * по заказам, поэтому карточку находим через неё, а не правим заказы: их
+ * `raw_payload` переписывает ближайшая синхронизация с RetailCRM.
+ *
+ * Человек бывает контактом нескольких компаний (760 таких из 13 880) —
+ * берём ту, где у него больше заказов, при равенстве более свежую.
+ */
+export async function companyOfContact(personId: number | string): Promise<number | null> {
+    const { data } = await supabase
+        .from('client_contacts')
+        .select('client_id, orders_count, last_order_at')
+        .eq('contact_id', String(personId))
+        .order('orders_count', { ascending: false, nullsFirst: false })
+        .order('last_order_at', { ascending: false, nullsFirst: false })
+        .limit(1);
+
+    const row = (data || [])[0] as any;
+    return row?.client_id ? Number(row.client_id) : null;
+}
+
+/**
+ * Карточка клиента, которую надо открыть по заказу: сам заказчик, если он
+ * юрлицо, иначе компания его контактного лица. Вернёт null, когда компании
+ * нет вовсе — тогда интерфейс объясняет человеку, что заводить.
+ */
+export async function clientCardIdForOrder(customerId: number | string | null): Promise<number | null> {
+    if (!customerId) return null;
+
+    const { data: card } = await supabase.from('clients').select('id').eq('id', String(customerId)).maybeSingle();
+    if (card) return Number((card as any).id);
+
+    return companyOfContact(customerId);
+}

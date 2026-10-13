@@ -20,9 +20,11 @@ export type TamaraState =
     | 'approve'
     | 'alert'
     | 'away'
-    // Только у живой Тамары (ролики): поздоровалась, приняла комплимент.
+    // Только у живой Тамары (ролики): поздоровалась, приняла комплимент,
+    // покрутилась, показывая наряд.
     | 'greet'
-    | 'pleased';
+    | 'pleased'
+    | 'twirl';
 
 export type TamaraMessage = {
     text: string;
@@ -103,38 +105,63 @@ function LiveFigure({ live, state }: { live: LiveSet; state: TamaraState }) {
     );
     const refs = useRef<Record<string, HTMLVideoElement | null>>({});
     const [playing, setPlaying] = useState('idle');
+    const playingRef = useRef('idle');
+    playingRef.current = playing;
+
+    // Покой запускается так, чтобы отказ браузера не оставлял её замершей.
+    // Safari вправе не дать видео стартовать без действия человека (режим
+    // энергосбережения, запрет автовоспроизведения для сайта) — раньше отказ
+    // молча проглатывался, и до перезагрузки на экране стоял первый кадр.
+    // Теперь запуск повторяется на первом клике или клавише, пока она в покое.
+    const startIdle = useCallback(() => {
+        const idle = refs.current.idle;
+        if (!idle) return;
+        idle.play().catch(() => {
+            const retry = () => {
+                document.removeEventListener('pointerdown', retry);
+                document.removeEventListener('keydown', retry);
+                if (playingRef.current === 'idle') void idle.play().catch(() => undefined);
+            };
+            document.addEventListener('pointerdown', retry);
+            document.addEventListener('keydown', retry);
+        });
+    }, []);
+
+    const backToIdle = useCallback(() => {
+        const idle = refs.current.idle;
+        if (idle) idle.currentTime = 0;
+        setPlaying('idle');
+        startIdle();
+    }, [startIdle]);
 
     // Состояние без своего ролика — покой: он честнее, чем застывший кадр.
     useEffect(() => {
-        const next = state !== 'idle' && names.includes(state) ? state : null;
+        // Кружение есть не у каждого образа: без него на слова про наряд она
+        // хотя бы улыбается, как на комплимент.
+        const wanted = state === 'twirl' && !names.includes('twirl') ? 'pleased' : state;
+        const next = wanted !== 'idle' && names.includes(wanted) ? wanted : null;
         if (!next) return;
         const video = refs.current[next];
         if (!video) return;
         video.currentTime = 0;
-        void video.play().catch(() => undefined);
+        // Ролик реакции не стартовал — возвращаемся в покой. Иначе покой уже
+        // остановлен, а реакция так и не пошла: она замирает на первом кадре
+        // и onEnded, который вернул бы её в покой, не наступит никогда.
+        video.play().catch(backToIdle);
         setPlaying(next);
-    }, [state, names]);
+    }, [state, names, backToIdle]);
 
     useEffect(() => {
         for (const name of names) {
             const video = refs.current[name];
             if (!video) continue;
             if (name === playing) {
-                if (name === 'idle') void video.play().catch(() => undefined);
+                if (name === 'idle') startIdle();
             } else {
                 video.pause();
             }
         }
-    }, [playing, names]);
-
-    const backToIdle = useCallback(() => {
-        const idle = refs.current.idle;
-        if (idle) {
-            idle.currentTime = 0;
-            void idle.play().catch(() => undefined);
-        }
-        setPlaying('idle');
-    }, []);
+    }, [playing, names, startIdle]);
 
     if (!names.includes('idle')) return null;
 

@@ -52,19 +52,19 @@ vi.mock('@/utils/supabase', () => {
     };
 });
 
-import { clientRequisites, relatedClients } from '@/lib/own-crm/clients';
+import { loadClientRequisites, relatedClients } from '@/lib/own-crm/clients';
 import { isReseller } from '@/lib/own-crm/okved';
 
 describe('реквизиты клиента', () => {
     it('берёт недостающее из заказа и говорит, из какого', async () => {
-        const r = await clientRequisites('100');
+        const r = await loadClientRequisites('100');
         expect(r.inn).toBe('7701234567');
         expect(r.legalAddress).toBe('Москва, Тверская, 1');
         expect(r.fromOrderNumber).toBe('54872');
     });
 
     it('карточка главнее заказа, если в ней ИНН есть', async () => {
-        const r = await clientRequisites('200');
+        const r = await loadClientRequisites('200');
         expect(r.inn).toBe('7701234567');
         expect(r.kpp).toBe('770101001');
     });

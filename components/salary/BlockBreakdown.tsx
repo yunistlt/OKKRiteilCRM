@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { BlockContribution, BlockOrderRef, TariffLine } from '@/lib/salary/blocks/types';
+import { effectiveAmount, factorForGroup, summarizeComposition, zeroingFor, type CompositionSummary } from '@/lib/salary/composition-view';
 
 // ============================================================================
 // «Из чего сложилась ЗП» — строки по блокам назначенной схемы + ТАРИФ каждого
@@ -15,6 +16,8 @@ const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + 
 
 // База RetailCRM — та же, что в расшифровках ведомости (salary-drilldowns.tsx).
 const CRM_BASE = 'https://zmktlt.retailcrm.ru';
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 const contribValue = (c: BlockContribution) => (c.kind === 'multiplier' ? `× ${c.multiplier ?? 1}` : rub(c.amount ?? 0));
 
@@ -33,6 +36,7 @@ export default function BlockBreakdown({
     // gen меняется на «показать/скрыть все» → строки перемонтируются и берут новое состояние
     // как начальное (дальше каждая строка раскрывается/сворачивается сама по клику).
     const [gen, setGen] = useState(0);
+    const summary = summarizeComposition(contributions);
     const hasTariffs = contributions.some((c) => (c.tariff?.length ?? 0) > 0 || (c.orders?.length ?? 0) > 0);
 
     return (
@@ -52,7 +56,7 @@ export default function BlockBreakdown({
             <table className="w-full text-sm">
                 <tbody>
                     {contributions.map((c) => (
-                        <BlockRow key={`${c.code}-${gen}`} c={c} initialOpen={openAll} />
+                        <BlockRow key={`${c.code}-${gen}`} c={c} summary={summary} initialOpen={openAll} />
                     ))}
                     <tr className="border-t-2 font-semibold">
                         <td className="py-2 pl-3">{totalLabel}</td>
@@ -64,12 +68,20 @@ export default function BlockBreakdown({
     );
 }
 
-function BlockRow({ c, initialOpen }: { c: BlockContribution; initialOpen: boolean }) {
+function BlockRow({ c, summary, initialOpen }: { c: BlockContribution; summary: CompositionSummary; initialOpen: boolean }) {
     const [open, setOpen] = useState(initialOpen);
     const tariff = c.tariff ?? [];
     const orders = c.orders ?? [];
     const expandable = tariff.length > 0 || orders.length > 0;
     const shown = open;
+    // Начисление блока может не дойти до итога: премии и переменную часть
+    // умножают множители (К_команды, К_личного плана и т.п.). Показываем это
+    // прямо в строке, а не только в блоке самого множителя ниже по странице.
+    const additive = c.kind !== 'multiplier' && c.kind !== 'penalty';
+    const factor = additive ? factorForGroup(c.group, summary) : 1;
+    const effective = effectiveAmount(c, summary);
+    const showEffect = additive && (c.amount ?? 0) !== 0 && factor !== 1;
+    const zeroedBy = factor === 0 ? zeroingFor(c.group, summary) : [];
     return (
         <>
             <tr className={`border-t ${expandable ? 'cursor-pointer hover:bg-muted/30' : ''}`} onClick={() => expandable && setOpen((v) => !v)}>
@@ -79,12 +91,26 @@ function BlockRow({ c, initialOpen }: { c: BlockContribution; initialOpen: boole
                             (shown ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />)}
                         <span>{c.name}</span>
                         {c.explain && <span className="text-xs text-muted-foreground">{c.explain}</span>}
+                        {showEffect && (
+                            <span className={`px-1 text-[10px] ${factor === 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
+                                {zeroedBy.length > 0
+                                    ? `обнуляет ${zeroedBy.map((m) => `${m.name} ×0`).join(', ')}`
+                                    : `× ${round2(factor)} коэффициентов`}
+                            </span>
+                        )}
                         {c.dataFill && c.dataFill.pct < 1 && (
                             <span className="bg-amber-100 px-1 text-[10px] text-amber-700">данные {Math.round(c.dataFill.pct * 100)}%</span>
                         )}
                     </div>
                 </td>
-                <td className="whitespace-nowrap py-2 pr-3 text-right">{contribValue(c)}</td>
+                <td className="whitespace-nowrap py-2 pr-3 text-right">
+                    <div className={showEffect && factor === 0 ? 'text-muted-foreground line-through' : undefined}>{contribValue(c)}</div>
+                    {showEffect && (
+                        <div className="text-[11px] text-muted-foreground">
+                            {factor === 0 ? 'в итог не входит' : `в итог ${rub(effective)}`}
+                        </div>
+                    )}
+                </td>
             </tr>
             {shown && expandable && (
                 <tr className="border-t border-dashed bg-muted/20">

@@ -1,5 +1,6 @@
 import nunjucks from 'nunjucks';
 import { supabase } from '@/utils/supabase';
+import { buildGreeting } from '@/lib/templates/greeting';
 
 /**
  * Отрисовка шаблонов документов и писем.
@@ -44,6 +45,8 @@ env.addFilter('date', (value: unknown, format = 'd.m.Y') => {
 export interface OrderTemplateContext {
     order: Record<string, any>;
     company: { name: string; email: string | null };
+    /** Готовое обращение по имени и отчеству — `{{ greeting }}` в шаблоне. */
+    greeting: string;
     now: string;
 }
 
@@ -57,21 +60,58 @@ export async function buildOrderContext(orderNumber: string): Promise<OrderTempl
     const key = decodeURIComponent(String(orderNumber ?? '')).trim();
     const numeric = /^\d+$/.test(key);
 
-    const { data: order } = numeric
-        ? await supabase.from('orders').select('order_id, number, raw_payload').eq('order_id', key).maybeSingle()
-        : await supabase.from('orders').select('order_id, number, raw_payload').eq('number', key).maybeSingle();
+    /**
+     * Рабочие значения берём из полей заказа, снимок остаётся подложкой для
+     * вложенного — состава и структур, которым отдельных полей нет (закон
+     * владельца 06.10.2026: у каждого значения своё поле, снимок — запись
+     * истории). Иначе письмо клиенту уходит с устаревшими данными: снимок
+     * обновлял перенос из RetailCRM, его отключили.
+     */
+    const fields = `order_id, number, raw_payload, "firstName", "lastName", patronymic, phone, email,
+                    totalsumm, "managerComment", "customerComment", "createdAt", site`;
+    /**
+     * Ищем сначала по НОМЕРУ, а по идентификатору — только если по номеру не
+     * нашлось. У своих заказов это разные числа: номер 900072, идентификатор
+     * 900000072, и поиск только по идентификатору не находил их вовсе —
+     * шаблон письма по своему заказу молча не собирался (найдено 08.10.2026
+     * при проверке обращения по имени и отчеству).
+     */
+    const byNumber = await supabase.from('orders').select(fields).eq('number', key).maybeSingle();
+    const order = byNumber.data
+        ?? (numeric
+            ? (await supabase.from('orders').select(fields).eq('order_id', key).maybeSingle()).data
+            : null);
 
     if (!order) return null;
 
-    const payload = (order.raw_payload ?? {}) as Record<string, any>;
+    const row = order as any;
+    const payload = (row.raw_payload ?? {}) as Record<string, any>;
 
     return {
-        // Раскладываем raw_payload как есть — это объект заказа RetailCRM.
         order: {
             ...payload,
-            number: payload.number ?? order.number ?? order.order_id,
-            id: payload.id ?? order.order_id,
+            number: row.number ?? payload.number ?? row.order_id,
+            id: row.order_id ?? payload.id,
+            firstName: row.firstName ?? payload.firstName,
+            lastName: row.lastName ?? payload.lastName,
+            patronymic: row.patronymic ?? payload.patronymic,
+            phone: row.phone ?? payload.phone,
+            email: row.email ?? payload.email,
+            totalSumm: row.totalsumm ?? payload.totalSumm,
+            managerComment: row.managerComment ?? payload.managerComment,
+            customerComment: row.customerComment ?? payload.customerComment,
+            createdAt: row.createdAt ?? payload.createdAt,
+            site: row.site ?? payload.site,
         },
+        /**
+         * Готовое обращение для шаблона: `{{ greeting }}`. Собирается кодом, а
+         * не шаблоном, чтобы «Добрый день, Артём Иванович» выглядело одинаково
+         * во всех письмах и не ломалось, когда отчества нет.
+         */
+        greeting: buildGreeting({
+            firstName: row.firstName ?? payload.firstName,
+            patronymic: row.patronymic ?? payload.patronymic,
+        }),
         company: { name: 'ЗМК', email: process.env.SMTP_USER || null },
         now: new Date().toISOString(),
     };

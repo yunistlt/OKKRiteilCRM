@@ -26,7 +26,12 @@ const formatDate = (value: string | null) =>
 export default function ApprovalsClient() {
     const [contracts, setContracts] = useState<Contract[]>([]);
     const [statuses, setStatuses] = useState<Array<{ code: string; label: string }>>([]);
-    const [status, setStatus] = useState('on_review');
+    /**
+     * Реестр открывается на ВСЕХ договорах: стандартные ложатся сюда сами и
+     * согласования не требуют, но видеть их юрист должен (решение владельца
+     * 12.10.2026). Нужен только разбор — фильтр «На согласовании» рядом.
+     */
+    const [status, setStatus] = useState('all');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [openId, setOpenId] = useState<number | null>(null);
@@ -143,6 +148,19 @@ export default function ApprovalsClient() {
                             <div className="mt-1 text-xs text-gray-500">
                                 составил {row.created_by || '—'} · {formatDate(row.created_at)}
                             </div>
+                            {/* Сам документ, а не только его текст в карточке:
+                                файл нужен и юристу, и чтобы отправить клиенту
+                                (вопрос менеджера 08.10.2026 «где взять сам файл
+                                договора?»). Нет файла — соберётся при открытии. */}
+                            <a
+                                href={`/api/legal/contracts/file?id=${row.id}`}
+                                target="_blank"
+                                rel="noopener"
+                                onClick={(e) => e.stopPropagation()}
+                                className="mt-1 inline-block text-xs font-semibold text-blue-700 hover:underline"
+                            >
+                                Открыть договор (PDF)
+                            </a>
                             {row.terms_text && (
                                 <div className="mt-1 text-xs text-gray-600">Условия от менеджера: {row.terms_text}</div>
                             )}

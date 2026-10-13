@@ -5,7 +5,7 @@ import { supabase } from '@/utils/supabase';
 import { buildTeamOrders, buildIncomingByManager } from '@/lib/salary/report-details';
 import { getRecalcState } from '@/lib/salary/recalc-state';
 import { buildMyDashboard } from '@/lib/salary/my-dashboard';
-import { loadPeriodView } from '@/lib/salary/period-view';
+import { ensurePeriodForMonth, loadPeriodView } from '@/lib/salary/period-view';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // открытый период считается на лету
@@ -36,6 +36,14 @@ export async function GET(req: Request) {
             return NextResponse.json({ period: { year, month, status: 'none' }, rows: [], total: 0, isManagerOnly: true });
         }
 
+        /**
+         * Начавшийся месяц открываем сами: период заводит ежедневный крон
+         * (/api/cron/salary-period), а здесь — подстраховка на случай, если
+         * человек открыл ведомость раньше прогона. Иначе первого числа экран
+         * пустой, хотя заказы за месяц уже есть.
+         */
+        await ensurePeriodForMonth(year, month);
+
         const view = await loadPeriodView(year, month, { includeEngineers: false });
         if (view.status === 'none') {
             return NextResponse.json({ period: { year, month, status: 'none' }, rows: [], total: 0, isManagerOnly: true });
@@ -53,6 +61,35 @@ export async function GET(req: Request) {
         const myRows = view.rows.filter((r) => Number(r.manager_id) === Number(mid));
         const rows = myRows.map((r) => ({ ...r, manager_name: managerName }));
         const total = rows.reduce((s, r) => s + Number(r.total || 0), 0);
+
+        /**
+         * Зарплаты коллег — открыто, решение владельца 07.10.2026: «открой
+         * возможность смотреть девочкам зарплаты друг друга». Отдел и так видит
+         * общий список заказов и выручку отдела (К_команды), а закрытая ведомость
+         * рождает разговоры «у неё посчитали иначе». Расчёт разбирается до
+         * исходных данных — это закон проекта, и он работает только если расчёт
+         * видно.
+         *
+         * Открыт ПРОСМОТР, не управление: пересчёт, закрытие периода, ставки и
+         * настройки мотивации остаются за /api/salary (admin, rop).
+         */
+        const otherIds = view.rows
+            .map((r) => Number(r.manager_id))
+            .filter((id) => Number.isFinite(id) && id !== Number(mid));
+        const nameById = new Map<number, string>();
+        if (otherIds.length) {
+            const { data: others } = await supabase
+                .from('managers')
+                .select('id, first_name, last_name')
+                .in('id', otherIds);
+            for (const o of ((others ?? []) as any[])) {
+                nameById.set(Number(o.id), [o.first_name, o.last_name].filter(Boolean).join(' ') || `#${o.id}`);
+            }
+        }
+        const colleagues = view.rows
+            .filter((r) => Number(r.manager_id) !== Number(mid))
+            .map((r) => ({ ...r, manager_name: nameById.get(Number(r.manager_id)) ?? `#${r.manager_id}` }))
+            .sort((a, b) => String(a.manager_name).localeCompare(String(b.manager_name), 'ru'));
 
         // Детализация показателей заказами — вместе с отчётом. teamOrders — весь отдел
         // (прозрачность К_команды и для менеджера, поэтому передаём все live-строки);
@@ -84,6 +121,7 @@ export async function GET(req: Request) {
             isManagerOnly: true,
             needsRecalc: recalcState.needsRecalc,
             recalcChangedAt: recalcState.changedAt,
+            colleagues,
             details: { teamOrders: team.orders, teamRevenueNoVat: team.teamRevenueNoVat, incoming: incomingByManager[Number(mid)] ?? [] },
             dashboard,
         });

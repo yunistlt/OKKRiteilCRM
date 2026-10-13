@@ -85,6 +85,16 @@
 
 .shtab .main{padding-top:28px;min-width:0}
 
+/* Полноширинный режим: холст схемы занимает всё окно, колонка Тамары убрана. */
+.shtab .wrap.wide{max-width:none;padding:0 14px 10px}
+.shtab .layout.wide{grid-template-columns:minmax(0,1fr);gap:0}
+.shtab .layout.wide .tam{display:none}
+.shtab .layout.wide .main{padding-top:10px}
+.shtab .layout.wide .view-head{margin-bottom:8px}
+.shtab .layout.wide .view-head .eyebrow{display:none}
+.shtab .layout.wide .view-head h1{font-size:19px;line-height:1.1;margin:0}
+.shtab .layout.wide .view-head p{display:none}
+
 /* ---------- Тамара ---------- */
 .shtab .tam{position:sticky;top:46px;height:calc(var(--shtab-vh, 100vh) - 62px);min-height:460px;
   display:flex;flex-direction:column;padding-top:14px}
@@ -693,34 +703,98 @@
 .shtab .struct{display:grid;grid-template-columns:minmax(0,1fr) 320px;border:1px solid var(--line);
   background:var(--surface)}
 
+/* Пост не выбран — карточки нет, и схема занимает всю ширину. */
+.shtab .struct:has(.struct-side.hidden){grid-template-columns:minmax(0,1fr)}
+.shtab .struct-side.hidden{display:none}
+
 @media (max-width:1100px){.shtab .struct{grid-template-columns:1fr}}
 
-.shtab .struct-canvas{position:relative;overflow:auto;height:600px;background:var(--surface-2);
-  border-right:1px solid var(--line);touch-action:none}
+.shtab .struct-canvas{position:relative;overflow:hidden;height:calc(var(--shtab-vh, 100vh) - 188px);min-height:420px;
+  background:var(--surface-2);border-right:1px solid var(--line);touch-action:none;cursor:grab;
+  background-image:radial-gradient(var(--line) 1px, transparent 1px);background-size:28px 28px}
 
-.shtab .struct-plane{position:relative;width:2400px;height:1600px;transform-origin:0 0}
+.shtab .struct-canvas.dragging,
+.shtab .struct-canvas.panning{touch-action:none}
+.shtab .struct-canvas.panning{cursor:grabbing}
 
-.shtab .struct-links{position:absolute;inset:0;width:2400px;height:1600px;pointer-events:none}
+.shtab .struct-plane{position:absolute;left:0;top:0;transform-origin:0 0}
+
+.shtab .struct-links{position:absolute;inset:0;pointer-events:none}
 
 .shtab .struct-links path{stroke:var(--line-2);stroke-width:1.5}
 
-.shtab .struct-block{position:absolute;background:var(--field);border:1px solid var(--line-2);padding:9px 11px;
-  cursor:grab;user-select:none;display:flex;flex-direction:column;gap:3px}
+.shtab .struct-block{position:absolute;overflow:visible;background:var(--field);border:1px solid var(--line-2);padding:10px 12px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:3px;cursor:grab}
+
+/* Уровни дерева цветом, как в майнд-картах: чем выше пост, тем плотнее заливка. */
+.shtab .struct-block[data-level="0"]{background:var(--blue);border-color:var(--blue);color:var(--on-blue)}
+.shtab .struct-block[data-level="1"]{background:var(--calm);border-color:var(--calm);color:var(--on-blue)}
+.shtab .struct-block[data-level="2"]{background:var(--surface-2);border-color:var(--line-2);
+  box-shadow:inset 0 4px 0 var(--calm)}
+.shtab .struct-block[data-level="3"]{background:var(--field);border-color:var(--line);
+  box-shadow:inset 0 4px 0 var(--line-2)}
+
+/* Цвет, выбранный руками, важнее уровня: уровень — догадка по дереву, цвет — решение. */
+.shtab .struct-block[data-color="blue"]{background:var(--blue);border-color:var(--blue);color:var(--on-blue);box-shadow:none}
+.shtab .struct-block[data-color="green"]{background:var(--calm);border-color:var(--calm);color:var(--on-blue);box-shadow:none}
+.shtab .struct-block[data-color="clay"]{background:var(--signal);border-color:var(--signal);color:var(--on-blue);box-shadow:none}
+.shtab .struct-block[data-color="sand"]{background:#D8CBA8;border-color:#BBA87C;color:var(--ink);box-shadow:none}
+.shtab .struct-block[data-color="grey"]{background:var(--surface-2);border-color:var(--line-2);color:var(--ink);box-shadow:none}
+.shtab .struct-block[data-color="white"]{background:var(--field);border-color:var(--line-2);color:var(--ink);box-shadow:none}
+
+.shtab .struct-block[data-color="blue"] .struct-holder,
+.shtab .struct-block[data-color="green"] .struct-holder,
+.shtab .struct-block[data-color="clay"] .struct-holder{color:color-mix(in srgb,var(--on-blue) 78%,transparent)}
+
+/* Пост, на который сейчас тянут связь. */
+.shtab .struct-block[data-target="yes"]{outline:2px solid var(--signal);outline-offset:2px}
+
+/* Порт связи и сворачивание ветки: появляются на блоке под курсором. */
+.shtab .struct-port,
+.shtab .struct-fold{position:absolute;width:22px;height:22px;line-height:1;font-size:13px;
+  border:1px solid var(--line-2);background:var(--field);color:var(--ink);opacity:0;transition:opacity .12s;
+  display:flex;align-items:center;justify-content:center;font-family:var(--f-mono)}
+
+.shtab .struct-port{left:50%;bottom:-11px;transform:translateX(-50%);cursor:crosshair}
+.shtab .struct-fold{right:-11px;top:50%;transform:translateY(-50%);cursor:pointer;min-width:22px;width:auto;padding:0 5px}
+
+.shtab .struct-block:hover .struct-port,
+.shtab .struct-block:hover .struct-fold,
+.shtab .struct-block.on .struct-port,
+.shtab .struct-block.on .struct-fold{opacity:1}
+
+/* Свёрнутую ветку видно и без наведения: иначе пост выглядит бездетным. */
+.shtab .struct-block .struct-fold:not(:empty){opacity:.75}
+
+/* Выбор цвета в карточке поста. */
+.shtab .struct-swatches{display:flex;gap:6px;flex-wrap:wrap}
+.shtab .struct-swatch{width:28px;height:28px;border:1px solid var(--line-2);cursor:pointer}
+.shtab .struct-swatch.on{outline:2px solid var(--ink);outline-offset:1px}
+.shtab .struct-swatch[data-color="auto"]{width:auto;padding:0 9px;font-size:12px;background:var(--field)}
+.shtab .struct-swatch[data-color="blue"]{background:var(--blue)}
+.shtab .struct-swatch[data-color="green"]{background:var(--calm)}
+.shtab .struct-swatch[data-color="clay"]{background:var(--signal)}
+.shtab .struct-swatch[data-color="sand"]{background:#D8CBA8}
+.shtab .struct-swatch[data-color="grey"]{background:var(--surface-2)}
+.shtab .struct-swatch[data-color="white"]{background:var(--field)}
+
+.shtab .struct-block[data-level="0"] .struct-holder,
+.shtab .struct-block[data-level="1"] .struct-holder{color:color-mix(in srgb,var(--on-blue) 78%,transparent)}
 
 .shtab .struct-block.on{border-color:var(--blue);box-shadow:0 0 0 2px color-mix(in srgb,var(--blue) 22%,transparent)}
 
 .shtab .struct-block:active{cursor:grabbing}
 
-.shtab .struct-title{font-family:var(--f-display);font-weight:700;font-size:14.5px;line-height:1.2}
+.shtab .struct-title{font-family:var(--f-display);font-weight:700;font-size:17px;line-height:1.15}
 
-.shtab .struct-holder{font-size:12.5px;color:var(--ink-2)}
+.shtab .struct-holder{font-size:13.5px;color:var(--ink-2)}
 
 .shtab .struct-vkp{font-size:11.5px;color:var(--ink-3);line-height:1.35;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
 .shtab .struct-marks{display:flex;gap:8px;margin-top:auto}
 
-.shtab .struct-side{padding:16px;overflow:auto;max-height:600px}
+.shtab .struct-side{padding:14px;overflow:auto;max-height:calc(var(--shtab-vh, 100vh) - 188px)}
 
 .shtab .struct-doc{display:flex;align-items:center;gap:8px;border:1px solid var(--line);padding:6px 9px;
   background:var(--field);font-size:13px}

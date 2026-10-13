@@ -6,7 +6,7 @@ import { buildTeamOrders, buildIncomingByManager } from '@/lib/salary/report-det
 import { getRecalcState } from '@/lib/salary/recalc-state';
 import { getResolvedConfig } from '@/lib/salary/config';
 import { listEngineerDictionary } from '@/lib/salary/schemes';
-import { loadPeriodView } from '@/lib/salary/period-view';
+import { ensurePeriodForMonth, loadPeriodView } from '@/lib/salary/period-view';
 import { buildAdminDashboard } from '@/lib/salary/admin-dashboard';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +30,14 @@ export async function GET(req: Request) {
         }
         const year = Number(m[1]);
         const month = Number(m[2]);
+
+        /**
+         * Начавшийся месяц открываем сами: период заводит ежедневный крон
+         * (/api/cron/salary-period), а здесь — подстраховка на случай, если
+         * человек открыл ведомость раньше прогона. Иначе первого числа экран
+         * пустой, хотя заказы за месяц уже есть.
+         */
+        await ensurePeriodForMonth(year, month);
 
         const view = await loadPeriodView(year, month);
         if (view.status === 'none') {
