@@ -21,6 +21,7 @@
  */
 import { supabase } from '@/utils/supabase';
 import { orderTotal, validateNewOrder, type NewOrder, type NewOrderItem, type CreatedOrder } from './create-order';
+import { loadClientRequisites, toOrderContragent } from './client-requisites';
 import { itemDiscountPerUnit, itemPriceWithDiscount, orderTotals } from './discount';
 import { customFieldValueName, itemLabel, managerName, moneyValue, statusName, statusValue, writeOwnHistory, type HistoryEntry } from './history-write';
 import { OWN_ID_BASE, OWN_SITE, isOwnCrmManager, nextOwnOrderNumber, ownItemIds } from './own-order-insert';
@@ -234,6 +235,7 @@ export async function editOwnOrder(
     for (const [key, value] of Object.entries(edit.contact || {})) {
         if (value !== undefined) payload[key] = value;
     }
+    let newCustomerName: string | null = null;
     if (edit.customerId) {
         // Клиента карточка заказа читает из `customer.id` — там же, где его
         // держит RetailCRM (см. закон «клиент из raw_payload->customer->id»).
@@ -252,6 +254,21 @@ export async function editOwnOrder(
             ...(row?.company_name ? { nickName: row.company_name } : {}),
             ...(row?.is_corporate === false ? {} : { type: 'customer_corporate' }),
         };
+        newCustomerName = row?.company_name || row?.contact_name || null;
+
+        /**
+         * Реквизиты — следом за заказчиком.
+         *
+         * Владелец заказа сменился, а в заказе лежал снимок реквизитов прежнего
+         * юрлица: по нему печатались счёт, договор и КП, и по нему же считался
+         * НДС (экспортный контрагент). Берём их из карточки нового заказчика —
+         * она хозяин реквизитов (закон 12.10.2026), заказ их только читает.
+         */
+        const requisites = await loadClientRequisites(edit.customerId).catch(() => null);
+        if (requisites) {
+            const contragent = toOrderContragent(requisites);
+            if (Object.keys(contragent).length) payload.contragent = contragent;
+        }
     }
     if (edit.contragent && Object.keys(edit.contragent).length) {
         payload.contragent = { ...(payload.contragent || {}) };
@@ -311,6 +328,16 @@ export async function editOwnOrder(
     }
     if (edit.managerId) update.manager_id = edit.managerId;
     if (edit.site) update.site = edit.site;
+    /**
+     * Заказчик — и в колонку `customer`, не только в `raw_payload`.
+     *
+     * По ней фильтруется и ищется список заказов (`lib/orders-filter.ts`), по
+     * ней же заказ числится за клиентом в раздаче и в зарплате. Раньше смена
+     * заказчика меняла только payload: в карточке стояло новое юрлицо, а в
+     * списках и поиске заказ оставался за прежним (заказ 900121, Лена
+     * Парфёнова 13.10.2026).
+     */
+    if (edit.customerId) update.customer = payload.customer;
 
     const { error: e } = await supabase.from('orders').update(update).eq('id', rowId);
     if (e) throw new Error(e.message);
@@ -338,6 +365,13 @@ export async function editOwnOrder(
             field: 'manager',
             oldValue: before.managerId ? await managerName(before.managerId) : null,
             newValue: await managerName(edit.managerId),
+        });
+    }
+    if (edit.customerId && Number(edit.customerId) !== Number(before.customer?.id ?? 0)) {
+        history.push({
+            field: 'customer',
+            oldValue: before.customer?.nickName ?? (before.customer?.id ? `клиент ${before.customer.id}` : null),
+            newValue: newCustomerName ?? `клиент ${edit.customerId}`,
         });
     }
     if (edit.site && String(edit.site) !== String(before.site ?? '')) {
