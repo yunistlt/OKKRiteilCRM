@@ -66,6 +66,9 @@ export default function Struct({ shtab }: ViewProps) {
     const [busy, setBusy] = useState(false);
 
     const drag = useRef<{ id: number; dx: number; dy: number } | null>(null);
+    const canvasRef = useRef<HTMLDivElement>(null);
+    /** Масштаб подбирается один раз: дальше его крутит человек, и перебивать его нельзя. */
+    const fitted = useRef(false);
     const fileRef = useRef<HTMLInputElement>(null);
 
     const load = useCallback(async () => {
@@ -100,6 +103,27 @@ export default function Struct({ shtab }: ViewProps) {
 
     const post = useMemo(() => posts.find((p) => p.id === selected) ?? null, [posts, selected]);
     const postDocs = useMemo(() => docs.filter((d) => d.post_id === selected), [docs, selected]);
+
+    // Размер плоскости — по самим постам. Раньше он был прибит к 2400×1600, и
+    // блоки, утащенные правее, просто обрезались вместе со связями.
+    const [planeW, planeH] = useMemo(() => {
+        const maxX = posts.reduce((m, p) => Math.max(m, p.pos_x), 0);
+        const maxY = posts.reduce((m, p) => Math.max(m, p.pos_y), 0);
+        return [Math.max(2400, maxX + BLOCK_W + 120), Math.max(1600, maxY + BLOCK_H + 120)];
+    }, [posts]);
+
+    // При первом открытии схема показывается целиком: иначе человек видит левый
+    // угол и решает, что постов всего пять.
+    useEffect(() => {
+        if (fitted.current || posts.length === 0) return;
+        const box = canvasRef.current;
+        if (!box || box.clientWidth === 0) return;
+        fitted.current = true;
+        const maxX = posts.reduce((m, p) => Math.max(m, p.pos_x), 0) + BLOCK_W + 40;
+        const maxY = posts.reduce((m, p) => Math.max(m, p.pos_y), 0) + BLOCK_H + 40;
+        const fit = Math.min(box.clientWidth / maxX, box.clientHeight / maxY, 1);
+        setZoom(Math.max(0.4, +fit.toFixed(2)));
+    }, [posts]);
 
     const patch = useCallback(async (id: number, fields: Partial<Post>) => {
         setPosts((prev) => prev.map((p) => (p.id === id ? { ...p, ...fields } : p)));
@@ -264,9 +288,17 @@ export default function Struct({ shtab }: ViewProps) {
             </div>
 
             <div className="struct">
-                <div className="struct-canvas" onPointerMove={onPointerMove} onPointerUp={() => void onPointerUp()}>
-                    <div className="struct-plane" style={{ transform: `scale(${zoom})` }}>
-                        <svg className="struct-links">
+                <div
+                    ref={canvasRef}
+                    className="struct-canvas"
+                    onPointerMove={onPointerMove}
+                    onPointerUp={() => void onPointerUp()}
+                >
+                    <div
+                        className="struct-plane"
+                        style={{ transform: `scale(${zoom})`, width: planeW, height: planeH }}
+                    >
+                        <svg className="struct-links" width={planeW} height={planeH}>
                             {posts
                                 .filter((p) => p.parent_id)
                                 .map((p) => {

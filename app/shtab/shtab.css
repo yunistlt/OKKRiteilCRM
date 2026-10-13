@@ -704,9 +704,9 @@
 .shtab .struct-canvas{position:relative;overflow:auto;height:calc(var(--shtab-vh, 100vh) - 232px);min-height:520px;background:var(--surface-2);
   border-right:1px solid var(--line);touch-action:none}
 
-.shtab .struct-plane{position:relative;width:2400px;height:1600px;transform-origin:0 0}
+.shtab .struct-plane{position:relative;transform-origin:0 0}
 
-.shtab .struct-links{position:absolute;inset:0;width:2400px;height:1600px;pointer-events:none}
+.shtab .struct-links{position:absolute;inset:0;pointer-events:none}
 
 .shtab .struct-links path{stroke:var(--line-2);stroke-width:1.5}
 
