@@ -89,7 +89,13 @@ export default function Struct({ shtab }: ViewProps) {
     const pan = useRef<{ x: number; y: number; ox: number; oy: number; moved: boolean } | null>(null);
     const offsetRef = useRef({ x: 0, y: 0 });
     /** Тянем связь от поста: от кого ведём и куда указывает курсор. */
-    const [linking, setLinking] = useState<{ from: number; x: number; y: number; over: number | null } | null>(null);
+    const [linking, setLinking] = useState<{
+        from: number;
+        x: number;
+        y: number;
+        over: number | null;
+        moved: boolean;
+    } | null>(null);
     const linkRef = useRef<typeof linking>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
@@ -273,7 +279,13 @@ export default function Struct({ shtab }: ViewProps) {
                 const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
                 const overId = el?.closest('.struct-block')?.getAttribute('data-id');
                 const over = overId ? Number(overId) : null;
-                const next = { ...link, x: e.clientX, y: e.clientY, over: over === link.from ? null : over };
+                const next = {
+                    ...link,
+                    x: e.clientX,
+                    y: e.clientY,
+                    over: over === link.from ? null : over,
+                    moved: link.moved || Math.abs(e.clientX - link.x) + Math.abs(e.clientY - link.y) > 4,
+                };
                 linkRef.current = next;
                 setLinking(next);
                 return;
@@ -302,6 +314,9 @@ export default function Struct({ shtab }: ViewProps) {
             if (link.over && link.over !== link.from) {
                 // Цикл ловит сервер: он один знает всё дерево целиком.
                 await patch(link.from, { parent_id: link.over });
+            } else if (!link.moved) {
+                // Клик по порту без протяжки — завести подчинённого этому посту.
+                await addPost(link.from);
             }
             return;
         }
@@ -328,21 +343,28 @@ export default function Struct({ shtab }: ViewProps) {
     }, [posts]);
 
     // ── операции ──────────────────────────────────────────────────────────────
-    const addPost = useCallback(async () => {
-        const title = window.prompt('Название поста');
-        if (!title?.trim()) return;
-        const res = await fetch('/api/shtab/post', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: title.trim() }),
-        });
-        const data = await res.json();
-        if (!res.ok) return setError(data?.error || 'Пост не завёлся');
-        const spot = freeSpot(posts);
-        await patch(data.id, { pos_x: spot.x, pos_y: spot.y });
-        await load();
-        setSelected(data.id);
-    }, [posts, patch, load]);
+    const addPost = useCallback(
+        async (parentId?: number) => {
+            const boss = parentId ? posts.find((p) => p.id === parentId) : null;
+            const title = window.prompt(boss ? `Новый подчинённый поста «${boss.title}»` : 'Название поста');
+            if (!title?.trim()) return;
+            const res = await fetch('/api/shtab/post', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: title.trim() }),
+            });
+            const data = await res.json();
+            if (!res.ok) return setError(data?.error || 'Пост не завёлся');
+            // Подчинённый встаёт под своим руководителем, отдельный пост — в свободное место.
+            const spot = boss
+                ? { x: boss.pos_x + (posts.filter((p) => p.parent_id === boss.id).length ? 260 : 0), y: boss.pos_y + 160 }
+                : freeSpot(posts);
+            await patch(data.id, { pos_x: spot.x, pos_y: spot.y, ...(boss ? { parent_id: boss.id } : {}) });
+            await load();
+            setSelected(data.id);
+        },
+        [posts, patch, load],
+    );
 
     const removePost = useCallback(
         async (id: number) => {
@@ -468,7 +490,9 @@ export default function Struct({ shtab }: ViewProps) {
                 <h1>Структура компании</h1>
                 <p>
                     Схема постов: кто кому подчинён, что пост обязан выдавать и что лежит в его папке. Блоки таскаются
-                    мышью, связь задаётся полем «подчинён». Тамара эту схему видит и документы читает.
+                    мышью, лист возится за пустое место и щипком. Кружок под блоком: нажать — завести подчинённого,
+                    потянуть к другому посту — подчинить этому посту. Чёрная кнопка справа сворачивает ветку. Тамара
+                    эту схему видит и документы читает.
                 </p>
             </div>
 
@@ -585,10 +609,11 @@ export default function Struct({ shtab }: ViewProps) {
                                     в карточке — мышью было никак. */}
                                 <button
                                     className="struct-port"
+                                    style={{ transform: `translateX(-50%) scale(${(1 / zoom).toFixed(2)})` }}
                                     title="Потяни к руководителю, чтобы подчинить пост"
                                     onPointerDown={(e) => {
                                         e.stopPropagation();
-                                        const next = { from: p.id, x: e.clientX, y: e.clientY, over: null };
+                                        const next = { from: p.id, x: e.clientX, y: e.clientY, over: null, moved: false };
                                         linkRef.current = next;
                                         setLinking(next);
                                     }}
@@ -599,6 +624,7 @@ export default function Struct({ shtab }: ViewProps) {
                                 {kidCount.get(p.id) ? (
                                     <button
                                         className="struct-fold"
+                                        style={{ transform: `translateY(-50%) scale(${(1 / zoom).toFixed(2)})` }}
                                         title={p.collapsed ? 'Развернуть ветку' : 'Свернуть ветку'}
                                         onPointerDown={(e) => e.stopPropagation()}
                                         onClick={(e) => {
