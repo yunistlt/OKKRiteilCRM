@@ -206,9 +206,17 @@ export async function editOwnOrder(
         else delete payload.discountManualPercent;
     }
 
-    // Пустой состав не трогаем: карточка шлёт позиции при любой правке, и пустой
-    // список стёр бы состав заказа при сохранении одних только контактов.
-    if (edit.items?.length) {
+    /**
+     * Состав правим, когда его прислали, — даже пустым.
+     *
+     * Раньше пустой список пропускали, боясь стереть состав при сохранении
+     * одних контактов. Но карточка шлёт свой черновик целиком, и пустой
+     * список значит ровно одно: менеджер удалил позиции. Из-за пропуска
+     * удалённый товар возвращался после сохранения (жалоба 13.10.2026).
+     * Автоматика (смена статуса, менеджера, комментарии) состав не шлёт
+     * вовсе — там `undefined`, и его мы по-прежнему не трогаем.
+     */
+    if (edit.items !== undefined) {
         // Номера нужны только новым позициям; у приехавших из RetailCRM они свои.
         const fresh = await ownItemIds(edit.items.filter((item) => !item.id).length);
         let freshIndex = 0;
@@ -377,7 +385,7 @@ export async function editOwnOrder(
     if (edit.site && String(edit.site) !== String(before.site ?? '')) {
         history.push({ field: 'site', oldValue: before.site ?? null, newValue: edit.site });
     }
-    if (edit.items?.length) {
+    if (edit.items !== undefined) {
         const was = (before.items || []).map((item: any) => itemLabel({
             name: item.offer?.name || item.productName,
             quantity: item.quantity,
