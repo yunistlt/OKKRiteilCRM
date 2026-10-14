@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { PDFDocument } from 'pdf-lib';
 import { supabase } from '@/utils/supabase';
 import { orderDocumentData, type OrderDocumentData } from '@/lib/own-crm/documents';
@@ -142,8 +143,15 @@ export async function buildContractKit(params: {
         const merged = await mergePdfs([Buffer.from(invoice.content), contract, specification]);
         const pages = (await PDFDocument.load(merged)).getPageCount();
 
+        /**
+         * В пути — отпечаток содержимого: пересобрали после правки состава,
+         * получили другой комплект — он ложится рядом, а не затирает прежний
+         * (решение владельца 14.10.2026: файлы не должны перетираться). Тот же
+         * самый комплект, собранный повторно, остаётся одним файлом.
+         */
+        const stamp = createHash('sha256').update(merged).digest('hex').slice(0, 8);
         const fileName = `Счёт, договор и спецификация №${params.orderNumber}.pdf`;
-        const path = `order-files/${safeStorageSegment(params.orderNumber, 40)}/contracts/kit-${params.contractId}.pdf`;
+        const path = `order-files/${safeStorageSegment(params.orderNumber, 40)}/contracts/kit-${params.contractId}-${stamp}.pdf`;
 
         const upload = await supabase.storage.from(BUCKET).upload(path, new Uint8Array(merged), {
             contentType: 'application/pdf',
@@ -151,7 +159,7 @@ export async function buildContractKit(params: {
         });
         if (upload.error) return { ok: false, reason: upload.error.message };
 
-        // Одна запись на комплект: перезобрали — заменили файл, а не завели второй.
+        // Одна запись на ЭТОТ комплект: тот же файл второй раз не заводим.
         const { data: existing } = await supabase
             .from('order_files')
             .select('id')
