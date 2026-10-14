@@ -463,7 +463,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
      * Расчёты из калькулятора «Бот-Инженер» по этому заказу: менеджер считает
      * там изделие и вписывает номер нашего заказа, мы находим расчёт по номеру.
      */
-    const [calcItems, setCalcItems] = useState<Array<{ type: string; id: string; title: string; price: number; quantity: number; weightKg: number | null; author: string | null; createdAt: string | null; params: string; inOrder: boolean }>>([]);
+    const [calcItems, setCalcItems] = useState<Array<{ type: string; id: string; title: string; price: number; quantity: number; weightKg: number | null; author: string | null; createdAt: string | null; params: string; inOrder: boolean; site: { publishedUrl: string; productId: string | null; name: string | null; url: string | null } | null }>>([]);
     const [calcNote, setCalcNote] = useState<string | null>(null);
     const [calcTaking, setCalcTaking] = useState<string | null>(null);
     // Что ответил каталог: «не подключён», «не ответил», «цены из витрины».
@@ -1462,18 +1462,47 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                 {item.weightKg ? `${Math.round(item.weightKg).toLocaleString('ru-RU')} кг · ` : ''}
                                                 {item.author || 'автор не указан'}
                                                 {item.createdAt ? ` · ${new Date(item.createdAt).toLocaleDateString('ru-RU')}` : ''}
+                                                {item.site && (
+                                                    <>
+                                                        {' · '}
+                                                        <a
+                                                            href={item.site.url || item.site.publishedUrl}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="text-blue-700 hover:underline"
+                                                        >
+                                                            карточка на сайте
+                                                        </a>
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
                                         <div className="text-sm font-semibold text-gray-900">{formatCurrency(item.price)}</div>
+                                        {/* Товар заводит калькулятор: он выкладывает изделие
+                                            карточкой на сайт, а мы берём уже оттуда. Расчёт без
+                                            карточки в заказ не берём — позиция без кода товара не
+                                            опознаётся ни на сайте, ни в производстве. Почему
+                                            кнопки нет, менеджер видит прямо здесь (закон
+                                            «заглушки видимы в интерфейсе»). */}
                                         {item.inOrder ? (
                                             <span className="text-xs text-gray-500">уже в заказе</span>
+                                        ) : !item.site ? (
+                                            <span className="max-w-[18rem] text-xs text-amber-800">
+                                                Не выложен на сайт — выложите расчёт в калькуляторе,
+                                                тогда его можно взять в заказ
+                                            </span>
+                                        ) : !item.site.productId ? (
+                                            <span className="max-w-[18rem] text-xs text-amber-800">
+                                                Выложен на сайт, но в каталоге ещё не появился —
+                                                каталог обновляется по расписанию
+                                            </span>
                                         ) : (
                                             <button
                                                 onClick={() => takeCalculation(item)}
                                                 disabled={calcTaking === `${item.type}:${item.id}`}
                                                 className="border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:bg-gray-100 disabled:text-gray-400"
                                             >
-                                                {calcTaking === `${item.type}:${item.id}` ? 'Берём…' : 'Взять из калькулятора'}
+                                                {calcTaking === `${item.type}:${item.id}` ? 'Берём…' : 'Взять с сайта в заказ'}
                                             </button>
                                         )}
                                     </div>

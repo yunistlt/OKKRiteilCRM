@@ -2,7 +2,13 @@
  * Расчёты из калькулятора «Бот-Инженер» по этому заказу.
  *
  * GET  — что посчитано с номером этого заказа (см. lib/own-crm/calc-link.ts).
- * POST — взять расчёт в состав заказа: добавляем позицию с ценой калькулятора.
+ * POST — взять расчёт в состав заказа: добавляем позицию товаром сайта.
+ *
+ * Товар заводит не ОКК: калькулятор считает изделие и сам выкладывает его
+ * карточкой на zmktlt.ru, а мы берём уже оттуда — с кодом товара, названием и
+ * фото (решение владельца 14.10.2026). Невыложенный расчёт в заказ не берём:
+ * позиция без кода не опознаётся ни на сайте, ни в производстве — именно так
+ * в заказе 900180 появилась «Муфельная печь 420×350×350 мм» без ссылки.
  *
  * Позиция добавляется к уже существующему составу, а не вместо него: правка
  * состава в RetailCRM передаётся целиком, и потеря старых позиций была бы
@@ -45,6 +51,11 @@ function currentItems(order: any): EditableItem[] {
         quantity: Number(item.quantity) || 1,
         price: Number(item.price) || Number(item.initialPrice) || 0,
         xmlId: item.offer?.xmlId ? String(item.offer.xmlId) : null,
+        // Привязку к товару сайта и артикул переносим как есть: правка состава
+        // передаётся целиком, и без них соседние позиции потеряли бы ссылку на
+        // карточку товара и код для производства.
+        siteId: item.offer?.externalId ? String(item.offer.externalId) : null,
+        article: item.offer?.article ? String(item.offer.article) : null,
     }));
 }
 
@@ -98,13 +109,35 @@ export async function POST(request: Request, { params }: { params: { id: string 
         );
     }
 
+    if (!calculation.site) {
+        return NextResponse.json(
+            {
+                error: 'Расчёт ещё не выложен на сайт. Выложите его в калькуляторе «Бот-Инженер» '
+                    + '— там он станет карточкой товара, и тогда его можно взять в заказ с кодом товара.',
+            },
+            { status: 409 },
+        );
+    }
+    if (!calculation.site.productId) {
+        return NextResponse.json(
+            {
+                error: `Расчёт выложен на сайт (${calculation.site.publishedUrl}), но в каталоге его ещё нет. `
+                    + 'Каталог обновляется по расписанию — попробуйте через некоторое время.',
+            },
+            { status: 409 },
+        );
+    }
+
     const result = await editOrder(Number(order.id), {
         items: [
             ...currentItems(order),
             {
-                name: calculation.title,
+                // Название берём с сайта: товар живёт там, а не у нас
+                // (закон «имена из источника»).
+                name: calculation.site.name || calculation.title,
                 quantity: calculation.quantity,
                 price: calculation.price,
+                siteId: calculation.site.productId,
             },
         ],
     });
@@ -113,5 +146,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
         return NextResponse.json({ error: result.reason }, { status: 409 });
     }
 
-    return NextResponse.json({ ok: true, added: calculation.title, price: calculation.price });
+    return NextResponse.json({
+        ok: true,
+        added: calculation.site.name || calculation.title,
+        price: calculation.price,
+    });
 }

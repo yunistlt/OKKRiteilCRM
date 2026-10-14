@@ -13,6 +13,7 @@
  * (с наценкой). Себестоимость (`cost_price`) менеджеру не показываем.
  */
 import { createClient } from '@supabase/supabase-js';
+import { decodeEntities } from '@/lib/sales-rop/letter-render';
 
 const URL_KEY = 'LVZ_SUPABASE_URL';
 const KEY_KEY = 'LVZ_SUPABASE_ANON_KEY';
@@ -57,11 +58,49 @@ export type OrderCalculation = {
     createdAt: string | null;
     /** Короткая сводка параметров: габариты, количество полок и прочее. */
     params: string;
+    /**
+     * Карточка товара на сайте, если расчёт туда выложен.
+     *
+     * Изделие по расчёту становится товаром не у нас: калькулятор сам публикует
+     * его на zmktlt.ru (`result_data.webasyst_url`), и только оттуда у позиции
+     * появляются код товара, название и фото. Пока расчёт не выложен, брать его
+     * в заказ нечем — будет позиция без кода, которую не опознают ни сайт, ни
+     * производство (решение владельца 14.10.2026).
+     */
+    site: CalculationSite | null;
+};
+
+/** Товар сайта, в который калькулятор выложил расчёт. */
+export type CalculationSite = {
+    /** Адрес, который калькулятор записал в расчёт после публикации. */
+    publishedUrl: string;
+    /** Код товара в каталоге сайта (`marketing_products.id`). Нет в каталоге — null. */
+    productId: string | null;
+    /** Название товара на сайте — его и ставим в позицию (закон «имена из источника»). */
+    name: string | null;
+    /** Адрес карточки из каталога: он с разделом, а записанный в расчёт — без. */
+    url: string | null;
 };
 
 export type OrderCalculationsResult =
     | { available: true; items: OrderCalculation[] }
     | { available: false; reason: string; items: [] };
+
+/**
+ * Хвост адреса карточки — по нему расчёт находит себя в каталоге сайта.
+ *
+ * Калькулятор пишет в расчёт адрес без раздела
+ * (`https://www.zmktlt.ru/mufelnaya-pech-snoleks-10-1100-513/`), а в каталоге
+ * тот же товар лежит с разделом
+ * (`https://zmktlt.ru/mufelnye-pechi/mufelnaya-pech-snoleks-10-1100-513/`).
+ * Совпадает последний кусок: он кончается номером расчёта и уникален.
+ */
+export function publishedSlug(url: unknown): string | null {
+    const parts = String(url ?? '').split('?')[0].split('#')[0].split('/').filter(Boolean);
+    const slug = parts[parts.length - 1];
+    if (!slug || slug.includes('.')) return null;
+    return slug;
+}
 
 function num(value: unknown): number {
     const parsed = Number(value);
@@ -160,6 +199,7 @@ async function fromProjects(db: ReturnType<typeof client>, number: string): Prom
                         author: row.username ? String(row.username) : null,
                         createdAt: row.created_at ? String(row.created_at) : null,
                         params: describeParams(input),
+                        site: publishedUrlOf(result),
                     } as OrderCalculation;
                 });
             } catch (e: any) {
@@ -170,6 +210,53 @@ async function fromProjects(db: ReturnType<typeof client>, number: string): Prom
     );
 
     return loaded.flat();
+}
+
+/** Адрес публикации из расчёта: калькулятор пишет его после выкладки на сайт. */
+function publishedUrlOf(result: Record<string, any>): CalculationSite | null {
+    const url = String(result.webasyst_url ?? '').trim();
+    if (!url.startsWith('http')) return null;
+    return { publishedUrl: url, productId: null, name: null, url: null };
+}
+
+/**
+ * Находит выложенные расчёты в каталоге сайта — одним запросом на все сразу.
+ *
+ * Товара в каталоге может не быть даже у выложенного расчёта: каталог у нас
+ * копия сайта и обновляется по расписанию. Тогда остаётся адрес публикации, а
+ * кода товара нет — брать такую позицию в заказ рано.
+ */
+async function fillSiteProducts(db: ReturnType<typeof client>, items: OrderCalculation[]): Promise<void> {
+    const bySlug = new Map<string, OrderCalculation[]>();
+    for (const item of items) {
+        const slug = publishedSlug(item.site?.publishedUrl);
+        if (!slug) continue;
+        if (!bySlug.has(slug)) bySlug.set(slug, []);
+        bySlug.get(slug)!.push(item);
+    }
+    if (!bySlug.size) return;
+
+    try {
+        const { data, error } = await db
+            .from('marketing_products')
+            .select('id, name, full_url')
+            .or(Array.from(bySlug.keys()).map((slug) => `full_url.ilike.%/${slug}/%`).join(','));
+        if (error) throw new Error(error.message);
+
+        for (const row of ((data ?? []) as any[])) {
+            const slug = publishedSlug(row.full_url);
+            for (const item of (slug && bySlug.get(slug)) || []) {
+                item.site = {
+                    publishedUrl: item.site!.publishedUrl,
+                    productId: String(row.id ?? '') || null,
+                    name: decodeEntities(String(row.name ?? '')) || null,
+                    url: String(row.full_url ?? '') || null,
+                };
+            }
+        }
+    } catch (e: any) {
+        console.warn('[calc-link] каталог сайта не ответил:', e.message);
+    }
 }
 
 /**
@@ -219,6 +306,7 @@ export async function calculationsForOrder(orderNumber: string): Promise<OrderCa
                         author: row.username ? String(row.username) : null,
                         createdAt: row.created_at ? String(row.created_at) : null,
                         params: describeParams(input),
+                        site: publishedUrlOf(result),
                     };
                 });
             } catch (e: any) {
@@ -239,6 +327,8 @@ export async function calculationsForOrder(orderNumber: string): Promise<OrderCa
 
     const items = Array.from(unique.values())
         .sort((left, right) => String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? '')));
+
+    await fillSiteProducts(db, items);
 
     return { available: true, items };
 }
