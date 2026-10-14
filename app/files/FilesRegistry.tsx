@@ -408,12 +408,35 @@ export default function FilesRegistry() {
                         setApplied(query.trim());
                     }}
                 >
-                    <input
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Название файла или номер заказа"
-                        className="w-80 border border-gray-300 px-2 py-1 text-xs"
-                    />
+                    {/* Крестик внутри поля: очистить поиск одним нажатием
+                        (просьба Елены Парфёновой 14.10.2026). Esc — то же. */}
+                    <div className="relative">
+                        <input
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Escape' && query) {
+                                    e.preventDefault();
+                                    setQuery('');
+                                    setApplied('');
+                                    setPage(1);
+                                }
+                            }}
+                            placeholder="Название файла или номер заказа"
+                            className={`w-80 border border-gray-300 py-1 pl-2 text-xs ${query ? 'pr-6' : 'pr-2'}`}
+                        />
+                        {query && (
+                            <button
+                                type="button"
+                                onClick={() => { setQuery(''); setApplied(''); setPage(1); }}
+                                title="Очистить поиск"
+                                aria-label="Очистить поиск"
+                                className="absolute right-0.5 top-1/2 -translate-y-1/2 px-1.5 text-sm leading-none text-gray-400 hover:text-gray-700"
+                            >
+                                ×
+                            </button>
+                        )}
+                    </div>
                     <button type="submit" className="bg-gray-900 px-3 py-1 text-xs font-semibold text-white hover:bg-gray-700">
                         Найти
                     </button>

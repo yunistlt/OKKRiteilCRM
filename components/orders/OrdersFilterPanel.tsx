@@ -274,13 +274,18 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply, 
                         >
                             Применить
                         </button>
-                        <button
-                            onClick={() => { setDraft(EMPTY_FILTER); onApply(EMPTY_FILTER); }}
-                            title="Сбросить фильтр"
-                            className="border border-gray-400 bg-gray-50 px-2 py-1 text-sm leading-none text-red-500 hover:bg-gray-100"
-                        >
-                            ✕
-                        </button>
+                        {/* Снять отбор целиком одним нажатием — требование
+                            золотого стандарта таблиц (§5, решение владельца
+                            14.10.2026). Раньше здесь был безымянный крестик:
+                            что он делает, человек узнавал, только наведя мышь. */}
+                        {!isFilterEmpty(draft) && (
+                            <button
+                                onClick={() => { setDraft(EMPTY_FILTER); onApply(EMPTY_FILTER); }}
+                                className="border border-gray-400 bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                            >
+                                Очистить фильтр
+                            </button>
+                        )}
                         <button
                             onClick={() => setFieldsOpen(true)}
                             title="Выбрать поля фильтра"

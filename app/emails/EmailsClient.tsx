@@ -229,16 +229,51 @@ export default function EmailsClient() {
                     }}
                     className="flex items-center gap-2"
                 >
-                    <input
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Тема или адрес"
-                        className="w-56 border border-gray-200 px-3 py-1.5 text-sm"
-                    />
+                    {/* Крестик внутри поля: очистить поиск одним нажатием, не
+                        выделяя набранное (просьба Елены Парфёновой 14.10.2026).
+                        Esc делает то же — так привычнее тем, кто с клавиатуры. */}
+                    <div className="relative">
+                        <input
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Escape' && search) {
+                                    e.preventDefault();
+                                    setSearch('');
+                                    setQuery('');
+                                }
+                            }}
+                            placeholder="Тема или адрес"
+                            className={`w-56 border border-gray-200 py-1.5 pl-3 text-sm ${search ? 'pr-7' : 'pr-3'}`}
+                        />
+                        {search && (
+                            <button
+                                type="button"
+                                onClick={() => { setSearch(''); setQuery(''); }}
+                                title="Очистить поиск"
+                                aria-label="Очистить поиск"
+                                className="absolute right-1 top-1/2 -translate-y-1/2 px-1.5 text-base leading-none text-gray-400 hover:text-gray-700"
+                            >
+                                ×
+                            </button>
+                        )}
+                    </div>
                     <button type="submit" className="border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700">
                         Найти
                     </button>
                 </form>
+                {/* Снять весь отбор одним нажатием — требование золотого
+                    стандарта таблиц (§5, решение владельца 14.10.2026).
+                    Появляется, только когда есть что снимать. */}
+                {(direction !== 'all' || type || search || query) && (
+                    <button
+                        type="button"
+                        onClick={() => { setDirection('all'); setType(''); setSearch(''); setQuery(''); }}
+                        className="border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                    >
+                        Очистить фильтр
+                    </button>
+                )}
             </div>
 
             {error && <p className="mb-3 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
