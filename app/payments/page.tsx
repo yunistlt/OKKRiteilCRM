@@ -381,6 +381,27 @@ export default function PaymentsPage() {
     }
   }
 
+  // Ручной выбор проекта: автоопределение по назначению ошибается на «Оплата по счету № …».
+  async function setProject(paymentId: number, project: string) {
+    if (!project) return;
+    setBusyId(paymentId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/payments/${paymentId}/project`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Ошибка');
+      await load();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function ignore(paymentId: number) {
     setBusyId(paymentId);
     setError(null);
@@ -401,6 +422,9 @@ export default function PaymentsPage() {
   }
 
   const actionable = (s: string) => s === 'pending_match' || s === 'failed';
+  // Проект меняем и у опознанных: автоопределение могло отнести платёж не туда.
+  const projectEditable = (p: Payment) =>
+    !p.matched_order_id && (actionable(p.status) || p.status === 'recognized');
 
   return (
     // Полноэкранная flex-колонка: панели/вкладки зафиксированы, скроллится только тело таблицы.
@@ -906,6 +930,24 @@ export default function PaymentsPage() {
 
                     {/* Действия (ручной разбор) */}
                     <td className="px-4 py-3 align-top">
+                      {projectEditable(p) && (
+                        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                          <span className="text-xs text-gray-500">Проект:</span>
+                          <select
+                            disabled={busyId === p.id}
+                            value={p.project || ''}
+                            onChange={(e) => setProject(p.id, e.target.value)}
+                            className="border border-gray-300 bg-white px-2 py-1 text-sm focus:border-blue-600 focus:outline-none disabled:opacity-50"
+                          >
+                            <option value="">Не определён</option>
+                            {Object.entries(PROJECT_LABELS).map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                       {actionable(p.status) ? (
                         <div className="space-y-2">
                           {!isForeign && p.match_candidates && p.match_candidates.length > 0 && (
@@ -966,7 +1008,7 @@ export default function PaymentsPage() {
                             </button>
                           </div>
                         </div>
-                      ) : (
+                      ) : projectEditable(p) ? null : (
                         <Dash />
                       )}
                     </td>
