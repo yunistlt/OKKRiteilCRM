@@ -80,8 +80,10 @@ async function managerRow(id: number | null | undefined) {
  * Чей клиент звонит. Порядок — владелец карточки клиента, затем менеджер последнего
  * заказа по этому номеру (закон «раздаём клиентами»: хозяин карточки главнее).
  * Телефон ищем в заказах: clients.phones заполнена у сотни карточек из двадцати тысяч,
- * живой источник номеров — сами заказы. Сравниваем по последним 7 цифрам, как в
- * lib/call-matching.ts, — это переживает +7/8 и добавочные в хвосте.
+ * живой источник номеров — сами заказы. Сравниваем по последним 7 цифрам
+ * (orders.phone_tail7 / additional_phone_tail7) — это переживает +7/8, добавочные
+ * в хвосте и разделители: у 864 заказов телефон записан как «+7-906-708-28-04»,
+ * и поиск подстрокой их не находил.
  * Возвращаем только того, на кого разрешён перевод; иначе null — звонок идёт в очередь ОП.
  */
 export async function findOwnerByCallerPhone(phone: string): Promise<CallerOwner | null> {
@@ -93,7 +95,7 @@ export async function findOwnerByCallerPhone(phone: string): Promise<CallerOwner
     const { data: orders } = await supabase
         .from('orders')
         .select('id, manager_id, customer, created_at')
-        .or(`phone.ilike.%${suffix}%,raw_payload->>additionalPhone.ilike.%${suffix}%`)
+        .or(`phone_tail7.eq.${suffix},additional_phone_tail7.eq.${suffix}`)
         .order('created_at', { ascending: false })
         .limit(10);
 
