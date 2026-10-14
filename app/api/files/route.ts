@@ -10,14 +10,24 @@
  * строк по любой колонке. Считает всё база: на 33 тысячах строк отбирать на
  * клиенте нечего — он видит только свою страницу.
  *
- * Здесь только файлы, приложенные к заказам (`order_files`). Вложения писем у
- * нас не хранятся — они докачиваются из ящика по требованию, поэтому в общем
- * списке их нет и быть не может.
+ * Файлы приходят из двух мест, и человеку об этом знать незачем (Андрей
+ * 14.10.2026: «менеджерам не важно, где лежат — в ЦУ или в ОКК, для них это
+ * один источник»): файлы заказов лежат у нас в `order_files`, а паспорта и
+ * инструкции на продукцию — в базе завода, и читаются оттуда живьём, чтобы
+ * версия всегда совпадала с цеховой.
+ *
+ * Документы завода подмешиваются только в поиск: показать их «все подряд»
+ * значит выкачивать чужую боевую базу на каждое открытие раздела.
+ *
+ * Вложения писем у нас не хранятся — они докачиваются из ящика по требованию,
+ * поэтому в общем списке их нет и быть не может.
  */
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { allWordsIlike, anyColumnAllWords, searchWords } from '@/lib/search-words';
+import { externalDbConfigured } from '@/lib/shtab/external/client';
+import { searchProductDocs } from '@/lib/product-docs/search';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,7 +112,7 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: 'Список файлов не собрался' }, { status: 500 });
     }
 
-    const files = ((data ?? []) as any[]).map((row) => ({
+    const ourFiles = ((data ?? []) as any[]).map((row) => ({
         id: row.id,
         orderNumber: String(row.order_number),
         name: row.file_name,
@@ -118,5 +128,46 @@ export async function GET(req: Request) {
         lost: Boolean(row.deleted_at),
     }));
 
-    return NextResponse.json({ files, total: count ?? 0, page, pageSize, sortable: Object.keys(COLUMNS) });
+    /**
+     * Паспорта и инструкции с завода. Они не принадлежат заказу, поэтому
+     * показываются только когда человек ищет, и только на первой странице: это
+     * ответ на запрос, а не часть ленты.
+     */
+    let plant: any[] = [];
+    if (words.length && page === 1 && !archive && externalDbConfigured('tseh')) {
+        try {
+            const docs = await searchProductDocs({ query: String(params.get('q') ?? ''), kind: 'docs', limit: 40 });
+            plant = docs.map((doc) => ({
+                id: `tseh-${doc.source}-${doc.fileId}`,
+                orderNumber: null,
+                name: doc.fileName,
+                contentType: null,
+                // Размер нарочно не считаем: ради него база завода прочитала бы
+                // все документы целиком, и поиск занимал бы полторы минуты.
+                size: null,
+                uploadedBy: null,
+                note: doc.ownerName,
+                forProduction: false,
+                at: doc.changedAt,
+                archivedAt: null,
+                archivedBy: null,
+                lost: false,
+                href: `/api/product-docs/file/${encodeURIComponent(doc.fileName || 'Документ')}?source=${doc.source}&id=${doc.fileId}`,
+            }));
+        } catch (plantError) {
+            // База завода недоступна — показываем свои файлы и молчим: раздел
+            // продолжает работать, а чинить связь всё равно не менеджеру.
+            console.error('[files] документы завода не прочитались:', plantError);
+        }
+    }
+
+    const files = [...plant, ...ourFiles];
+
+    return NextResponse.json({
+        files,
+        total: (count ?? 0) + plant.length,
+        page,
+        pageSize,
+        sortable: Object.keys(COLUMNS),
+    });
 }

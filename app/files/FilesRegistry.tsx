@@ -5,7 +5,7 @@
 // состав и порядок колонок, ширина, масштаб и сохранённые наборы фильтров.
 // Всё это запоминается за человеком на сервере и переезжает с ним на любой
 // компьютер.
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import ViewSettingsModal from '@/components/orders/ViewSettingsModal';
 import { orderFileHref } from '@/lib/orders/file-href';
@@ -13,8 +13,9 @@ import { formatIntRu } from '@/lib/format';
 import type { ViewItem } from '@/lib/orders-view';
 
 type FileRow = {
-    id: number;
-    orderNumber: string;
+    id: number | string;
+    /** Пусто у паспортов и инструкций: они принадлежат изделию, а не заказу. */
+    orderNumber: string | null;
     name: string;
     contentType: string | null;
     size: number | null;
@@ -25,6 +26,8 @@ type FileRow = {
     archivedAt: string | null;
     archivedBy: string | null;
     lost?: boolean;
+    /** Готовая ссылка, если файл открывается не из заказа. */
+    href?: string;
 };
 
 type ColumnKey = 'name' | 'order' | 'size' | 'uploadedBy' | 'at' | 'note';
@@ -87,7 +90,7 @@ function formatMoment(value: string) {
     return `${date.toLocaleDateString('ru-RU')} ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
-export default function FilesRegistry({ tabs }: { tabs?: ReactNode }) {
+export default function FilesRegistry() {
     const [rows, setRows] = useState<FileRow[]>([]);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
@@ -350,7 +353,7 @@ export default function FilesRegistry({ tabs }: { tabs?: ReactNode }) {
             return (
                 <>
                     <a
-                        href={orderFileHref({ orderNumber: row.orderNumber, fileId: row.id })}
+                        href={row.href ?? orderFileHref({ orderNumber: String(row.orderNumber), fileId: Number(row.id) })}
                         target="_blank"
                         rel="noreferrer"
                         className="font-semibold text-blue-700 hover:underline"
@@ -366,7 +369,11 @@ export default function FilesRegistry({ tabs }: { tabs?: ReactNode }) {
                 </>
             );
         }
-        if (key === 'order') return <OrderNumberLink number={row.orderNumber} />;
+        if (key === 'order') {
+            return row.orderNumber
+                ? <OrderNumberLink number={row.orderNumber} />
+                : <span className="text-gray-300">—</span>;
+        }
         if (key === 'size') return formatSize(row.size);
         if (key === 'uploadedBy') return row.uploadedBy || <span className="text-gray-300">—</span>;
         if (key === 'at') return formatMoment(row.at);
@@ -380,7 +387,6 @@ export default function FilesRegistry({ tabs }: { tabs?: ReactNode }) {
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3 border-b border-gray-200 pb-2">
                 <div className="flex items-baseline gap-3">
                     <h1 className="text-xl font-bold text-gray-900">Файлы</h1>
-                    {tabs}
                     <span className="text-xs text-gray-500">{filtersOn ? 'найдено' : 'всего'} {formatIntRu(total)}</span>
                     {/* Файлы не удаляются — только уходят в архив (закон владельца
                         12.10.2026). Здесь их видно и отсюда они открываются. */}
@@ -624,7 +630,7 @@ function FilePreview({ file, onClose, onRestored }: { file: FileRow; onClose: ()
         setBusy(true);
         setProblem(null);
         try {
-            const res = await fetch(`/api/orders/${encodeURIComponent(file.orderNumber)}/files/upload?fileId=${file.id}`, { method: 'PATCH' });
+            const res = await fetch(`/api/orders/${encodeURIComponent(String(file.orderNumber))}/files/upload?fileId=${file.id}`, { method: 'PATCH' });
             const payload = await res.json();
             if (!res.ok) throw new Error(payload.error || 'Не удалось вернуть файл');
             onRestored();
@@ -635,7 +641,7 @@ function FilePreview({ file, onClose, onRestored }: { file: FileRow; onClose: ()
         }
     };
 
-    const href = orderFileHref({ orderNumber: file.orderNumber, fileId: file.id });
+    const href = file.href ?? orderFileHref({ orderNumber: String(file.orderNumber), fileId: Number(file.id) });
     const type = (file.contentType || '').toLowerCase();
     const isImage = type.startsWith('image/');
     const isPdf = type.includes('pdf');
@@ -706,9 +712,12 @@ function FilePreview({ file, onClose, onRestored }: { file: FileRow; onClose: ()
                 <a href={href} download={file.name} className="border border-gray-300 px-3 py-1 font-semibold text-gray-700 hover:bg-gray-100">
                     Скачать
                 </a>
-                <a href={`/orders?order=${encodeURIComponent(file.orderNumber)}`} className="ml-auto font-semibold text-blue-700 hover:underline">
-                    Перейти в заказ →
-                </a>
+                {/* Паспорт изделия ни к какому заказу не привязан — вести некуда. */}
+                {file.orderNumber && (
+                    <a href={`/orders?order=${encodeURIComponent(file.orderNumber)}`} className="ml-auto font-semibold text-blue-700 hover:underline">
+                        Перейти в заказ →
+                    </a>
+                )}
             </div>
         </aside>
     );
