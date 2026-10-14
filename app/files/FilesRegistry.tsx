@@ -95,8 +95,6 @@ export default function FilesRegistry() {
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(50);
-    const [query, setQuery] = useState('');
-    const [applied, setApplied] = useState('');
     const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
     /** Применённые фильтры: набор в полях не дёргает сервер на каждую букву. */
     const [appliedFilters, setAppliedFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -243,7 +241,6 @@ export default function FilesRegistry() {
                 sort: sort.key,
                 dir: sort.dir,
             });
-            if (applied) params.set('q', applied);
             if (archive) params.set('archive', '1');
             for (const [key, value] of Object.entries(appliedFilters)) {
                 if (value) params.set(`f_${key}`, value);
@@ -259,18 +256,16 @@ export default function FilesRegistry() {
         } finally {
             setLoading(false);
         }
-    }, [page, pageSize, applied, appliedFilters, sort, archive]);
+    }, [page, pageSize, appliedFilters, sort, archive]);
 
     useEffect(() => {
         load();
     }, [load]);
 
     const pages = Math.max(1, Math.ceil(total / pageSize));
-    const filtersOn = Object.values(appliedFilters).some(Boolean) || Boolean(applied);
+    const filtersOn = Object.values(appliedFilters).some(Boolean);
 
     const resetAll = () => {
-        setQuery('');
-        setApplied('');
         setFilters(EMPTY_FILTERS);
         setAppliedFilters(EMPTY_FILTERS);
         setActivePreset(null);
@@ -280,8 +275,6 @@ export default function FilesRegistry() {
     const applyPreset = (preset: Preset) => {
         setFilters(preset.filters);
         setAppliedFilters(preset.filters);
-        setQuery(preset.query);
-        setApplied(preset.query);
         setActivePreset(preset.name);
         setPage(1);
     };
@@ -289,7 +282,7 @@ export default function FilesRegistry() {
     const savePreset = () => {
         const name = window.prompt('Как назвать этот набор отборов?')?.trim();
         if (!name) return;
-        const next = [...presets.filter((p) => p.name !== name), { name, filters, query }];
+        const next = [...presets.filter((p) => p.name !== name), { name, filters, query: '' }];
         setPresets(next);
         setActivePreset(name);
         saveLayout({ presets: next });
@@ -303,13 +296,42 @@ export default function FilesRegistry() {
     };
 
     const filterInput = (key: keyof Filters, placeholder: string, type: 'text' | 'date' | 'number' = 'text') => (
-        <input
-            type={type}
-            value={filters[key]}
-            onChange={(e) => setFilters({ ...filters, [key]: e.target.value })}
-            placeholder={placeholder}
-            className={`w-full border px-1 py-0.5 text-[11px] ${filters[key] ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}`}
-        />
+        // Крестик в самом поле: снять отбор по колонке одним нажатием, Esc — то
+        // же (золотой стандарт таблиц §5, решение владельца 14.10.2026).
+        <div className="relative">
+            <input
+                type={type}
+                value={filters[key]}
+                onChange={(e) => setFilters({ ...filters, [key]: e.target.value })}
+                onKeyDown={(e) => {
+                    if (e.key === 'Escape' && filters[key]) {
+                        e.preventDefault();
+                        const cleared = { ...filters, [key]: '' };
+                        setFilters(cleared);
+                        setAppliedFilters(cleared);
+                        setPage(1);
+                    }
+                }}
+                placeholder={placeholder}
+                className={`w-full border py-0.5 pl-1 text-[11px] ${filters[key] ? 'border-blue-500 bg-blue-50 pr-5' : 'border-gray-300 pr-1'}`}
+            />
+            {filters[key] && (
+                <button
+                    type="button"
+                    onClick={() => {
+                        const cleared = { ...filters, [key]: '' };
+                        setFilters(cleared);
+                        setAppliedFilters(cleared);
+                        setPage(1);
+                    }}
+                    title="Очистить"
+                    aria-label="Очистить"
+                    className="absolute right-0 top-1/2 -translate-y-1/2 px-1 text-xs leading-none text-gray-400 hover:text-gray-700"
+                >
+                    ×
+                </button>
+            )}
+        </div>
     );
 
     /** Поле (или пара полей) отбора под заголовком конкретной колонки. */
@@ -385,8 +407,10 @@ export default function FilesRegistry() {
     return (
         <div className="flex h-screen flex-col bg-gray-50 p-4">
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3 border-b border-gray-200 pb-2">
+                {/* Заголовок «Файлы» стоит в шапке страницы — второй раз его
+                    здесь не пишем (Андрей 14.10.2026: «два раза в шапке ФАЙЛЫ…
+                    не нужно дублировать, это мешает»). */}
                 <div className="flex items-baseline gap-3">
-                    <h1 className="text-xl font-bold text-gray-900">Файлы</h1>
                     <span className="text-xs text-gray-500">{filtersOn ? 'найдено' : 'всего'} {formatIntRu(total)}</span>
                     {/* Файлы не удаляются — только уходят в архив (закон владельца
                         12.10.2026). Здесь их видно и отсюда они открываются. */}
@@ -400,46 +424,10 @@ export default function FilesRegistry() {
                         показать архивные
                     </label>
                 </div>
-                <form
-                    className="flex items-center gap-2"
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        setPage(1);
-                        setApplied(query.trim());
-                    }}
-                >
-                    {/* Крестик внутри поля: очистить поиск одним нажатием
-                        (просьба Елены Парфёновой 14.10.2026). Esc — то же. */}
-                    <div className="relative">
-                        <input
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Escape' && query) {
-                                    e.preventDefault();
-                                    setQuery('');
-                                    setApplied('');
-                                    setPage(1);
-                                }
-                            }}
-                            placeholder="Название файла или номер заказа"
-                            className={`w-80 border border-gray-300 py-1 pl-2 text-xs ${query ? 'pr-6' : 'pr-2'}`}
-                        />
-                        {query && (
-                            <button
-                                type="button"
-                                onClick={() => { setQuery(''); setApplied(''); setPage(1); }}
-                                title="Очистить поиск"
-                                aria-label="Очистить поиск"
-                                className="absolute right-0.5 top-1/2 -translate-y-1/2 px-1.5 text-sm leading-none text-gray-400 hover:text-gray-700"
-                            >
-                                ×
-                            </button>
-                        )}
-                    </div>
-                    <button type="submit" className="bg-gray-900 px-3 py-1 text-xs font-semibold text-white hover:bg-gray-700">
-                        Найти
-                    </button>
+                <div className="flex items-center gap-2">
+                    {/* Строки поиска здесь больше нет: она дублировала отбор
+                        по колонкам «Файл» и «Заказ» прямо под шапкой таблицы
+                        (Андрей 14.10.2026). Ищем там же, где фильтруем. */}
                     {filtersOn && (
                         <>
                             <button
@@ -451,7 +439,7 @@ export default function FilesRegistry() {
                                 Сохранить отбор
                             </button>
                             <button type="button" onClick={resetAll} className="px-2 py-1 text-xs font-semibold text-gray-500 hover:text-gray-900">
-                                Сбросить всё
+                                Очистить фильтр
                             </button>
                         </>
                     )}
@@ -461,7 +449,7 @@ export default function FilesRegistry() {
                         <button type="button" onClick={() => changeZoom(100)} className="px-1 py-1 tabular-nums" title="Вернуть 100%">{zoom}%</button>
                         <button type="button" onClick={() => changeZoom(zoom + ZOOM_STEP)} disabled={zoom >= ZOOM_MAX} className="px-2 py-1 font-semibold disabled:text-gray-300 hover:bg-gray-200">+</button>
                     </span>
-                </form>
+                </div>
             </div>
 
             {/* Сохранённые наборы отборов — вкладками над таблицей. */}
@@ -481,7 +469,7 @@ export default function FilesRegistry() {
 
             {/* Закон «заглушки видны»: честно говорим, чего в списке нет. */}
             <div className="mb-2 text-[11px] text-gray-500">
-                Здесь файлы, приложенные к заказам. Вложения писем у нас не хранятся — они открываются из переписки в карточке заказа.
+                Здесь все файлы: приложенные к заказам, вложения писем и паспорта с инструкциями на продукцию. Паспорт ищется по модели — «ШСО-22М», «паспорт страж».
             </div>
 
             {error && <div className="mb-3 border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}

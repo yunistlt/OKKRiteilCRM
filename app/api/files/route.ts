@@ -134,9 +134,15 @@ export async function GET(req: Request) {
      * ответ на запрос, а не часть ленты.
      */
     let plant: any[] = [];
-    if (words.length && page === 1 && !archive && externalDbConfigured('tseh')) {
+    /**
+     * Ищут теперь в колонке «Файл» — общей строки поиска над таблицей больше
+     * нет, она дублировала тот же отбор. Поэтому заводские документы цепляем и
+     * к ней тоже.
+     */
+    const plantQuery = String(params.get('q') ?? '').trim() || String(params.get('f_name') ?? '').trim();
+    if (plantQuery.length >= 3 && page === 1 && !archive && externalDbConfigured('tseh')) {
         try {
-            const docs = await searchProductDocs({ query: String(params.get('q') ?? ''), kind: 'docs', limit: 40 });
+            const docs = await searchProductDocs({ query: plantQuery, kind: 'docs', limit: 40 });
             plant = docs.map((doc) => ({
                 id: `tseh-${doc.source}-${doc.fileId}`,
                 orderNumber: null,
