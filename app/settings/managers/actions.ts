@@ -70,6 +70,29 @@ export async function saveManagerExtensions(items: { managerId: number; extensio
 }
 
 /**
+ * На кого можно переводить входящий звонок (ОП, Лариса, Катя — решение владельца
+ * 13.10.2026). Храним пофамильно настройкой: списка в коде быть не должно.
+ */
+export async function saveCallTransferTargets(items: { managerId: number; accepts: boolean }[]) {
+    try {
+        for (const { managerId, accepts } of items) {
+            const { error } = await supabase.from('managers').update({ accepts_call_transfer: accepts }).eq('id', managerId);
+            if (error) {
+                const missing = error.code === '42703'
+                    || (error.message || '').includes('accepts_call_transfer')
+                    || (error.message || '').includes('schema cache');
+                if (missing) return { success: false, errorType: 'COLUMN_MISSING' as const };
+                throw error;
+            }
+        }
+        revalidatePath('/settings/managers');
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
+/**
  * Кто работает в нашей CRM.
  *
  * Включение — это переезд: менеджер работает только у нас, и его заказы
