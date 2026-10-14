@@ -12,6 +12,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { allWordsIlike, searchWords } from '@/lib/search-words';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,13 +25,15 @@ export async function GET(req: Request) {
         return NextResponse.json({ files: [], hint: 'Введите хотя бы три буквы названия' });
     }
 
-    // Запятые и скобки ломают фильтр PostgREST — выкидываем их из поиска.
-    const safe = query.replace(/[%,()]/g, ' ').trim();
+    // Слова ищутся все и в любом порядке: человек помнит тип документа и кусок
+    // модели, а между ними в названии ещё полстроки.
+    const words = searchWords(query);
+    if (!words.length) return NextResponse.json({ files: [] });
 
     const { data, error } = await supabase
         .from('order_files')
         .select('id, order_number, file_name, size_bytes, created_at')
-        .ilike('file_name', `%${safe}%`)
+        .or(`and(${allWordsIlike('file_name', words)})`)
         .is('deleted_at', null)
         .is('archived_at', null)
         .order('created_at', { ascending: false })

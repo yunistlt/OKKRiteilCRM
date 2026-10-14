@@ -17,6 +17,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { allWordsIlike, anyColumnAllWords, searchWords } from '@/lib/search-words';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,11 +32,6 @@ const COLUMNS = {
     at: 'created_at',
     note: 'note',
 } as const;
-
-/** Запятые и скобки ломают фильтр PostgREST — выкидываем их из поиска. */
-function safeText(value: string) {
-    return value.replace(/[%,()]/g, ' ').trim();
-}
 
 export async function GET(req: Request) {
     const session = await getSession();
@@ -73,14 +69,15 @@ export async function GET(req: Request) {
     }
 
     // Общий поиск сверху: и по названию файла, и по номеру заказа — человек
-    // набирает то, что помнит.
-    const query = safeText(String(params.get('q') ?? ''));
-    if (query) request = request.or(`file_name.ilike.%${query}%,order_number.ilike.%${query}%`);
+    // набирает то, что помнит. Слова ищутся все и в любом порядке: «паспорт SL»
+    // должен находить «Паспорт_Сушильный_стеллаж_SL1_Вираж_16».
+    const words = searchWords(String(params.get('q') ?? ''));
+    if (words.length) request = request.or(anyColumnAllWords(['file_name', 'order_number'], words));
 
-    // Фильтр по колонке: текстовые — по вхождению.
+    // Фильтр по колонке: текстовые — по тем же словам, только в своей колонке.
     for (const key of ['name', 'order', 'uploadedBy', 'note'] as const) {
-        const value = safeText(String(params.get(`f_${key}`) ?? ''));
-        if (value) request = request.ilike(COLUMNS[key], `%${value}%`);
+        const columnWords = searchWords(String(params.get(`f_${key}`) ?? ''));
+        if (columnWords.length) request = request.or(`and(${allWordsIlike(COLUMNS[key], columnWords)})`);
     }
 
     // Размер — «от» и «до» в килобайтах: человек думает килобайтами, база
