@@ -9,6 +9,7 @@ import TextWithOrderLinks from '@/components/ui/TextWithOrderLinks';
 import AttachmentList from '@/components/orders/AttachmentList';
 import { orderFileHref } from '@/lib/orders/file-href';
 import { formatIntRu } from '@/lib/format';
+import ClearFiltersButton from '@/components/ui/ClearFiltersButton';
 
 /**
  * Ответить можно из заказа: письмо уходит с его номером в теме и ложится в
@@ -265,15 +266,11 @@ export default function EmailsClient() {
                 {/* Снять весь отбор одним нажатием — требование золотого
                     стандарта таблиц (§5, решение владельца 14.10.2026).
                     Появляется, только когда есть что снимать. */}
-                {(direction !== 'all' || type || search || query) && (
-                    <button
-                        type="button"
-                        onClick={() => { setDirection('all'); setType(''); setSearch(''); setQuery(''); }}
-                        className="border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                    >
-                        Очистить фильтр
-                    </button>
-                )}
+                <ClearFiltersButton
+                    active={direction !== 'all' || Boolean(type || search || query)}
+                    onClear={() => { setDirection('all'); setType(''); setSearch(''); setQuery(''); }}
+                    className="py-1.5 text-sm"
+                />
             </div>
 
             {error && <p className="mb-3 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}

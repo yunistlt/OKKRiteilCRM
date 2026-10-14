@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ENFORCEMENT_STATUSES, ENFORCEMENT_STATUS_LABELS } from '@/lib/legal-enforcement/types';
+import ClearFiltersButton from '@/components/ui/ClearFiltersButton';
 import {
   ENFORCEMENT_STATUS_STYLES,
   PROJECT_LABELS,
@@ -116,6 +117,10 @@ export default function EnforcementRegistry() {
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Поиск: номер, должник, ИНН, взыскатель"
           className="ml-auto w-72 border border-gray-300 px-2 py-1 text-xs"
+        />
+        <ClearFiltersButton
+          active={Boolean(statusFilter || query)}
+          onClear={() => { setStatusFilter(''); setQuery(''); }}
         />
       </div>
 

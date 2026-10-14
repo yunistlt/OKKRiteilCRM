@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import StatementUpload from '@/components/payments/StatementUpload';
+import ClearFiltersButton from '@/components/ui/ClearFiltersButton';
 import {
   PAYMENT_PROJECT_LABELS,
   PAYMENT_SOURCE_LABELS,
@@ -781,6 +782,11 @@ export default function PaymentsPage() {
               className="border border-gray-300 px-2 py-1 text-sm"
             />
           </label>
+          <ClearFiltersButton
+            active={period.from !== ALL_TIME.from || period.to !== ALL_TIME.to}
+            onClear={() => setPeriod(ALL_TIME)}
+            className="ml-2 py-1.5 text-sm"
+          />
         </div>
 
         {/* Итого по выбранной вкладке и по тому, что показано на экране */}

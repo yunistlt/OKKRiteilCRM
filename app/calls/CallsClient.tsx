@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import { useAuth } from '@/components/auth/AuthProvider';
+import ClearFiltersButton from '@/components/ui/ClearFiltersButton';
 
 type Call = {
     id: number;
@@ -213,6 +214,19 @@ export default function CallsClient() {
                         Найти
                     </button>
                 </form>
+                <ClearFiltersButton
+                    active={direction !== 'all' || missed || Boolean(search || query || from || to || minSec)}
+                    onClear={() => {
+                        setDirection('all');
+                        setMissed(false);
+                        setSearch('');
+                        setQuery('');
+                        setFrom('');
+                        setTo('');
+                        setMinSec('');
+                    }}
+                    className="py-1.5 text-sm"
+                />
             </div>
 
             {error && <p className="mb-3 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}

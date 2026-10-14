@@ -5,6 +5,7 @@ import ViewSettingsModal from './ViewSettingsModal';
 import { EMPTY_FILTER, isFilterEmpty, type OrdersFilter } from '@/lib/orders-filter';
 import { FILTER_FIELDS, DEFAULT_FILTER_FIELDS, normalizeSelection } from '@/lib/orders-view';
 import RelativeDateInput from './RelativeDateInput';
+import ClearFiltersButton from '@/components/ui/ClearFiltersButton';
 
 interface Option { value: string; label: string }
 
@@ -278,14 +279,10 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply, 
                             золотого стандарта таблиц (§5, решение владельца
                             14.10.2026). Раньше здесь был безымянный крестик:
                             что он делает, человек узнавал, только наведя мышь. */}
-                        {!isFilterEmpty(draft) && (
-                            <button
-                                onClick={() => { setDraft(EMPTY_FILTER); onApply(EMPTY_FILTER); }}
-                                className="border border-gray-400 bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100"
-                            >
-                                Очистить фильтр
-                            </button>
-                        )}
+                        <ClearFiltersButton
+                            active={!isFilterEmpty(draft)}
+                            onClear={() => { setDraft(EMPTY_FILTER); onApply(EMPTY_FILTER); }}
+                        />
                         <button
                             onClick={() => setFieldsOpen(true)}
                             title="Выбрать поля фильтра"

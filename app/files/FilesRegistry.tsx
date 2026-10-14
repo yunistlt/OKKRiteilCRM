@@ -11,6 +11,7 @@ import ViewSettingsModal from '@/components/orders/ViewSettingsModal';
 import { orderFileHref } from '@/lib/orders/file-href';
 import { formatIntRu } from '@/lib/format';
 import type { ViewItem } from '@/lib/orders-view';
+import ClearFiltersButton from '@/components/ui/ClearFiltersButton';
 
 type FileRow = {
     id: number | string;
@@ -438,9 +439,7 @@ export default function FilesRegistry() {
                             >
                                 Сохранить отбор
                             </button>
-                            <button type="button" onClick={resetAll} className="px-2 py-1 text-xs font-semibold text-gray-500 hover:text-gray-900">
-                                Очистить фильтр
-                            </button>
+                            <ClearFiltersButton active onClear={resetAll} />
                         </>
                     )}
                     {/* Масштаб таблицы — золото §6. */}

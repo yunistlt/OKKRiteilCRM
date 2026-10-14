@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatIntRu, formatRub } from '@/lib/format';
+import ClearFiltersButton from '@/components/ui/ClearFiltersButton';
 
 type ClientRow = {
     id: string;
@@ -181,19 +182,14 @@ export default function ClientsRegistry() {
                     <button type="submit" className="bg-gray-900 px-3 py-1 text-xs font-semibold text-white hover:bg-gray-700">
                         Найти
                     </button>
-                    {applied && (
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setQuery('');
-                                setApplied('');
-                                setPage(1);
-                            }}
-                            className="px-2 py-1 text-xs font-semibold text-gray-500 hover:text-gray-900"
-                        >
-                            Сбросить
-                        </button>
-                    )}
+                    <ClearFiltersButton
+                        active={Boolean(applied)}
+                        onClear={() => {
+                            setQuery('');
+                            setApplied('');
+                            setPage(1);
+                        }}
+                    />
                     <select
                         value={sort}
                         onChange={(e) => {

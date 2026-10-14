@@ -18,6 +18,7 @@ import {
 } from './matters-shared';
 import NewMatterForm from './NewMatterForm';
 import RiskAmount from './RiskAmount';
+import ClearFiltersButton from '@/components/ui/ClearFiltersButton';
 
 type Summary = {
   total: number;
@@ -202,6 +203,10 @@ export default function MattersRegistry() {
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Поиск: номер дела, контрагент, ИНН, суть"
           className="ml-auto w-72 border border-gray-300 px-2 py-1 text-xs"
+        />
+        <ClearFiltersButton
+          active={Boolean(stageFilter || query)}
+          onClear={() => { setStageFilter(''); setQuery(''); }}
         />
       </div>
 

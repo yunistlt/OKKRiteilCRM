@@ -12,6 +12,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { getRoleCapability } from '@/lib/access-control';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { formatQualityCriterionLabel } from '@/lib/quality-labels';
+import ClearFiltersButton from '@/components/ui/ClearFiltersButton';
 
 interface User {
     username: string;
@@ -1172,6 +1173,12 @@ function OKKContent() {
                     onChange={setFilterStatus}
                     placeholder="Все статусы"
                     icon={<span className="text-[10px]">✨</span>}
+                />
+
+                <ClearFiltersButton
+                    active={filterManager.length > 0 || filterStatus.length > 0}
+                    onClear={() => { setFilterManager([]); setFilterStatus([]); }}
+                    className="py-1 text-[10px]"
                 />
 
                 {/* Кнопка настройки колонок */}
