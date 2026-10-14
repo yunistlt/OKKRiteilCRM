@@ -5,7 +5,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
-import { DuplicateInnError, loadClientRequisites, saveClientRequisites } from '@/lib/own-crm/client-requisites';
+import { DuplicateInnError, InnLockedError, loadClientRequisites, saveClientRequisites } from '@/lib/own-crm/client-requisites';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,6 +57,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
                 {
                     error: e.message,
                     duplicate: { clientId: e.otherClientId, clientName: e.otherClientName },
+                    requisites: await loadClientRequisites(id),
+                },
+                { status: 409 },
+            );
+        }
+        // ИНН заперт оплатами — это не сбой, а правило: человеку нужно
+        // объяснить словами, почему правка не прошла, и что делать вместо неё.
+        if (e instanceof InnLockedError) {
+            return NextResponse.json(
+                {
+                    error: e.message,
+                    paidOrders: e.paidOrders,
                     requisites: await loadClientRequisites(id),
                 },
                 { status: 409 },

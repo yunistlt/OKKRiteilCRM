@@ -68,6 +68,26 @@ export class DuplicateInnError extends Error {
     }
 }
 
+/**
+ * ИНН клиента, по которому уже прошли оплаты, менять нельзя.
+ *
+ * Решение владельца 14.10.2026. ИНН — это и есть клиент: по нему считаются его
+ * покупки и признак «постоянный», от которого зависит ставка менеджера. Если
+ * ИНН в карточке подменить, оплаченные заказы бесшумно уедут к другому клиенту,
+ * а на старом месте пропадут. Разбор 14.10.2026: карточка 2699 за годы сменила
+ * ИНН трижды (7327050877, 1655489507, 166017952539), и заказы трёх разных
+ * юрлиц считались покупками одного — у «Сталкера» выходило 5 покупок вместо
+ * трёх. Всего так слиплось 349 клиентов.
+ *
+ * Новое юрлицо — это новая карточка, а не правка старой.
+ */
+export class InnLockedError extends Error {
+    constructor(message: string, readonly paidOrders: string[]) {
+        super(message);
+        this.name = 'InnLockedError';
+    }
+}
+
 const EMPTY: Requisites = {
     contragentType: null, legalName: null, fullName: null,
     signerName: null, signerTitle: null, signerBasis: null, inn: null, kpp: null, ogrn: null, ogrnip: null,
@@ -235,6 +255,65 @@ export async function loadClientRequisites(clientId: number | string): Promise<C
 }
 
 /** Сохранить реквизиты в карточке клиента. */
+/** Только цифры: ИНН пишут и с пробелами, и с префиксом. */
+const innDigits = (value: unknown): string | null => {
+    const digits = String(value ?? '').replace(/\D/g, '');
+    return digits || null;
+};
+
+/**
+ * Заперт ли ИНН этого клиента оплатами — и если да, какими заказами.
+ *
+ * Запрет только на ИНН: банк, адрес, подписант и прочее меняются свободно
+ * (уточнение владельца 14.10.2026). Поэтому проверка ничего не прерывает — она
+ * лишь отвечает, можно ли трогать ИНН; остальные поля сохраняются как обычно.
+ *
+ * Заполнение пустого ИНН и повтор того же значения проходят: это не смена
+ * клиента.
+ */
+async function innLockedBy(clientId: number, requisites: Partial<Requisites>): Promise<string[] | null> {
+    if (requisites.inn === undefined) return null;
+
+    const { data: current } = await supabase.from('clients').select('inn').eq('id', clientId).maybeSingle();
+    const was = innDigits((current as any)?.inn);
+    const becomes = innDigits(requisites.inn);
+    if (!was || was === becomes) return null;
+
+    const { data: orders } = await supabase
+        .from('orders')
+        .select('id, number')
+        .eq('customer_id', clientId);
+
+    const ids = ((orders as any[]) ?? []).map((o) => Number(o.id)).filter(Number.isFinite);
+    if (!ids.length) return null;
+
+    const { data: payments } = await supabase
+        .from('order_payments')
+        .select('order_id')
+        .in('order_id', ids)
+        .in('status', ['paid', 'check-off-full'])
+        .gt('amount', 0);
+
+    const paidIds = new Set(((payments as any[]) ?? []).map((p) => Number(p.order_id)));
+    if (!paidIds.size) return null;
+
+    return ((orders as any[]) ?? [])
+        .filter((o) => paidIds.has(Number(o.id)))
+        .map((o) => String(o.number))
+        .sort();
+}
+
+/** Словами: почему ИНН не сохранился и что делать вместо этого. */
+function innLockedMessage(was: string, paidOrders: string[]): string {
+    const list = paidOrders.slice(0, 5).join(', ')
+        + (paidOrders.length > 5 ? ` и ещё ${paidOrders.length - 5}` : '');
+    return `ИНН ${was} менять нельзя: по этому клиенту уже прошли оплаты — ${list}. `
+        + 'По ИНН считаются покупки клиента и признак «постоянный», от него зависит ставка менеджера: '
+        + 'сменить ИНН значит увести оплаченные заказы к другому клиенту. '
+        + 'Если это другое юридическое лицо — заведите ему свою карточку. '
+        + 'Остальные реквизиты сохранены.';
+}
+
 export async function saveClientRequisites(
     clientId: number | string,
     requisites: Partial<Requisites>,
@@ -274,6 +353,17 @@ export async function saveClientRequisites(
         ['bankAddress', 'bankAddress'],
     ];
 
+    // ИНН заперт оплатами — его из правки убираем, остальное сохраняем, а
+    // человеку потом объясняем словами (уточнение владельца 14.10.2026).
+    const lockedBy = await innLockedBy(id, requisites);
+    let lockedInn: string | null = null;
+    if (lockedBy) {
+        const { data: current } = await supabase.from('clients').select('inn').eq('id', id).maybeSingle();
+        lockedInn = innDigits((current as any)?.inn);
+        requisites = { ...requisites };
+        delete requisites.inn;
+    }
+
     const row: Record<string, unknown> = {
         requisites_updated_by: text(actor),
         requisites_updated_at: new Date().toISOString(),
@@ -289,10 +379,16 @@ export async function saveClientRequisites(
     if (text(requisites.legalName)) row.company_name = text(requisites.legalName);
 
     // Кроме служебных отметок ничего не прислали — сохранять нечего.
-    if (Object.keys(row).length <= 2) return;
+    if (Object.keys(row).length <= 2) {
+        if (lockedBy && lockedInn) throw new InnLockedError(innLockedMessage(lockedInn, lockedBy), lockedBy);
+        return;
+    }
 
     const { error } = await supabase.from('clients').update(row).eq('id', id);
-    if (!error) return;
+    if (!error) {
+        if (lockedBy && lockedInn) throw new InnLockedError(innLockedMessage(lockedInn, lockedBy), lockedBy);
+        return;
+    }
 
     /**
      * ИНН уже стоит в другой карточке.
