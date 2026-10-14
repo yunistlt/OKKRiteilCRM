@@ -5,7 +5,7 @@
 // состав и порядок колонок, ширина, масштаб и сохранённые наборы фильтров.
 // Всё это запоминается за человеком на сервере и переезжает с ним на любой
 // компьютер.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import ViewSettingsModal from '@/components/orders/ViewSettingsModal';
 import { orderFileHref } from '@/lib/orders/file-href';
@@ -87,7 +87,7 @@ function formatMoment(value: string) {
     return `${date.toLocaleDateString('ru-RU')} ${date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
-export default function FilesRegistry() {
+export default function FilesRegistry({ tabs }: { tabs?: ReactNode }) {
     const [rows, setRows] = useState<FileRow[]>([]);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
@@ -380,6 +380,7 @@ export default function FilesRegistry() {
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3 border-b border-gray-200 pb-2">
                 <div className="flex items-baseline gap-3">
                     <h1 className="text-xl font-bold text-gray-900">Файлы</h1>
+                    {tabs}
                     <span className="text-xs text-gray-500">{filtersOn ? 'найдено' : 'всего'} {formatIntRu(total)}</span>
                     {/* Файлы не удаляются — только уходят в архив (закон владельца
                         12.10.2026). Здесь их видно и отсюда они открываются. */}

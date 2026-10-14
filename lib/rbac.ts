@@ -64,6 +64,7 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/company-groups', label: 'API групп компаний', description: 'Поиск групп компаний для объединения карточек одного покупателя.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/files', label: 'Файлы', description: 'Все файлы заказов одним списком с поиском по названию файла и номеру заказа.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/api/files', label: 'API файлов', description: 'Список всех файлов заказов для раздела «Файлы».', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
+    { prefix: '/api/product-docs', label: 'API паспортов на продукцию', description: 'Поиск паспортов и инструкций в базе ЦехУспеха и выдача самого файла. Только чтение чужой базы.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/api/files/search', label: 'API поиска файлов', description: 'Поиск файла по названию во всех заказах — чтобы найти паспорт изделия, не помня номер заказа.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     { prefix: '/api/clients', label: 'API клиентов', description: 'Данные реестра и карточки клиента.', category: 'ОКК', allowed: ['admin', 'buhgalter', 'okk', 'rop', 'manager', 'logistics', 'logistics_view'] },
     /**

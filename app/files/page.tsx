@@ -1,7 +1,7 @@
-import FilesRegistry from './FilesRegistry';
+import FilesTabs from './FilesTabs';
 
 export const dynamic = 'force-dynamic';
 
 export default function FilesPage() {
-    return <FilesRegistry />;
+    return <FilesTabs />;
 }
