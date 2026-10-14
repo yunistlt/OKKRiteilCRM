@@ -2,7 +2,7 @@ import { supabase } from '@/utils/supabase';
 import { NormalizedPointPayment, kopecksToRubles, isBankSyncExternalId } from './types';
 import { matchPaymentToOrder, classifyNonCustomerPayment } from './matching';
 import { notifyPaymentTelegram, notifyPendingPaymentsTelegram, notifyPaymentPushErrorTelegram } from './notify';
-import { classifyProject } from './projects';
+import { classifyProject, type ProjectKey } from './projects';
 import { registerPushFailure, clearPushFailure, explainPushError } from './push-retry';
 import { moveOrderToProductionAfterPayment } from './production';
 import {
@@ -651,4 +651,39 @@ export async function reconcileCrmPostings(limit = 10): Promise<number> {
     }
   }
   return reconciled;
+}
+
+/**
+ * Ручной выбор проекта платежа (решение владельца 14.10.2026).
+ * Автоопределение по назначению/ИНН ошибается на обезличенных назначениях («Оплата по счету № …»),
+ * и такой платёж висит в разборе. Человек ставит проект сам:
+ *   • столярка/консалтинг — в RetailCRM не ведутся, разбор не нужен → «Опознан»;
+ *   • ЗМКТЛ — остаётся на разборе, его ещё надо привязать к заказу.
+ * Авто-классификатор поверх не проедет: он работает один раз, до processed_at.
+ */
+export async function setPointPaymentProject(params: {
+  paymentId: number;
+  project: ProjectKey;
+  reviewedBy: string;
+}): Promise<void> {
+  // Привязанный к заказу платёж проект не меняет: он уже проведён в RetailCRM.
+  const { data: row } = await supabase
+    .from('point_payments')
+    .select('matched_order_id')
+    .eq('id', params.paymentId)
+    .maybeSingle();
+  if (row?.matched_order_id) {
+    throw new Error('Платёж уже привязан к заказу — проект сменить нельзя');
+  }
+  const { error } = await supabase
+    .from('point_payments')
+    .update({
+      project: params.project,
+      status: params.project === 'zmktl' ? 'pending_match' : 'recognized',
+      reviewed_by: params.reviewedBy,
+      reviewed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', params.paymentId);
+  if (error) throw error;
 }
