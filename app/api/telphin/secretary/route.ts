@@ -6,7 +6,7 @@
 //       «Перевод на номер из переменной» (имя переменной — TELPHIN_TRANSFER_VAR).
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { findOrderByNumber, getManagerById, pickLeastLoadedManager } from '@/lib/secretary/core';
+import { findOrderByNumber, getManagerById, pickLeastLoadedManager, findOwnerByCallerPhone } from '@/lib/secretary/core';
 import { createSecretaryLead } from '@/lib/retailcrm/leads';
 import { buildResponse, xmlSetVar, xmlTTS } from '@/lib/secretary/telphin-xml';
 
@@ -60,7 +60,10 @@ async function handle(req: NextRequest): Promise<NextResponse> {
         return new NextResponse('Unauthorized', { status: 401 });
     }
 
-    const mode = p.mode === 'existing' ? 'existing' : p.mode === 'new' ? 'new' : '';
+    const mode = p.mode === 'existing' ? 'existing'
+        : p.mode === 'new' ? 'new'
+        : p.mode === 'by_caller' ? 'by_caller'
+        : '';
     const caller = p.CallerIDNum || '';
     const dtmf = p.voice_navigator_DTMF || '';
     const stt = p.voice_navigator_STT || '';
@@ -74,7 +77,23 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     let actions: string[] = [];
 
     try {
-        if (mode === 'existing') {
+        if (mode === 'by_caller') {
+            // Узнали звонящего по АОН — переводим сразу его менеджеру, без вопросов.
+            const owner = await findOwnerByCallerPhone(caller);
+            if (owner) {
+                decision = 'routed_by_caller';
+                managerId = owner.id;
+                extension = owner.extension;
+                actions = [
+                    xmlSetVar(TRANSFER_VAR, owner.extension),
+                    xmlTTS(`Соединяю вас с менеджером${owner.name ? ` ${owner.name}` : ''}.`),
+                ];
+            } else {
+                // Незнакомый номер или перевод на хозяина не разрешён — в общую очередь.
+                decision = 'not_a_target';
+                actions = fallback('Соединяю вас с отделом продаж.');
+            }
+        } else if (mode === 'existing') {
             const order = await findOrderByNumber(dtmf);
             if (order && order.manager_id) {
                 const m = await getManagerById(order.manager_id);
