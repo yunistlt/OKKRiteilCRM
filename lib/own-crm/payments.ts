@@ -1,9 +1,16 @@
 /**
- * Журнал оплат по своим заказам.
+ * Оплаты по своим заказам.
  *
- * По заказам RetailCRM оплаты живут там: бот разносит поступления из банка
- * методом `orders/payments/create`. У своего заказа этого пути нет — заказа в
- * RetailCRM не существует, отражать платёж негде. Поэтому свой журнал.
+ * По заказам RetailCRM оплаты разносит бот методом `orders/payments/create`, и
+ * оттуда они приезжают к нам в `order_payments`. У своего заказа этого пути нет
+ * — заказа в RetailCRM не существует, отражать платёж негде, поэтому вносим
+ * оплату сами.
+ *
+ * Пишем в ТУ ЖЕ `order_payments`, помечая строку `source = 'okk'` (решение
+ * владельца 14.10.2026, закон об одном источнике правды). Отдельная таблица
+ * `own_order_payments` стоила показателя предоплаты: расчёт зарплаты читал
+ * только `order_payments`, и у Евгении Матвеевой за октябрь вышло 4 % вместо
+ * 83 %, у Елены Парфёновой — 0,5 % вместо 100 %.
  *
  * Что он должен уметь по работе менеджера: видеть, сколько по заказу пришло и
  * сколько осталось, и откуда взялась каждая цифра (закон «числа
@@ -53,20 +60,28 @@ export async function addOwnPayment(payment: NewOwnPayment): Promise<number> {
     // идентификатором, по нему и узнаём повтор.
     if (payment.pointPaymentId) {
         const { data } = await supabase
-            .from('own_order_payments')
+            .from('order_payments')
             .select('id')
             .eq('point_payment_id', payment.pointPaymentId)
             .maybeSingle();
         if (data) return Number((data as any).id);
     }
 
+    // `id` в таблице — идентификатор платежа RetailCRM, своей нумерации там нет.
+    // Свои берём из диапазона 900 000 000+, как и номера своих заказов.
+    const { data: idRow, error: idErr } = await supabase.rpc('next_own_payment_id');
+    if (idErr) throw new Error(`Не удалось получить номер платежа: ${idErr.message}`);
+
     const { data, error } = await supabase
-        .from('own_order_payments')
+        .from('order_payments')
         .insert({
+            id: Number(idRow),
             order_id: payment.orderId,
-            order_number: payment.orderNumber,
+            source: 'okk',
+            // Оплату вносят, УВИДЕВ деньги, — это приход, а не выставленный счёт.
+            status: 'paid',
             amount: Number(payment.amount),
-            paid_at: payment.paidAt,
+            paidAt: payment.paidAt,
             method: payment.method ?? null,
             payer_name: payment.payerName ?? null,
             purpose: payment.purpose ?? null,
@@ -83,15 +98,16 @@ export async function addOwnPayment(payment: NewOwnPayment): Promise<number> {
 
 export async function ownOrderPayments(orderId: number): Promise<OwnPayment[]> {
     const { data } = await supabase
-        .from('own_order_payments')
-        .select('id, amount, paid_at, method, payer_name, purpose, note, created_by')
+        .from('order_payments')
+        .select('id, amount, paidAt, method, payer_name, purpose, note, created_by')
         .eq('order_id', orderId)
-        .order('paid_at', { ascending: true });
+        .eq('source', 'okk')
+        .order('paidAt', { ascending: true });
 
     return ((data ?? []) as any[]).map((r) => ({
         id: Number(r.id),
         amount: Number(r.amount),
-        paidAt: String(r.paid_at),
+        paidAt: String(r.paidAt).slice(0, 10),
         method: r.method ?? null,
         payerName: r.payer_name ?? null,
         purpose: r.purpose ?? null,
@@ -101,7 +117,13 @@ export async function ownOrderPayments(orderId: number): Promise<OwnPayment[]> {
 }
 
 export async function removeOwnPayment(paymentId: number): Promise<void> {
-    const { error } = await supabase.from('own_order_payments').delete().eq('id', paymentId);
+    // Удалять можно только внесённое у нас: строка из снимка RetailCRM вернётся
+    // при первой же пересборке, а до неё разъедутся цифры.
+    const { error } = await supabase
+        .from('order_payments')
+        .delete()
+        .eq('id', paymentId)
+        .eq('source', 'okk');
     if (error) throw new Error(error.message);
 }
 
