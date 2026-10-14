@@ -128,7 +128,10 @@ function isConnectionProblem(error: unknown): boolean {
 
 export async function POST(req: Request) {
     const session = await getSession();
-    if (!session || !['admin', 'rop', 'okk', 'manager'].includes(session.user.role)) {
+    // Логист отвечает клиенту по тем же заказам: перенос сроков, готовность
+    // товара, доплата остатка перед отгрузкой (Екатерина Симонова, 14.10.2026 —
+    // вкладка «Переписка» открывалась, а «Отправить» отвечало 403).
+    if (!session || !['admin', 'rop', 'okk', 'manager', 'logistics'].includes(session.user.role)) {
         return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     }
 
