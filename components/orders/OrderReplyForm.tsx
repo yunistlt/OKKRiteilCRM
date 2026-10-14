@@ -96,7 +96,14 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
     const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const cancelled = useRef(false);
     /** Вложения уже выгружаются — второй раз не начинаем. */
-    const preparing = useRef(false);
+    /**
+     * Заливка файлов в заказ идёт из трёх мест: сохранение черновика,
+     * подготовка во время отсчёта и сама отправка. Замок общий и хранит
+     * начатую работу, а не просто флаг: иначе «Отправить» во время подготовки
+     * видел files ещё непустым и заливал те же файлы второй раз — в заказе
+     * появлялись пары одинаковых вложений (Андрей 14.10.2026).
+     */
+    const uploading = useRef<Promise<number[]> | null>(null);
 
     const [to, setTo] = useState('');
     const [subject, setSubject] = useState('');
@@ -242,22 +249,9 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
              * приложенное один раз отваливаться не должно (решение владельца
              * 12.10.2026).
              */
-            const keptIds = [...attachedFileIds];
-            for (const file of files) {
-                const form = new FormData();
-                form.append('file', file);
-                const up = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files/upload`, { method: 'POST', body: form });
-                const payload = await up.json().catch(() => null);
-                if (!up.ok || !payload?.file?.id) {
-                    throw new Error(payload?.error || `Файл «${file.name}» не загрузился — попробуйте ещё раз`);
-                }
-                keptIds.push(Number(payload.file.id));
-            }
+            const keptIds = await uploadPending();
 
-            // Файлы уехали в заказ: в списке «с компьютера» им больше не место.
             if (files.length) {
-                setAttachedFileIds(keptIds);
-                setFiles([]);
                 void loadOrderFiles();
             }
 
@@ -318,25 +312,49 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
      * Ошибку здесь не показываем: если что-то не выгрузилось, отправка
      * попробует ещё раз и скажет сама.
      */
-    const prepareAttachments = async () => {
-        if (!files.length || preparing.current) return;
-        preparing.current = true;
+    const uploadPending = (): Promise<number[]> => {
+        // Кто-то уже везёт эти файлы — ждём его, а не везём второй раз.
+        if (uploading.current) return uploading.current;
+        if (!files.length) return Promise.resolve([...attachedFileIds]);
 
-        try {
+        const pending = files;
+        const work = (async () => {
             const ids = [...attachedFileIds];
-            for (const file of files) {
+            for (const file of pending) {
                 const form = new FormData();
                 form.append('file', file);
                 const up = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files/upload`, { method: 'POST', body: form });
                 const payload = await up.json().catch(() => null);
-                if (!up.ok || !payload?.file?.id) return;
+                if (!up.ok || !payload?.file?.id) {
+                    throw new Error(payload?.error || `Файл «${file.name}» не загрузился — попробуйте ещё раз`);
+                }
                 ids.push(Number(payload.file.id));
             }
 
+            // Файлы уехали в заказ: в списке «с компьютера» им больше не место.
             setAttachedFileIds(ids);
             setFiles([]);
-        } finally {
-            preparing.current = false;
+            return ids;
+        })();
+
+        uploading.current = work;
+        void work.catch(() => {}).finally(() => { uploading.current = null; });
+        return work;
+    };
+
+    /**
+     * Выгрузить файлы с компьютера в заказ заранее.
+     *
+     * Это самая долгая часть отправки: паспорт на пять мегабайт едет секунды.
+     * Делаем её во время отсчёта — к моменту отправки остаётся лёгкий запрос.
+     * Ошибку здесь не показываем: если что-то не выгрузилось, отправка
+     * попробует ещё раз и скажет сама.
+     */
+    const prepareAttachments = async () => {
+        try {
+            await uploadPending();
+        } catch {
+            // Молча: отправка повторит и объяснит человеку сама.
         }
     };
 
@@ -402,17 +420,7 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
              * Попутно файл остаётся в разделе «Файлы» заказа — его видно всем,
              * кто работает с заказом.
              */
-            const orderFileIds: number[] = [...attachedFileIds];
-            for (const file of files) {
-                const form = new FormData();
-                form.append('file', file);
-                const up = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files/upload`, { method: 'POST', body: form });
-                const payload = await up.json().catch(() => null);
-                if (!up.ok || !payload?.file?.id) {
-                    throw new Error(payload?.error || `Файл «${file.name}» не загрузился — попробуйте ещё раз`);
-                }
-                orderFileIds.push(Number(payload.file.id));
-            }
+            const orderFileIds: number[] = await uploadPending();
 
             const res = await fetch('/api/orders/send-email', {
                 method: 'POST',

@@ -50,6 +50,32 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         );
     }
 
+    /**
+     * Тот же файл, приложенный к тому же заказу только что, — это не второе
+     * вложение, а второе нажатие: двойной щелчок, повтор по таймауту сети или
+     * два пути отправки, сработавшие разом. Отдаём уже записанный файл.
+     *
+     * Окно короткое: приложить один и тот же документ дважды осознанно человек
+     * может, но не через минуту после первого раза.
+     */
+    const since = new Date(Date.now() - 60_000).toISOString();
+    const { data: justUploaded } = await supabase
+        .from('order_files')
+        .select('id, file_name')
+        .eq('order_number', orderNumber)
+        .eq('file_name', file.name)
+        .eq('size_bytes', file.size)
+        .is('deleted_at', null)
+        .is('archived_at', null)
+        .gte('created_at', since)
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (justUploaded) {
+        return NextResponse.json({ ok: true, file: justUploaded, already: true });
+    }
+
     const path = storagePath(orderNumber, file.name);
     const bytes = new Uint8Array(await file.arrayBuffer());
 
