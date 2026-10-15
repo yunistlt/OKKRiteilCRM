@@ -44,37 +44,66 @@ async function getControlledManagerIds(managerIds?: Array<number | string>) {
   return (data || []).map((row: any) => String(row.id));
 }
 
+/** По сколько строк просим у базы за раз: больше тысячи она всё равно не отдаёт. */
+const PAGE = 1000;
+
+/**
+ * Звонки менеджера за окно наблюдения.
+ *
+ * Сначала берём ВСЕ связки звонок↔заказ за окно (их около полутора тысяч за
+ * 35 дней), и только потом спрашиваем, какие из этих заказов за менеджером.
+ *
+ * Раньше было наоборот: сперва все заказы менеджера, потом связки пачками по
+ * 300 номеров. У менеджера бывает десять тысяч заказов (у Гордеевой 10 088, у
+ * Матвеевой 11 726) — выходило под сорок запросов к тяжёлому представлению, и
+ * пересчёт падал с «canceling statement due to statement timeout» (12 работ за
+ * неделю). Теперь запросов к представлению два: связок за окно около полутора
+ * тысяч, а база отдаёт их страницами по тысяче.
+ *
+ * Что считается, не меняется: то же окно, те же связки, те же заказы
+ * менеджера — поменялся только порядок отбора.
+ */
 async function fetchManagerMatches(managerId: string, startStr: string) {
-  const allMatches: any[] = [];
-
-  // Заказы этого менеджера. Отдельным запросом, потому что связь звонка с
-  // заказом живёт представлением, а к представлению PostgREST не умеет
-  // подключать связанные таблицы встроенным джойном.
-  const { data: orders, error: ordersError } = await supabase
-    .from('orders')
-    .select('id')
-    .eq('manager_id', managerId);
-  if (ordersError) {
-    throw ordersError;
-  }
-  const orderIds = ((orders ?? []) as any[]).map((o) => Number(o.id));
-  if (orderIds.length === 0) {
-    return allMatches;
-  }
-
-  for (let i = 0; i < orderIds.length; i += 300) {
-    const { data: links, error } = await supabase
+  // 1. Связки за окно. Страницами: база отдаёт не больше тысячи строк за раз.
+  const links: any[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
       .from('call_order_link')
       .select('telphin_call_id, order_id, started_at, duration_sec')
-      .in('order_id', orderIds.slice(i, i + 300))
-      .gte('started_at', startStr);
+      .gte('started_at', startStr)
+      .order('started_at', { ascending: true })
+      .range(from, from + PAGE - 1);
     if (error) {
       throw error;
     }
-    allMatches.push(...((links ?? []) as any[]));
+    const page = (data ?? []) as any[];
+    links.push(...page);
+    if (page.length < PAGE) break;
   }
 
-  return allMatches;
+  const orderIds = Array.from(new Set(links
+    .map((link) => Number(link.order_id))
+    .filter((id) => Number.isFinite(id))));
+  if (!orderIds.length) {
+    return [];
+  }
+
+  // 2. Кто из этих заказов за менеджером. Спрашиваем только про заказы со
+  //    звонками, а не про все его десять тысяч.
+  const mine = new Set<number>();
+  for (let i = 0; i < orderIds.length; i += 300) {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('manager_id', managerId)
+      .in('id', orderIds.slice(i, i + 300));
+    if (error) {
+      throw error;
+    }
+    for (const row of (data ?? []) as any[]) mine.add(Number(row.id));
+  }
+
+  return links.filter((link) => mine.has(Number(link.order_id)));
 }
 
 
