@@ -94,10 +94,12 @@ async function main() {
         `;
         if (!found.length) break;
 
-        const ids = found.map((r: any) => r.id);
-        cursor = Number(ids[ids.length - 1]);
+        // Драйвер отдаёт bigint строками, поэтому список приводим к числам:
+        // иначе база ругается «operator does not exist: bigint = text».
+        const ids = found.map((r: any) => Number(r.id));
+        cursor = ids[ids.length - 1];
 
-        const deleted = await sql`DELETE FROM system_jobs WHERE id = ANY(${sql.array(ids)}) RETURNING id`;
+        const deleted = await sql`DELETE FROM system_jobs WHERE id = ANY(${ids}) RETURNING id`;
         const elapsed = Date.now() - t0;
 
         if (!deleted.length) continue;

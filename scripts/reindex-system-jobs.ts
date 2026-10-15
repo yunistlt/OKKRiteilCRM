@@ -11,8 +11,12 @@
  * REINDEX без CONCURRENTLY блокирует таблицу целиком, то есть останавливает
  * приём заданий.
  *
- * Запускать ПОСЛЕ scripts/cleanup-system-jobs.ts: по пустому журналу индексы
- * перестроятся за минуты и займут считанные мегабайты.
+ * Запускать ДО scripts/cleanup-system-jobs.ts. Порядок выяснился на практике
+ * 15.10.2026: пока idx_system_jobs_ready весит 1 316 МБ при гигабайте памяти
+ * на сервере, каждое удаление лезет за ним на диск — замер дал 50 строк за
+ * 137 секунд, то есть на полмиллиона записей ушло бы 400 часов. После
+ * перестройки индекс занимает считанные мегабайты, помещается в память, и
+ * чистка идёт нормально.
  *
  * Запуск:  npx tsx --env-file=.env.local scripts/reindex-system-jobs.ts
  */
@@ -39,6 +43,11 @@ async function sizes() {
 const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024)} МБ`;
 
 async function main() {
+    // Потолок запроса по умолчанию — две минуты, а перестройка раздутого
+    // индекса на 1,3 ГБ столько не укладывается. Снимаем ограничение на эту
+    // сессию, иначе работа обрывается на середине.
+    await sql`SET statement_timeout = 0`;
+
     const [{ bytes: dbBefore }] = await sql`SELECT pg_database_size(current_database()) AS bytes`;
     const before = await sizes();
     console.log(`База до переиндексации: ${mb(Number(dbBefore))}`);
