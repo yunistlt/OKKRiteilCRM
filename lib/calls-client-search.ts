@@ -12,6 +12,7 @@
  * может быть помечен: номера их заказов, их контактных лиц и их телефоны.
  */
 import { supabase } from '@/utils/supabase';
+import { phoneKey } from '@/lib/calls/known-numbers';
 
 /** Сколько карточек и заказов берём в расчёт: запрос уезжает в строку адреса. */
 const MAX_CLIENTS = 100;
@@ -27,13 +28,19 @@ export type ClientCallKeys = {
     phones: string[];
 };
 
-function normalizePhone(value: any): string {
-    return String(value ?? '').replace(/[^\d]/g, '');
-}
+/** Значение для PostgREST: запятая или скобка в названии рвёт фильтр `or(...)`. */
+export const likeValue = (text: string): string => `"%${text.replace(/["\\]/g, '')}%"`;
+
+/**
+ * Телефон в том же виде, в каком он лежит у звонка, — последние десять цифр.
+ * Карточка хранит «+79137136987», звонок — «9137136987»: сверка целых строк не
+ * совпадала никогда, и поиск по клиенту молча ничего не находил.
+ */
+const normalizePhone = (value: any): string => phoneKey(value) ?? '';
 
 /** Юрлица, чьё название похоже на запрос. */
 async function findClients(text: string): Promise<any[]> {
-    const like = `%${text}%`;
+    const like = likeValue(text);
     const { data } = await supabase
         .from('clients')
         .select('id, phones')
@@ -44,7 +51,7 @@ async function findClients(text: string): Promise<any[]> {
 
 /** Живые люди, чьё имя похоже на запрос: звонок бывает помечен человеком. */
 async function findPeople(text: string): Promise<any[]> {
-    const like = `%${text}%`;
+    const like = likeValue(text);
     const { data } = await supabase
         .from('customers')
         .select('id, phones')
@@ -79,9 +86,9 @@ export async function clientCallKeys(text: string): Promise<ClientCallKeys> {
         ? ((await supabase
             .from('orders')
             .select('number')
-            .in('customer->>id', clientIds)
+            .in('customer_id', clientIds)
             .not('number', 'is', null)
-            .order('createdAt', { ascending: false })
+            .order('created_at', { ascending: false })
             .limit(MAX_ORDERS)).data || []) as any[]
         : [];
 
@@ -89,7 +96,7 @@ export async function clientCallKeys(text: string): Promise<ClientCallKeys> {
     for (const row of [...clients, ...people]) {
         for (const phone of (row.phones || [])) {
             const digits = normalizePhone(phone);
-            if (digits.length >= 6) phones.add(digits);
+            if (digits) phones.add(digits);
         }
     }
 

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { knownClientPhones, phoneKey } from '@/lib/calls/known-numbers';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
-import { clientCallKeys } from '@/lib/calls-client-search';
+import { buildCallSearchFilter } from '@/lib/calls/search-filter';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,25 +54,11 @@ export async function GET(req: Request) {
 
     if (search) {
         /**
-         * Ищем и по наименованию клиента: названия у звонка нет, поэтому по
-         * нему сначала находим клиентов, а затем их телефоны (просьба Евгении
-         * 05.10.2026).
+         * Клиент, телефон, заказ или менеджер — как обещает поле поиска. Чем
+         * звонок может быть помечен, собирает lib/calls/search-filter.
          */
-        const keys = await clientCallKeys(search);
-        const digits = search.replace(/\D/g, '');
-        const parts = [
-            `from_number.ilike.%${search}%`,
-            `to_number.ilike.%${search}%`,
-        ];
-        if (digits.length >= 4) {
-            parts.push(`from_number_normalized.ilike.%${digits}%`);
-            parts.push(`to_number_normalized.ilike.%${digits}%`);
-        }
-        if (keys.phones.length) {
-            parts.push(`from_number_normalized.in.(${keys.phones.join(',')})`);
-            parts.push(`to_number_normalized.in.(${keys.phones.join(',')})`);
-        }
-        query = query.or(parts.join(','));
+        const parts = await buildCallSearchFilter(search);
+        if (parts.length) query = query.or(parts.join(','));
     }
 
     const { data, error } = await query;
