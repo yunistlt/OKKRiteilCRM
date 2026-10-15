@@ -25,6 +25,11 @@
  * строк — та же нагрузка, что уронила базу 15.10.2026, и владелец прямо
  * просил чистить мелкими партиями с паузами.
  *
+ * Идём курсором по номеру записи, а не отбором по статусу: отбор заставляет
+ * базу перебирать всю таблицу целиком, и первый же прогон 15.10.2026 упёрся в
+ * двухминутный потолок запроса. По номеру работает первичный ключ — партия
+ * выбирается за 66 мс вместо двух минут.
+ *
  * Прогон можно прервать в любой момент: удалённое удалено, остальное доберёт
  * следующий запуск.
  *
@@ -54,6 +59,9 @@ async function sizeMb() {
 }
 
 async function main() {
+    // Потолок по умолчанию — две минуты, и тяжёлый счётчик в него не влезает.
+    await sql`SET statement_timeout = '5min'`;
+
     const [{ count }] = await sql`
         SELECT count(*)::bigint AS count FROM system_jobs
         WHERE status = 'completed' AND created_at < now() - interval '30 days'
@@ -70,20 +78,29 @@ async function main() {
     const started = Date.now();
     let lastReport = Date.now();
 
+    // Курсор по номеру записи: следующая партия всегда правее уже пройденного.
+    let cursor = 0;
+
     for (;;) {
         const t0 = Date.now();
-        const deleted = await sql`
-            DELETE FROM system_jobs
-            WHERE id IN (
-                SELECT id FROM system_jobs
-                WHERE status = 'completed' AND created_at < now() - interval '30 days'
-                LIMIT ${BATCH}
-            )
-            RETURNING id
+
+        const found = await sql`
+            SELECT id FROM system_jobs
+            WHERE id > ${cursor}
+              AND status = 'completed'
+              AND created_at < now() - interval '30 days'
+            ORDER BY id
+            LIMIT ${BATCH}
         `;
+        if (!found.length) break;
+
+        const ids = found.map((r: any) => r.id);
+        cursor = Number(ids[ids.length - 1]);
+
+        const deleted = await sql`DELETE FROM system_jobs WHERE id = ANY(${sql.array(ids)}) RETURNING id`;
         const elapsed = Date.now() - t0;
 
-        if (!deleted.length) break;
+        if (!deleted.length) continue;
         removed += deleted.length;
 
         if (elapsed > 10000) {
