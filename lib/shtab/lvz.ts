@@ -119,6 +119,80 @@ export function catalogQueryParts(query: string): { models: string[]; words: str
     return { models: Array.from(new Set(models)).slice(0, 4), words: Array.from(new Set(words)).slice(0, 6) };
 }
 
+/**
+ * То же сравнение, что и `looseLike`, но у себя в памяти.
+ *
+ * Нужно, чтобы посчитать, насколько строка отвечает запросу, уже ПОСЛЕ выборки:
+ * база отдаёт совпадения, а порядок выдачи решаем мы.
+ *
+ * Буквенные классы написаны явно ([а-яё]): `\w` и `\b` в JS кириллицу не
+ * видят, и правило молча не срабатывало бы на русских названиях.
+ */
+function looseRegex(part: string): RegExp {
+    const body = normalizeDashes(String(part ?? ''))
+        .toLowerCase()
+        .split(/[^a-zа-яё0-9]+/i)
+        .filter(Boolean)
+        .map((chunk) => chunk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join('[^a-zа-яё0-9]*');
+    return new RegExp(body || '(?!)', 'i');
+}
+
+/**
+ * Порядок выдачи поиска.
+ *
+ * Жалоба владельца 15.10.2026: «вводим ЛВЖ 1200 и выдаёт кучу ненужного».
+ * Причина была не в совпадениях, а в их отсутствии: ЛВЖ с 1200 в каталоге нет
+ * вовсе, поиск молча отбрасывал «1200», брал `limit(15)` БЕЗ сортировки — то
+ * есть первые пятнадцать строк в порядке базы — и выдавал их как ответ на
+ * запрос. Наверху оказывались карточки без цены и снятые с витрины.
+ *
+ * Теперь сортируем сами:
+ *   1. живое вперёд — опубликовано на сайте и с ценой;
+ *   2. точное вхождение запроса целиком;
+ *   3. сколько слов запроса нашлось;
+ *   4. по названию — чтобы список был одинаковым при каждом заходе, а не
+ *      случайным.
+ */
+function rankCatalogRows(rows: any[], query: string, parts: string[], take: number): any[] {
+    const whole = looseRegex(query);
+    const partRes = parts.map((part) => looseRegex(part));
+
+    const scored = rows.map((row) => {
+        const name = normalizeDashes(String(row.name ?? '')).toLowerCase();
+        const matched = partRes.reduce((sum, re) => sum + (re.test(name) ? 1 : 0), 0);
+        return {
+            row,
+            name,
+            matched,
+            // Снятое с витрины и карточки без цены — вниз, но из выдачи не
+            // убираем: товар, которого нет на сайте, продать всё равно можно
+            // (решение владельца 15.10.2026).
+            dead: String(row.meta?.status ?? '') === '1' && Number(row.price) > 0 ? 0 : 1,
+            exact: whole.test(name) ? 1 : 0,
+        };
+    });
+
+    scored.sort((a, b) =>
+        a.dead - b.dead
+        || b.exact - a.exact
+        || b.matched - a.matched
+        || a.name.localeCompare(b.name, 'ru'));
+
+    // Один товар одной строкой: в каталоге по три копии карточки (ЗМКТЛТ-4501
+    // лежит трижды, две из них сняты с витрины) — в выдаче это «куча».
+    const seen = new Set<string>();
+    const unique: any[] = [];
+    for (const hit of scored) {
+        const key = `${hit.name}|${Number(hit.row.price) || 0}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(hit);
+    }
+
+    return unique.slice(0, take).map((hit) => hit.row);
+}
+
 export async function catalogSearch(query: string, limit = 15): Promise<Record<string, unknown>> {
     if (!marketingConfigured()) {
         return { available: false, reason: `Каталог не подключён: нет ${URL_KEY} / ${KEY_KEY}` };
@@ -151,7 +225,8 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
             // Знаки препинания в образце — подстановочными: в каталоге на их
             // месте бывает длинное тире, пробел или ничего.
             for (const part of parts) request = request.ilike('name', `%${looseLike(part)}%`);
-            const { data, error } = await request.limit(take);
+            // С запасом: пятнадцать строк выбирает ранжирование, а не порядок базы.
+            const { data, error } = await request.limit(200);
             if (error) throw new Error(error.message);
             return (data ?? []) as any[];
         };
@@ -200,20 +275,32 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
                 .limit(500);
             if (error) throw new Error(error.message);
 
-            rows = (data ?? [])
-                .map((row: any) => ({
-                    row,
-                    score: all.reduce((sum, part) => sum + (String(row.name ?? '').toLowerCase().includes(part) ? 1 : 0), 0),
-                }))
-                .filter((hit) => hit.score > 0)
-                .sort((left, right) => right.score - left.score)
-                .slice(0, take)
-                .map((hit) => hit.row);
+            rows = (data ?? []).filter((row: any) =>
+                all.some((part) => looseRegex(part).test(normalizeDashes(String(row.name ?? '')).toLowerCase())));
         }
+
+        const allParts = [...models, ...words];
+        rows = rankCatalogRows(rows, query, allParts, take);
+
+        /**
+         * Запрос пришлось ослабить — говорим об этом вслух.
+         *
+         * Раньше отбрасывание слова было молчаливым: на «ЛВЖ 1200» менеджер
+         * видел пятнадцать ЛВЖ-шкафов и считал, что это и есть «ЛВЖ 1200».
+         * Теперь в окне написано, по чему на самом деле показан список
+         * (жалоба владельца 15.10.2026).
+         */
+        const topName = rows.length ? normalizeDashes(String(rows[0].name ?? '')).toLowerCase() : '';
+        const matchedParts = allParts.filter((part) => looseRegex(part).test(topName));
+        const missedParts = allParts.filter((part) => !matchedParts.includes(part));
 
         const cats = await resolveCategories(rows);
         return {
             found: rows.length,
+            // Что из запроса не нашлось — по этому строится сообщение менеджеру.
+            weakened: rows.length > 0 && missedParts.length > 0,
+            usedQuery: matchedParts.join(' '),
+            missedQuery: missedParts.join(' '),
             note: 'Цена — снимок на момент импорта витрины, а не актуальный прайс.',
             items: rows.map((d: any) => ({
                 id: String(d.id),

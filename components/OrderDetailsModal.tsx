@@ -454,6 +454,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         price: number;
         priceLive: boolean;
         priceSource?: 'live' | 'cache' | 'none';
+        /** Карточка опубликована на сайте. Снятые с витрины идут в конце списка и с пометкой. */
+        active?: boolean;
         /** Размеры одного товара: «на 24 пары», «на 30 пар» — у каждого своя цена. */
         variants?: Array<{ id: string; name: string; article: string | null; price: number }>;
     }>>([]);
@@ -1587,6 +1589,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                         <span className={found.priceSource === 'none' ? 'text-amber-800' : ''}>
                                                             {priceSourceLabel(found.priceSource, found.priceLive)}
                                                         </span>
+                                                        {/* Снятое с витрины видно сразу: такие карточки лежат
+                                                            в конце списка, но продать товар всё равно можно
+                                                            (решение владельца 15.10.2026). */}
+                                                        {found.active === false && (
+                                                            <span className="text-amber-800"> · не опубликован на сайте</span>
+                                                        )}
                                                     </div>
                                                 </button>
 
