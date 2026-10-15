@@ -24,6 +24,18 @@
         "3031"
       ],
       "port": 3031
+    },
+    {
+      "name": "orders-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3041"
+      ],
+      "port": 3041
     }
   ]
 }

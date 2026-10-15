@@ -60,9 +60,31 @@ async function toRow(row: any) {
     };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
     const session = await getSession();
     if (!session?.user) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
+
+    /**
+     * Карточка одной доработки. Отдельным запросом, а не из уже прочитанного
+     * списка: ссылка на скриншот живёт минуту, и к моменту открытия карточки
+     * та, что приехала со списком, успевает протухнуть.
+     */
+    const id = Number(new URL(request.url).searchParams.get('id'));
+    if (Number.isFinite(id) && id > 0) {
+        const { data, error } = await supabase
+            .from('improvements')
+            .select(FIELDS)
+            .eq('id', id)
+            .maybeSingle();
+
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        if (!data) return NextResponse.json({ error: 'Доработка не найдена' }, { status: 404 });
+
+        return NextResponse.json({
+            improvement: await toRow(data),
+            canClose: canCloseImprovements(session.user.role),
+        });
+    }
 
     const { data, error } = await supabase
         .from('improvements')

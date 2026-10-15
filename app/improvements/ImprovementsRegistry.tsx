@@ -59,6 +59,13 @@ export default function ImprovementsRegistry() {
     const [orderNumber, setOrderNumber] = useState('');
     const [sending, setSending] = useState(false);
     const [showDone, setShowDone] = useState(false);
+    /**
+     * Открытая карточка доработки. Владелец 15.10.2026: «надо чтобы можно было
+     * открыть карточку доработки и там уже видно изображение, и все поля» —
+     * в списке остаётся строка, подробности смотрим в карточке.
+     */
+    const [card, setCard] = useState<Improvement | null>(null);
+    const [cardLoading, setCardLoading] = useState(false);
     const fileInput = useRef<HTMLInputElement>(null);
     /**
      * Скриншот: один на доработку, откуда бы он ни пришёл — из буфера или
@@ -151,50 +158,79 @@ export default function ImprovementsRegistry() {
             });
             const payload = await res.json();
             if (!res.ok) throw new Error(payload.error || 'Отметка не поставилась');
+            // Карточка открыта на этой же доработке — показываем новую отметку
+            // сразу, без закрытия и повторного открытия.
+            setCard((current) => (current && current.id === id ? payload.improvement : current));
             await load();
         } catch (e: any) {
             setError(e.message || 'Отметка не поставилась');
         }
     };
 
-    const card = (row: Improvement, closed: boolean) => (
-        <div key={row.id} className={`border border-gray-200 bg-white px-4 py-3 ${closed ? 'opacity-60' : ''}`}>
-            <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                    <div className={`whitespace-pre-wrap text-sm text-gray-900 ${closed ? 'line-through' : ''}`}>
-                        {row.text}
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                        <span>{row.author}</span>
-                        <span>{when(row.createdAt)}</span>
-                        {row.section && <span className="text-gray-700">Раздел: {sectionName(row.section)}</span>}
-                        {/* Номер заказа всегда ссылка в карточку (ЗАКОН 02.10.2026). */}
-                        {row.orderNumber && <span>Заказ <OrderNumberLink number={row.orderNumber} /></span>}
-                        {row.screenshotUrl && (
-                            <a href={row.screenshotUrl} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">
-                                {row.screenshotName || 'Скриншот'}
-                            </a>
-                        )}
-                        {closed && row.doneAt && (
-                            <span className="text-green-700">
-                                Выполнено {when(row.doneAt)}{row.doneBy ? ` · ${row.doneBy}` : ''}
-                            </span>
-                        )}
-                    </div>
-                </div>
+    /**
+     * Карточку читаем отдельным запросом: ссылка на скриншот живёт минуту, и
+     * та, что приехала вместе со списком, к открытию уже не работает.
+     */
+    const openCard = async (id: number) => {
+        setCardLoading(true);
+        setError(null);
+        try {
+            const res = await fetch(`/api/improvements?id=${id}`);
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Карточка не открылась');
+            setCard(payload.improvement);
+        } catch (e: any) {
+            setError(e.message || 'Карточка не открылась');
+        } finally {
+            setCardLoading(false);
+        }
+    };
 
-                {canClose && (
-                    <button
-                        type="button"
-                        onClick={() => void mark(row.id, !closed)}
-                        className={closed
-                            ? 'shrink-0 border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-100'
-                            : 'shrink-0 border border-green-700 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-700 hover:text-white'}
-                    >
-                        {closed ? 'Вернуть в работу' : 'Выполнено'}
-                    </button>
-                )}
+    /**
+     * Строка списка. Подробности (скриншот целиком, все поля) — в карточке:
+     * в списке должно быть видно, о чём доработка, и не больше.
+     */
+    const line = (item: Improvement, closed: boolean) => (
+        <div
+            key={item.id}
+            onClick={() => void openCard(item.id)}
+            className={`flex cursor-pointer items-start justify-between gap-4 border border-gray-200 bg-white px-4 py-3 hover:bg-gray-50 ${closed ? 'opacity-60' : ''}`}
+        >
+            <div className="min-w-0 flex-1">
+                <div className={`line-clamp-2 whitespace-pre-wrap text-sm text-gray-900 ${closed ? 'line-through' : ''}`}>
+                    {item.text}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                    <span>{item.author}</span>
+                    <span>{when(item.createdAt)}</span>
+                    {item.section && <span className="text-gray-700">Раздел: {sectionName(item.section)}</span>}
+                    {/* Номер заказа всегда ссылка в карточку заказа (ЗАКОН 02.10.2026):
+                        щелчок по номеру уводит в заказ, а не открывает доработку. */}
+                    {item.orderNumber && (
+                        <span onClick={(event) => event.stopPropagation()}>
+                            Заказ <OrderNumberLink number={item.orderNumber} />
+                        </span>
+                    )}
+                    {item.screenshotUrl && <span className="text-gray-700">Со скриншотом</span>}
+                    {closed && item.doneAt && (
+                        <span className="text-green-700">
+                            Выполнено {when(item.doneAt)}{item.doneBy ? ` · ${item.doneBy}` : ''}
+                        </span>
+                    )}
+                </div>
             </div>
+
+            {canClose && (
+                <button
+                    type="button"
+                    onClick={(event) => { event.stopPropagation(); void mark(item.id, !closed); }}
+                    className={closed
+                        ? 'shrink-0 border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-100'
+                        : 'shrink-0 border border-green-700 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-700 hover:text-white'}
+                >
+                    {closed ? 'Вернуть в работу' : 'Выполнено'}
+                </button>
+            )}
         </div>
     );
 
@@ -288,7 +324,7 @@ export default function ImprovementsRegistry() {
                             ? <div className="border border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-500">
                                 Невыполненных доработок нет.
                             </div>
-                            : open.map((row) => card(row, false))}
+                            : open.map((item) => line(item, false))}
                     </div>
 
                     {done.length > 0 && (
@@ -301,11 +337,114 @@ export default function ImprovementsRegistry() {
                                 Выполненные: {done.length} {showDone ? '▾' : '▸'}
                             </button>
                             {showDone && (
-                                <div className="flex flex-col gap-2">{done.map((row) => card(row, true))}</div>
+                                <div className="flex flex-col gap-2">{done.map((item) => line(item, true))}</div>
                             )}
                         </div>
                     )}
                 </>
+            )}
+
+            {cardLoading && !card && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/30 text-sm text-white">
+                    Открываю карточку…
+                </div>
+            )}
+
+            {card && (
+                <div
+                    className="fixed inset-0 z-[120] flex items-start justify-center overflow-auto bg-black/40 p-6"
+                    onClick={() => setCard(null)}
+                >
+                    <div
+                        className="w-full max-w-3xl border border-gray-300 bg-white"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+                            <div className="text-xs font-black uppercase tracking-widest text-gray-500">
+                                Доработка №{card.id}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setCard(null)}
+                                className="border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                            >
+                                Закрыть
+                            </button>
+                        </div>
+
+                        <div className="px-4 py-4">
+                            <div className="whitespace-pre-wrap text-sm text-gray-900">{card.text}</div>
+
+                            {/* Все поля карточки — таблицей, чтобы ничего не терялось. */}
+                            <table className="mt-4 w-full border border-gray-200 text-sm">
+                                <tbody>
+                                    <tr className="border-b border-gray-200">
+                                        <th className="w-44 border-r border-gray-200 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-600">Кто написал</th>
+                                        <td className="px-3 py-2 text-gray-900">{card.author}</td>
+                                    </tr>
+                                    <tr className="border-b border-gray-200">
+                                        <th className="border-r border-gray-200 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-600">Когда</th>
+                                        <td className="px-3 py-2 text-gray-900">{when(card.createdAt)}</td>
+                                    </tr>
+                                    <tr className="border-b border-gray-200">
+                                        <th className="border-r border-gray-200 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-600">Раздел</th>
+                                        <td className="px-3 py-2 text-gray-900">{sectionName(card.section) ?? 'не указан'}</td>
+                                    </tr>
+                                    <tr className="border-b border-gray-200">
+                                        <th className="border-r border-gray-200 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-600">Заказ</th>
+                                        <td className="px-3 py-2 text-gray-900">
+                                            {card.orderNumber ? <OrderNumberLink number={card.orderNumber} /> : 'не указан'}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th className="border-r border-gray-200 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-600">Состояние</th>
+                                        <td className="px-3 py-2 text-gray-900">
+                                            {card.doneAt
+                                                ? <span className="text-green-700">
+                                                    Выполнено {when(card.doneAt)}{card.doneBy ? ` · ${card.doneBy}` : ''}
+                                                </span>
+                                                : 'В работе'}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            {/* Скриншот виден прямо здесь, а не ссылкой «image.png»:
+                                ради этого карточку и открывают (владелец 15.10.2026). */}
+                            {card.screenshotUrl ? (
+                                <div className="mt-4">
+                                    <a href={card.screenshotUrl} target="_blank" rel="noreferrer" className="block">
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                            src={card.screenshotUrl}
+                                            alt={card.screenshotName || 'Скриншот'}
+                                            className="max-h-[60vh] w-full border border-gray-300 object-contain"
+                                        />
+                                    </a>
+                                    <div className="mt-1 text-xs text-gray-500">
+                                        {card.screenshotName || 'Скриншот'} — щёлкните, чтобы открыть целиком
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="mt-4 text-xs text-gray-500">Скриншота нет.</div>
+                            )}
+                        </div>
+
+                        {canClose && (
+                            <div className="flex justify-end border-t border-gray-200 px-4 py-3">
+                                <button
+                                    type="button"
+                                    onClick={() => void mark(card.id, !card.doneAt)}
+                                    className={card.doneAt
+                                        ? 'border border-gray-300 px-4 py-1.5 text-sm font-semibold text-gray-600 hover:bg-gray-100'
+                                        : 'border border-green-700 px-4 py-1.5 text-sm font-semibold text-green-700 hover:bg-green-700 hover:text-white'}
+                                >
+                                    {card.doneAt ? 'Вернуть в работу' : 'Выполнено'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
             )}
         </div>
     );
