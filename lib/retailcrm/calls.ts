@@ -63,7 +63,12 @@ async function fetchRcJson(url: string): Promise<any> {
     }
 }
 
-function mapCall(c: any) {
+/**
+ * Звонок RetailCRM → строка retailcrm_calls. Экспортирован, потому что тем же
+ * маппингом пользуется разовая докачка архива звонков
+ * (scripts/backfill-retailcrm-calls.ts): второго описания полей быть не должно.
+ */
+export function mapCall(c: any) {
     const manager = c.manager || null;
     const managerName = manager
         ? `${manager.lastName || ''} ${manager.firstName || ''}`.trim() || null
