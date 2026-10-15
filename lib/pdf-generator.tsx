@@ -50,7 +50,10 @@ export interface ProposalItem {
     quantity: number;
     price: number;
     unit?: string;
-    /** Цена до скидки и сумма скидки по строке — колонка «Скидка» в КП. */
+    /**
+     * Цена до скидки и скидка — обе ЗА ЕДИНИЦУ, как и `price`. Строка документа
+     * читается сама: (цена − скидка) × количество = сумма.
+     */
     initial_price?: number;
     discount?: number;
     /** Фото товара с его карточки на сайте. */
@@ -247,7 +250,9 @@ function ProposalPDF({ data }: { data: ProposalData }) {
     const subtotal = data.items.reduce(
         (sum, item) => sum + (item.initial_price ?? item.price) * item.quantity, 0,
     );
-    const itemsDiscount = data.items.reduce((sum, item) => sum + Number(item.discount || 0), 0);
+    const itemsDiscount = data.items.reduce(
+        (sum, item) => sum + Number(item.discount || 0) * item.quantity, 0,
+    );
     const orderDiscount = Number(data.discount_amount) > 0
         ? Number(data.discount_amount)
         : Math.round((subtotal - itemsDiscount) * ((data.discount_pct || 0) / 100));
@@ -372,9 +377,9 @@ function ProposalPDF({ data }: { data: ProposalData }) {
                         <Text style={[invStyles.cell, invStyles.cTotal]}>
                             {item.discount ? formatMoney(item.discount) : '—'}
                         </Text>
-                        {/* Сумма — к оплате за строку: цена × количество минус скидка. */}
+                        {/* Сумма — к оплате за строку: (цена − скидка) × количество. */}
                         <Text style={[invStyles.cell, invStyles.cTotal]}>
-                            {formatMoney((item.initial_price ?? item.price) * item.quantity - (item.discount || 0))}
+                            {formatMoney(((item.initial_price ?? item.price) - (item.discount || 0)) * item.quantity)}
                         </Text>
                     </View>
                 ))}
@@ -567,6 +572,8 @@ const invStyles = StyleSheet.create({
     tblAlt: { backgroundColor: '#f8fafc' },
     cNum: { width: '5%' }, cName: { width: '38%' }, cQty: { width: '9%', textAlign: 'right' },
     cUnit: { width: '9%', textAlign: 'center' }, cPrice: { width: '19%', textAlign: 'right' }, cTotal: { width: '20%', textAlign: 'right' },
+    // Счёт: та же таблица плюс колонка скидки — наименованию отдаём меньше места.
+    cInvName: { width: '24%' }, cDisc: { width: '14%', textAlign: 'right' },
     // Размеры и цвет: «сделать больше шрифт, серый шрифт поменять на чёрный»
     // (Евгения 06.10.2026) — в документ приходилось всматриваться.
     cell: { fontSize: 9.5, color: '#111827' },
@@ -594,11 +601,18 @@ const invStyles = StyleSheet.create({
 });
 
 function InvoicePDF({ data }: { data: InvoiceData }) {
-    const subtotal = data.items.reduce((s, i) => s + i.price * i.quantity, 0);
-    // Скидку задают и рублями, и процентом — считаем то, что задали.
-    const discountAmt = Number(data.discount_amount) > 0
+    /**
+     * Считаем как в КП: подытог по базовым ценам, скидки позиций — отдельной
+     * строкой. Иначе «Подытог» не сходился со столбцом «Сумма», где цена уже
+     * уценена, а скидку клиент в счёте не видел вовсе.
+     */
+    const subtotal = data.items.reduce((s, i) => s + (i.initial_price ?? i.price) * i.quantity, 0);
+    const itemsDiscount = data.items.reduce((s, i) => s + Number(i.discount || 0) * i.quantity, 0);
+    // Разовую скидку на заказ задают и рублями, и процентом — считаем то, что задали.
+    const orderDiscount = Number(data.discount_amount) > 0
         ? Number(data.discount_amount)
-        : Math.round(subtotal * ((data.discount_pct || 0) / 100));
+        : Math.round((subtotal - itemsDiscount) * ((data.discount_pct || 0) / 100));
+    const discountAmt = itemsDiscount + orderDiscount;
     const afterDiscount = subtotal - discountAmt;
     const vatAmt = Math.round(afterDiscount * (data.vat_pct / 100) / (1 + data.vat_pct / 100));
     const total = afterDiscount;
@@ -704,18 +718,21 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                 </Text>
 
                 {/* Таблица позиций */}
+                {/* Колонки как в КП: базовая цена, скидка за единицу, сумма строки.
+                    Счёт и предложение должны читаться одинаково (владелец 15.10.2026). */}
                 <View style={invStyles.tblHeader}>
                     <Text style={[invStyles.tblHeaderText, invStyles.cNum]}>№</Text>
-                    <Text style={[invStyles.tblHeaderText, invStyles.cName]}>Наименование</Text>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cInvName]}>Наименование</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cQty]}>Кол-во</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cUnit]}>Ед.</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cPrice]}>Цена, ₽</Text>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cDisc]}>Скидка, ₽</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Сумма, ₽</Text>
                 </View>
                 {data.items.map((item, idx) => (
                     <View key={idx} style={[invStyles.tblRow, idx % 2 === 1 ? invStyles.tblAlt : {}]}>
                         <Text style={[invStyles.cell, invStyles.cNum]}>{idx + 1}</Text>
-                        <View style={invStyles.cName}>
+                        <View style={invStyles.cInvName}>
                             {item.url ? (
                                 <Link src={item.url} style={invStyles.cellLink}>{item.name}</Link>
                             ) : (
@@ -725,8 +742,15 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                         </View>
                         <Text style={[invStyles.cell, invStyles.cQty]}>{item.quantity}</Text>
                         <Text style={[invStyles.cell, invStyles.cUnit]}>{item.unit || 'шт.'}</Text>
-                        <Text style={[invStyles.cell, invStyles.cPrice]}>{formatMoney(item.price)}</Text>
-                        <Text style={[invStyles.cell, invStyles.cTotal]}>{formatMoney(item.price * item.quantity)}</Text>
+                        <Text style={[invStyles.cell, invStyles.cPrice]}>
+                            {formatMoney(item.initial_price ?? item.price)}
+                        </Text>
+                        <Text style={[invStyles.cell, invStyles.cDisc]}>
+                            {item.discount ? formatMoney(item.discount) : '—'}
+                        </Text>
+                        <Text style={[invStyles.cell, invStyles.cTotal]}>
+                            {formatMoney(((item.initial_price ?? item.price) - (item.discount || 0)) * item.quantity)}
+                        </Text>
                     </View>
                 ))}
 
@@ -739,7 +763,7 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                     {discountAmt > 0 && (
                         <View style={invStyles.totRow}>
                             <Text style={invStyles.totLabel}>
-                                Скидка{data.discount_pct > 0 ? ` ${data.discount_pct}%` : ''}
+                                Скидка{orderDiscount > 0 && data.discount_pct > 0 ? ` ${data.discount_pct}%` : ''}
                             </Text>
                             <Text style={[invStyles.totVal, { color: '#ef4444' }]}>−{formatMoney(discountAmt)}</Text>
                         </View>

@@ -16,7 +16,7 @@ export type DocumentItem = {
     quantity: number;
     price: number;
     /**
-     * Цена до скидки и сумма скидки по строке. В КП от RetailCRM скидка
+     * Цена до скидки и скидка — обе ЗА ЕДИНИЦУ. В КП от RetailCRM скидка
      * показана отдельной колонкой, и без неё клиент не видит, что ему уступили
      * (замечание Евгении 05.10.2026).
      */
@@ -302,8 +302,11 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
          */
         price: Math.max(0, Number(row.initialPrice || 0) - Number(row.discountTotal || 0)),
         initialPrice: Number(row.initialPrice || 0),
-        // В документ отдаём скидку ЗА ВСЮ СТРОКУ: её и ждёт человек в колонке.
-        discount: Number(row.discountTotal || 0) * Number(row.quantity || 0),
+        // В документ отдаём скидку ЗА ЕДИНИЦУ — рядом с ценой за единицу, чтобы
+        // строка читалась сама: (цена − скидка) × количество = сумма. Скидкой за
+        // всю строку клиент путался: цена за штуку, а скидка за партию (Ирина
+        // Гордеева 15.10.2026, КП 54193 — 39 015 ₽ и 70 227 ₽ в одной строке).
+        discount: Number(row.discountTotal || 0),
         image: catalogOf(catalog, row)?.image ?? null,
         url: catalogOf(catalog, row)?.url ?? null,
         productId: catalogOf(catalog, row)?.productId ?? null,
