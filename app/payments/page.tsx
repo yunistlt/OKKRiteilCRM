@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import StatementUpload from '@/components/payments/StatementUpload';
 import ClearFiltersButton from '@/components/ui/ClearFiltersButton';
+import OrderNumberLink from '@/components/ui/OrderNumberLink';
+import Link from 'next/link';
 import {
   PAYMENT_PROJECT_LABELS,
   PAYMENT_SOURCE_LABELS,
@@ -39,9 +41,10 @@ interface Payment {
   match_candidates: Candidate[] | null;
   matched_order_number: string | null;
   matched_order_id: number | null;
-  retailcrm_payment_id: string | null;
-  retailcrm_synced_at: string | null;
-  retailcrm_error: string | null;
+  /** Когда оплата разнесена в заказ ОКК. */
+  posted_at: string | null;
+  /** Почему не удалось разнести. */
+  posting_error: string | null;
   signature_verified: boolean;
   reviewed_by: string | null;
   created_at: string;
@@ -161,14 +164,6 @@ function ResultBox({ data, tone = 'gray' }: { data: unknown; tone?: 'gray' | 'gr
   );
 }
 
-// Ссылка на карточку заказа в RetailCRM (по внутреннему id, иначе по номеру).
-function crmOrderLink(crmUrl: string, orderId: number | null, orderNumber?: string | null): string | null {
-  if (!crmUrl) return null;
-  if (orderId) return `${crmUrl}/orders/${orderId}/edit`;
-  if (orderNumber) return `${crmUrl}/orders/${encodeURIComponent(orderNumber)}/edit?by=number`;
-  return null;
-}
-
 export default function PaymentsPage() {
   const [tab, setTab] = useState<Tab>(TABS.find((t) => t.kind === 'review') || TABS[0]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -184,7 +179,6 @@ export default function PaymentsPage() {
   const [projectSummaryAmount, setProjectSummaryAmount] = useState<Record<string, number>>({});
   const [reviewAmount, setReviewAmount] = useState<number>(0);
   const [period, setPeriod] = useState<Period>(ALL_TIME);
-  const [crmUrl, setCrmUrl] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [manualNumber, setManualNumber] = useState<Record<number, string>>({});
@@ -350,7 +344,6 @@ export default function PaymentsPage() {
       setProjectSummaryAmount(json.projectSummaryAmount || {});
       setReviewAmount(json.reviewAmount || 0);
       setFilteredTotal(json.filteredTotal || { count: 0, amountKopecks: 0 });
-      setCrmUrl(json.crm_url || '');
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -831,7 +824,6 @@ export default function PaymentsPage() {
             </thead>
             <tbody>
               {payments.map((p) => {
-                const link = crmOrderLink(crmUrl, p.matched_order_id, p.matched_order_number);
                 // Столярка/консалтинг не привязываются к заказам ЗМКТЛ — без «Привязать».
                 const isForeign = p.project === 'stolyarka' || p.project === 'consulting';
                 return (
@@ -907,29 +899,17 @@ export default function PaymentsPage() {
                       </div>
                     </td>
 
-                    {/* Заказ + состояние проброса в CRM */}
+                    {/* Заказ + состояние разноса оплаты */}
                     <td className="px-4 py-3 align-top">
                       {p.matched_order_number ? (
-                        link ? (
-                          <a
-                            href={link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-semibold text-blue-600 underline decoration-dotted hover:text-blue-800"
-                            title="Открыть заказ в RetailCRM"
-                          >
-                            №{p.matched_order_number} ↗
-                          </a>
-                        ) : (
-                          <span className="font-semibold text-gray-700">№{p.matched_order_number}</span>
-                        )
+                        <OrderNumberLink number={p.matched_order_number} className="font-semibold" />
                       ) : (
                         <Dash />
                       )}
-                      {p.retailcrm_synced_at && <div className="mt-0.5 text-xs text-emerald-600">✓ в RetailCRM</div>}
-                      {p.retailcrm_error && (
-                        <div className="mt-0.5 max-w-[180px] truncate text-xs text-red-500" title={p.retailcrm_error}>
-                          ошибка CRM
+                      {p.posted_at && <div className="mt-0.5 text-xs text-emerald-600">✓ разнесена в заказ</div>}
+                      {p.posting_error && (
+                        <div className="mt-0.5 max-w-[180px] truncate text-xs text-red-500" title={p.posting_error}>
+                          не разнесена
                         </div>
                       )}
                     </td>
@@ -959,7 +939,6 @@ export default function PaymentsPage() {
                           {!isForeign && p.match_candidates && p.match_candidates.length > 0 && (
                             <div className="flex flex-wrap gap-1.5">
                               {p.match_candidates.map((c, i) => {
-                                const cLink = crmOrderLink(crmUrl, c.orderId, c.orderNumber);
                                 return (
                                   <span key={i} className="inline-flex items-center border border-blue-200 bg-blue-50">
                                     <button
@@ -971,17 +950,14 @@ export default function PaymentsPage() {
                                       №{c.orderNumber}
                                       {c.totalKopecks != null ? ` · ${formatMoney(c.totalKopecks)}` : ''}
                                     </button>
-                                    {cLink && (
-                                      <a
-                                        href={cLink}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="border-l border-blue-200 px-1.5 py-1 text-blue-500 hover:bg-blue-100"
-                                        title="Открыть заказ в RetailCRM"
-                                      >
-                                        ↗
-                                      </a>
-                                    )}
+                                    {/* Номер на кнопке — действие «привязать», карточку открывает стрелка. */}
+                                    <Link
+                                      href={`/orders?order=${encodeURIComponent(c.orderNumber)}`}
+                                      className="border-l border-blue-200 px-1.5 py-1 text-blue-500 hover:bg-blue-100"
+                                      title={`Открыть заказ №${c.orderNumber}`}
+                                    >
+                                      ↗
+                                    </Link>
                                   </span>
                                 );
                               })}

@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   claimProcessablePayments,
   processPointPayment,
-  reconcileCrmPostings,
   notifyPendingForReview,
   resendRequestedNotifications,
 } from '@/lib/payments/service';
@@ -12,8 +11,8 @@ import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-st
 
 // Воркер сервиса распределения платежей.
 // Сканирует point_payments: новые (pending_match) матчит на заказы, при уверенном
-// совпадении и проверенной подписи пробрасывает платёж в RetailCRM; привязанные,
-// но не проброшенные — ретраит. Неоднозначные остаются в очереди на ручной разбор.
+// совпадении и проверенной подписи разносит платёж в заказ ОКК; привязанные, но не
+// разнесённые — ретраит. Неоднозначные остаются в очереди на ручной разбор.
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 const WORKER_KEY = 'system_jobs.point_payment_ingest';
@@ -40,7 +39,7 @@ export async function GET(req: NextRequest) {
         await supabase
           .from('point_payments')
           .update({
-            retailcrm_error: String(err?.message || err).slice(0, 1500),
+            posting_error: String(err?.message || err).slice(0, 1500),
             updated_at: new Date().toISOString(),
           })
           .eq('id', row.id);
@@ -48,17 +47,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Сверка проводок с RetailCRM — держим crm_posting честным (удалили/изменили/внесли вручную).
-    // Не критично и не трогает факт прихода; сбой не должен ронять воркер.
-    let reconciled = 0;
-    try {
-      reconciled = await reconcileCrmPostings(10);
-    } catch (e: any) {
-      console.error('[Tochka] reconcileCrmPostings failed:', e?.message || e);
-    }
-
     // Напоминание о неразобранных поступлениях: деньги пришли, но не привязаны к заказу —
-    // значит, не проведены в CRM и заказ не уходит в производство. Не критично для воркера.
+    // значит, не разнесены и заказ не уходит в производство. Не критично для воркера.
     let pendingNotified = 0;
     try {
       pendingNotified = await notifyPendingForReview();
@@ -75,12 +65,11 @@ export async function GET(req: NextRequest) {
       console.error('[payments] resendRequestedNotifications failed:', e?.message || e);
     }
 
-    await recordWorkerSuccess(WORKER_KEY, { processed: results.length, reconciled, pendingNotified, resent });
+    await recordWorkerSuccess(WORKER_KEY, { processed: results.length, pendingNotified, resent });
     return NextResponse.json({
       ok: true,
-      status: results.length || reconciled || pendingNotified || resent ? 'processed' : 'idle',
+      status: results.length || pendingNotified || resent ? 'processed' : 'idle',
       processed: results.length,
-      reconciled,
       pendingNotified,
       resent,
       results,

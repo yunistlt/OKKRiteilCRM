@@ -1,3 +1,4 @@
+import { appendOrderNote } from '@/lib/own-crm/edit-order';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { getSession } from '@/lib/auth';
@@ -137,28 +138,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             })
             .eq('id', params.id);
 
-        // Комментарий в RetailCRM
+        // Пометка в заказ: счёт выставлен. Пишем в комментарий менеджера у нас —
+        // своей сущности «заметка» нет намеренно (закон проекта).
         if (ws?.crm_order_id) {
-            try {
-                const url = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
-                const key = process.env.RETAILCRM_API_KEY;
-                const site = process.env.RETAILCRM_SITE;
-                if (url && key) {
-                    const body = new URLSearchParams();
-                    body.append('note', JSON.stringify({
-                        text: `Счёт № ${invoice.invoice_number} выставлен на ${invoice.total_amount.toLocaleString('ru-RU')} ₽\nСсылка: ${publicUrl}${invoice.pdf_url ? `\nPDF: ${invoice.pdf_url}` : ''}`,
-                    }));
-                    body.append('order', JSON.stringify({ id: ws.crm_order_id }));
-                    if (site) body.append('site', site);
-                    await fetch(`${url.replace(/\/+$/, '')}/api/v5/orders/${ws.crm_order_id}/notes/create?apiKey=${key}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: body.toString(),
-                    });
-                }
-            } catch (e) {
-                console.error('[invoices/send] CRM note error:', e);
-            }
+            await appendOrderNote(
+                Number(ws.crm_order_id),
+                `Счёт № ${invoice.invoice_number} выставлен на ${invoice.total_amount.toLocaleString('ru-RU')} ₽\n`
+                    + `Ссылка: ${publicUrl}${invoice.pdf_url ? `\nPDF: ${invoice.pdf_url}` : ''}`,
+                'Ловец Лидов',
+            ).catch((e) => console.error('[invoices/send] пометка в заказ:', e));
         }
 
         return NextResponse.json({ success: true, email_sent: emailSent, public_url: publicUrl });

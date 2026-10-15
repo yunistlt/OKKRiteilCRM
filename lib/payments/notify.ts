@@ -28,7 +28,7 @@ const SUPPLY_MANAGER_ID = process.env.TELEGRAM_PAYMENTS_SUPPLY_MANAGER_ID || '13
 // Уведомления об оплатах шлём типами сообщений (lib/notify/catalog.ts):
 //   payment.received            — разнесённая оплата ЗМКТЛ → общий чат отдела;
 //   payment.pending_digest      — поступления без заказа → общий чат отдела;
-//   payment.push_error          — оплата не прошла в CRM → владельцу в личку;
+//   payment.push_error          — оплату не удалось разнести в заказ → владельцу в личку;
 //   payment.project_stolyarka / payment.project_consulting → чаты своих проектов.
 // Адресата любого типа человек меняет в интерфейсе (/settings/notifications).
 
@@ -42,12 +42,12 @@ function formatRub(kopecks: number): string {
   return `${kopecksToRubles(kopecks).toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽`;
 }
 
-function crmOrderLink(orderId: number | null, orderNumber: string | null): string | null {
-  const base = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL || '').replace(/\/+$/, '');
-  if (!base) return null;
-  if (orderId) return `${base}/orders/${orderId}/edit`;
-  if (orderNumber) return `${base}/orders/${encodeURIComponent(orderNumber)}/edit?by=number`;
-  return null;
+// Заказ открывается у нас: заказы ведутся в ОКК, RetailCRM — архив на чтение.
+// Карточка — /orders?order=<номер>, как у OrderNumberLink в интерфейсе.
+function orderLink(orderNumber: string | null): string | null {
+  if (!orderNumber) return null;
+  const base = (process.env.NEXT_PUBLIC_APP_URL || 'https://okk.zmksoft.com').replace(/\/+$/, '');
+  return `${base}/orders?order=${encodeURIComponent(orderNumber)}`;
 }
 
 function paymentsPageLink(): string {
@@ -56,6 +56,12 @@ function paymentsPageLink(): string {
 }
 
 export interface NotifyOptions {
+  /**
+   * Разнесена ли оплата в заказ ОКК. Приходит результатом разноса: признак из
+   * строки платежа в памяти брать нельзя — её снимок сделан ДО разноса, и
+   * сообщение писало «в CRM ещё не занесена» по успешно разнесённым платежам.
+   */
+  posted?: boolean;
   movedToProduction?: boolean;
   productionStatusName?: string;
   productionNotMovedReason?: string;
@@ -105,7 +111,7 @@ async function resolveSupplyTag(): Promise<string | null> {
   return tag && tag.startsWith('@') ? tag : null;
 }
 
-function buildMessage(row: PointPaymentRow, routed: boolean, opts: NotifyOptions): string {
+export function buildMessage(row: PointPaymentRow, routed: boolean, opts: NotifyOptions): string {
   const source = SOURCE_LABELS[row.source] || row.source;
   const lines: string[] = [];
   lines.push(`💰 <b>Оплата · ${esc(source)}</b>`);
@@ -131,14 +137,14 @@ function buildMessage(row: PointPaymentRow, routed: boolean, opts: NotifyOptions
 
   // Итог разноса (ЗМК).
   if ((row.status === 'matched' || row.status === 'manual') && row.matched_order_number) {
-    const link = crmOrderLink(row.matched_order_id, row.matched_order_number);
+    const link = orderLink(row.matched_order_number);
     const order = link
       ? `<a href="${link}">№${esc(row.matched_order_number)}</a>`
       : `№${esc(row.matched_order_number)}`;
-    // Человеческим языком: в сообщении речь об оплате, а не о внутренней механике
-    // синхронизации. «Проброшен в RetailCRM» людям в чате ничего не объясняет.
-    const synced = row.retailcrm_synced_at ? ' — оплата занесена в CRM' : ' — оплата в CRM ещё не занесена';
-    lines.push(`✅ Заказ ${order}${synced}`);
+    // Человеческим языком: в сообщении речь об оплате, а не о внутренней механике.
+    const posted = opts.posted ?? Boolean(row.posted_at);
+    const where = posted ? ' — оплата разнесена в заказ ОКК' : ' — оплата ещё не разнесена в заказ';
+    lines.push(`✅ Заказ ${order}${where}`);
     const num = esc(String(row.matched_order_number));
     if (opts.movedToProduction) {
       const name = opts.productionStatusName || 'Передано в производство';
@@ -193,7 +199,7 @@ export async function notifyPendingPaymentsTelegram(
     }
     if (opts.totalCount > MAX_ROWS) lines.push(`…и ещё ${opts.totalCount - MAX_ROWS}`);
     lines.push('');
-    lines.push(`Пока платёж не привязан к заказу, он не проведён в CRM и заказ не уходит в производство.`);
+    lines.push(`Пока платёж не привязан к заказу, он не разнесён и заказ не уходит в производство.`);
     lines.push(`🔗 <a href="${paymentsPageLink()}">Разобрать поступления</a>`);
     const reviewers = await resolveReviewTags().catch(() => []);
     if (reviewers.length) lines.push(`🧾 Разбор: ${reviewers.join(' ')}`);
@@ -224,15 +230,14 @@ export async function notifyPaymentPushErrorTelegram(row: PointPaymentRow, error
     const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
     if (!token) return;
     const lines: string[] = [];
-    lines.push(`❗ <b>Оплата не проведена в CRM</b>`);
+    lines.push(`❗ <b>Оплата не разнесена в заказ</b>`);
     lines.push(`<b>${esc(formatRub(Number(row.amount_kopecks)))}</b>${row.payer_name ? ` · ${esc(row.payer_name)}` : ''}`);
     if (row.matched_order_number) {
-        const link = crmOrderLink(row.matched_order_id, row.matched_order_number);
-        lines.push(`Заказ ${link ? `<a href="${link}">№${esc(row.matched_order_number)}</a>` : `№${esc(row.matched_order_number)}`} — статус не изменится, пока оплата не проведена`);
+        const link = orderLink(row.matched_order_number);
+        lines.push(`Заказ ${link ? `<a href="${link}">№${esc(row.matched_order_number)}</a>` : `№${esc(row.matched_order_number)}`} — статус не изменится, пока оплата не разнесена`);
     }
     lines.push(`Причина: ${esc(String(error).slice(0, 300))}`);
-    // Человеку важно понимать, ждать ему или чинить: при сбое на стороне
-    // RetailCRM платёж проводится сам, звать никого не нужно.
+    // Человеку важно понимать, ждать ему или чинить: повтор идёт сам.
     if (explanation) lines.push(explanation);
     lines.push(`🔗 <a href="${paymentsPageLink()}">Открыть платёж</a>`);
     const reviewers = await resolveReviewTags().catch(() => []);

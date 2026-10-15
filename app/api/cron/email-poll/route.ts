@@ -24,7 +24,6 @@ import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
 import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked, getNoreplyAllowlist, getCrmTagStaleDays, getThreadDedupDays } from '@/lib/email/routes';
 import { sendAppEmail, parseOrderNumberFromSubject } from '@/lib/email';
 import { createEmailLead } from '@/lib/retailcrm/leads';
-import { attachEmailFilesToOrder } from '@/lib/retailcrm/files';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -674,21 +673,6 @@ export async function GET(req: Request) {
                 // Вложения письма → в тот же заказ, к которому письмо привязали (переписка или
                 // письмо в отдел). Там КП, спецификации, скриншоты счётов — без них карточка заказа
                 // врёт о том, что происходило в сделке.
-                if (createOrders && linkedOrder?.id
-                    && Array.isArray(e.attachments_meta) && e.attachments_meta.length > 0 && e.imap_uid != null) {
-                    try {
-                        const content = await fetchEmailContentByUid(Number(e.imap_uid), e.folder || FOLDER);
-                        const files = content?.attachments || [];
-                        if (files.length > 0) {
-                            const att = await attachEmailFilesToOrder(linkedOrder.id, files);
-                            reasoning = `${reasoning} | Вложения в заказ №${linkedOrder.number}: ${att.attached}/${att.total}` +
-                                (att.errors.length ? ` (ошибки: ${att.errors.slice(0, 2).join('; ')})` : '');
-                        }
-                    } catch (attErr: any) {
-                        reasoning = `${reasoning} | Вложения не прикреплены: ${attErr?.message || 'ошибка'}`;
-                    }
-                }
-
                 let orderCreateAttempts = Number((e as any).order_create_attempts ?? 0);
                 let forwardedDepartment: string | null = null;
                 let forwardedTo: string | null = null;
@@ -749,15 +733,16 @@ export async function GET(req: Request) {
                         finalStatus = 'processed';
                         reasoning = `${reasoning} | Заказ №${order.number} создан`;
 
-                        // Вложения письма → в заказ (ТЗ обычно во вложении). Реиспользуем уже скачанные файлы.
+                        /**
+                         * Вложения в заказ кладёт отдельный проход
+                         * (`lib/email/attachments.ts`, крон `email-attachments`):
+                         * он сохраняет файл в наше хранилище и пишет строку в
+                         * `order_files`. Здесь их больше не трогаем — заливка в
+                         * RetailCRM по своим заказам всё равно падала
+                         * («Entity not found»), и ТЗ до менеджера не доезжало.
+                         */
                         if (files.length > 0) {
-                            try {
-                                const att = await attachEmailFilesToOrder(order.id, files);
-                                reasoning = `${reasoning} | Вложения в заказ: ${att.attached}/${att.total}` +
-                                    (att.errors.length ? ` (ошибки: ${att.errors.slice(0, 2).join('; ')})` : '');
-                            } catch (attErr: any) {
-                                reasoning = `${reasoning} | Вложения не прикреплены: ${attErr?.message || 'ошибка'}`;
-                            }
+                            reasoning = `${reasoning} | Вложений: ${files.length}, заберёт разбор вложений`;
                         }
                     } catch (err: any) {
                         errorMessage = err?.message || 'order_create_failed';

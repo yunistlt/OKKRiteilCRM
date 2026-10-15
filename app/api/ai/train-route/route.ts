@@ -2,6 +2,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { editOrder } from '@/lib/own-crm/edit-order';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 minutes for safe RetailCRM updates
@@ -17,73 +18,36 @@ export async function POST(req: Request) {
 
         console.log(`[TrainRoute] Processing order ${orderId} -> ${targetStatus}`);
 
-        // 1. Fetch current order to get API credentials (if stored) or use env
-        const RETAILCRM_URL = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL)?.replace(/\/$/, '');
-        const RETAILCRM_KEY = (process.env.RETAILCRM_API_KEY || process.env.RETAILCRM_KEY)?.trim();
+        /**
+         * Статус пишем одной дверью — `editOrder` (закон проекта): он
+         * обновляет нашу базу и кладёт историю, от которой зависят зарплата и
+         * ОКК. До 15.10.2026 правка уходила в RetailCRM, и по заказам нашей
+         * базы обучение просто падало («Order not found in RetailCRM»).
+         */
+        const { data: orderRow } = await supabase
+            .from('orders')
+            .select('id, number, raw_payload')
+            .or(`order_id.eq.${orderId},number.eq.${orderId}`)
+            .maybeSingle();
 
-        if (!RETAILCRM_URL || !RETAILCRM_KEY) {
-            throw new Error('RetailCRM configuration missing');
+        if (!orderRow) {
+            throw new Error(`Заказ ${orderId} не найден`);
         }
 
-        // 2. Fetch order from RetailCRM to get 'site' (required for update)
-        const searchUrl = `${RETAILCRM_URL}/api/v5/orders?apiKey=${RETAILCRM_KEY}&filter[ids][]=${orderId}`;
-        const searchRes = await fetch(searchUrl);
-        const searchData = await searchRes.json();
-
-        if (!searchData.success || !searchData.orders || searchData.orders.length === 0) {
-            // Try by number as fallback if the ID passed was actually a number
-            const searchUrl2 = `${RETAILCRM_URL}/api/v5/orders?apiKey=${RETAILCRM_KEY}&filter[numbers][]=${orderId}`;
-            const searchRes2 = await fetch(searchUrl2);
-            const searchData2 = await searchRes2.json();
-
-            if (!searchData2.success || !searchData2.orders || searchData2.orders.length === 0) {
-                throw new Error(`Order ${orderId} not found in RetailCRM`);
-            }
-            searchData.orders = searchData2.orders;
-        }
-
-        const retailOrder = searchData.orders[0];
-        const site = retailOrder.site;
-        const internalId = retailOrder.id;
-
-        // 3. Update RetailCRM
-        console.log(`[TrainRoute] Updating RetailCRM (ID: ${internalId}, Site: ${site})...`);
-        const updateUrl = `${RETAILCRM_URL}/api/v5/orders/${internalId}/edit?apiKey=${RETAILCRM_KEY}&by=id&site=${site}`;
-
-        // Prepare comment: Append reasoning to preserve existing operator comments
-        const existingComment = retailOrder.managerComment || '';
-        const newFullComment = existingComment 
-            ? `${existingComment}\n\nОКК: ${reasoning}` 
+        const internalId = Number((orderRow as any).id);
+        const existingComment = String((orderRow as any).raw_payload?.managerComment || '');
+        const newFullComment = existingComment
+            ? `${existingComment}\n\nОКК: ${reasoning}`
             : `ОКК: ${reasoning}`;
 
-        const requestBody = {
-            status: targetStatus,
+        const applied = await editOrder(internalId, {
+            statusCode: targetStatus,
             managerComment: newFullComment,
-            customFields: {
-                next_contact_date: null // Clear next contact date often required
-            }
-        };
-
-        const updateRes = await fetch(updateUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ order: JSON.stringify(requestBody) })
         });
 
-        const updateData = await updateRes.json();
-        if (!updateData.success) {
-            throw new Error(`RetailCRM Update Failed: ${JSON.stringify(updateData.errors || updateData.errorMsg)}`);
+        if (!applied.ok) {
+            throw new Error(`Статус не записался: ${applied.reason}`);
         }
-
-        // 4. Update Local DB 'orders' table
-        await supabase
-            .from('orders')
-            .update({
-                status: targetStatus,
-                manager_comment: reasoning,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', orderId); // or internalId depending on how we store it. usually we store ID.
 
         // 5. Save Training Example
         // We use 'green' as dummy traffic_light, and store real target_status in context
@@ -104,7 +68,7 @@ export async function POST(req: Request) {
 
         const trainingData = {
             order_id: internalId,
-            order_number: retailOrder.number,
+            order_number: (orderRow as any).number,
             traffic_light: 'green', // Default/Dummy
             user_reasoning: reasoning,
             order_context: trainingContext,

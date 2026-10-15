@@ -1,14 +1,14 @@
 /**
- * Развилка «куда завести заказ»: в RetailCRM или сразу у нас.
+ * Куда завести заказ: всегда к нам.
  *
- * Решение владельца 30.09.2026: один менеджер работает целиком в нашей базе.
  * Все три потока заявок (почта — Катерина, виджет — Елена, звонок — секретарь
- * Телфина) собирают заказ в виде RetailCRM и отправляют его туда. Здесь мы
- * перед отправкой смотрим, на кого заявка назначена: если на менеджера с
- * флагом `own_crm` — заказ остаётся у нас, в RetailCRM не уходит.
+ * Телфина) собирают заказ в виде RetailCRM и раньше отправляли его туда.
+ * С 30.09.2026 заказ оставался у нас, только если назначенный менеджер помечен
+ * флагом `own_crm`; с 15.10.2026 развилки нет — заказ заводится у нас всегда
+ * (решение владельца: все службы работают в ОКК, RetailCRM архив на чтение).
  *
- * Ответ намеренно той же формы, что даёт RetailCRM (`success`, `id`,
- * `order.number`): вызывающий код не должен знать, куда ушёл заказ.
+ * Ответ намеренно той же формы, что давал RetailCRM (`success`, `id`,
+ * `order.number`): вызывающий код не переписывали.
  *
  * Файл держим отдельным и зависящим только от базы: иначе `leads.ts` и
  * `create-order.ts` начинают ссылаться друг на друга по кругу.
@@ -109,18 +109,6 @@ export async function nextOwnOrderNumber(): Promise<{ number: string; seq: numbe
 }
 
 /** Работает ли этот менеджер в нашей базе. */
-export async function isOwnCrmManager(managerId: number | null | undefined): Promise<boolean> {
-    if (!managerId) return false;
-
-    const { data } = await supabase
-        .from('managers')
-        .select('own_crm')
-        .eq('id', managerId)
-        .maybeSingle();
-
-    return Boolean((data as any)?.own_crm);
-}
-
 function itemsTotal(items: any[] | undefined): number {
     return (items || []).reduce(
         (sum, item) => sum + (Number(item.initialPrice ?? item.price ?? 0) * Number(item.quantity ?? 0)),
@@ -280,13 +268,10 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
 }
 
 /**
- * Заказ назначен на менеджера нашей базы? Тогда `insertOwnOrder`, иначе `null`
- * — и вызывающий отправляет заказ в RetailCRM как раньше.
+ * Единственная дверь для новой заявки от любой службы: заказ заводится у нас.
+ * Оставлена отдельной функцией, чтобы потоки звали её, а не `insertOwnOrder`
+ * напрямую — и чтобы правка «куда заводить» жила в одном месте.
  */
-export async function routeNewOrder(orderData: any): Promise<CrmLikeOrderResult | null> {
-    if (!(await isOwnCrmManager(orderData?.managerId))) {
-        return null;
-    }
-
+export async function routeNewOrder(orderData: any): Promise<CrmLikeOrderResult> {
     return insertOwnOrder(orderData);
 }

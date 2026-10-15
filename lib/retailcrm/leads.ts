@@ -1,6 +1,4 @@
 import { supabase } from '@/utils/supabase';
-import { isOwnCrmManager } from '@/lib/own-crm/own-order-insert';
-import { resolveLeadSite, reportSiteSubstitution } from './lead-site';
 import { fetchRetailCrmOrder } from './orders';
 import {
     buildLeadCustomerCustomFields,
@@ -9,6 +7,7 @@ import {
     type LeadFieldHints,
 } from './lead-defaults';
 import { routeNewOrder } from '@/lib/own-crm/own-order-insert';
+import { clientHintsForOrder, existingClientHint } from '@/lib/own-crm/lead-client';
 import { assignManagerForNewOrder } from '@/lib/own-crm/assign-manager';
 
 export async function getCrmConfig() {
@@ -18,211 +17,6 @@ export async function getCrmConfig() {
     if (!url || !key) throw new Error('RetailCRM config missing: URL or API_KEY');
     if (!site) throw new Error('RetailCRM config missing: RETAILCRM_SITE (shop code) is not set in environment variables');
     return { url: url.replace(/\/+$/, ''), key, site };
-}
-
-async function fetchRetailCrm(path: string, method: 'GET' | 'POST', body?: any) {
-    const { url: baseUrl, key: apiKey } = await getCrmConfig();
-    const url = `${baseUrl}/api/v5/${path}?apiKey=${apiKey}`;
-
-    const response = await fetch(url, {
-        method,
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body ? new URLSearchParams({ [path.split('/')[0].slice(0, -1)]: JSON.stringify(body) }).toString() : undefined,
-    });
-
-    // RetailCRM API uses form-encoded JSON for POST... wait, let me check documentation or existing patterns.
-    // Actually, many RetailCRM versions use application/x-www-form-urlencoded with a JSON string in one of the fields.
-    // But some modern ones support JSON.
-    // Let's use the most common one: application/x-www-form-urlencoded with field name = JSON string.
-    
-    // Correction: Standard RetailCRM POST is often: 
-    // POST /api/v5/orders/create?apiKey=...
-    // body: order={"status":"new",...}
-    
-    const responseData = await response.json();
-    if (!responseData.success) {
-        throw new Error(`RetailCRM Error: ${JSON.stringify(responseData.errors || responseData.message)}`);
-    }
-    return responseData;
-}
-
-// More standard fetch for RetailCRM
-export async function postRetailCrm(path: string, rootKey: string, data: any, site?: string) {
-    const { url: baseUrl, key: apiKey, site: configSite } = await getCrmConfig();
-    const targetSite = site || configSite;
-    const url = `${baseUrl}/api/v5/${path}?apiKey=${apiKey}${targetSite ? `&site=${targetSite}` : ''}`;
-    
-    const body = new URLSearchParams();
-    body.append(rootKey, JSON.stringify(data));
-    if (site) {
-        body.append('site', site);
-    }
-
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body.toString()
-    });
-
-    const result = await response.json();
-    return result;
-}
-
-export async function findCustomerByPhone(phone: string) {
-    const { url: baseUrl, key: apiKey } = await getCrmConfig();
-    const url = `${baseUrl}/api/v5/customers?apiKey=${apiKey}&filter[name]=${phone}`;
-    const response = await fetch(url);
-    const data = await response.json();
-    if (data.success && data.customers && data.customers.length > 0) {
-        return data.customers[0];
-    }
-    return null;
-}
-
-export async function findCustomerByEmail(email: string) {
-    const { url: baseUrl, key: apiKey } = await getCrmConfig();
-    const url = `${baseUrl}/api/v5/customers?apiKey=${apiKey}&filter[email]=${encodeURIComponent(email)}`;
-    const response = await fetch(url);
-    const data = await response.json();
-    if (data.success && data.customers && data.customers.length > 0) {
-        return data.customers[0];
-    }
-    return null;
-}
-
-export async function findCorporateCustomerInCrm(filter: { email?: string; phone?: string; inn?: string }) {
-    const { url: baseUrl, key: apiKey } = await getCrmConfig();
-    const filterParams: string[] = [];
-    if (filter.inn) {
-        filterParams.push(`filter[contragentInn]=${encodeURIComponent(filter.inn)}`);
-    } else if (filter.email) {
-        filterParams.push(`filter[email]=${encodeURIComponent(filter.email)}`);
-    } else if (filter.phone) {
-        filterParams.push(`filter[phone]=${encodeURIComponent(filter.phone)}`);
-    } else {
-        return null;
-    }
-    
-    const url = `${baseUrl}/api/v5/customers-corporate?apiKey=${apiKey}&${filterParams.join('&')}`;
-    
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-        if (data.success && data.customersCorporate && data.customersCorporate.length > 0) {
-            return data.customersCorporate[0];
-        }
-    } catch (err) {
-        console.error('Failed to find corporate customer in CRM:', err);
-    }
-    return null;
-}
-
-/**
- * Найти ВСЕ корпоративные карточки по одному признаку — для подсказки менеджеру.
- * Возвращает список, а не первого: общий ящик тендерной площадки висит на десятках
- * разных компаний (`tender@sportmoda.ru` — 28 карточек), и привязываться к нему нельзя.
- */
-async function lookupCorporateCustomers(filter: { email?: string; phone?: string }) {
-    const { url: baseUrl, key: apiKey } = await getCrmConfig();
-    const param = filter.email
-        ? `filter[email]=${encodeURIComponent(filter.email)}`
-        : filter.phone
-            ? `filter[phone]=${encodeURIComponent(filter.phone)}`
-            : null;
-    if (!param) return [];
-
-    try {
-        const response = await fetch(`${baseUrl}/api/v5/customers-corporate?apiKey=${apiKey}&${param}`);
-        const data = await response.json();
-        if (data.success && Array.isArray(data.customersCorporate)) return data.customersCorporate;
-    } catch (err) {
-        console.error('Failed to lookup corporate customers in CRM:', err);
-    }
-    return [];
-}
-
-/**
- * Подсказка менеджеру: карточка клиента, похоже, уже есть, но по основному ключу не нашлась.
- * Бот НЕ привязывается к ней сам — совпадение по почте или телефону слишком часто ложное
- * (общий ящик посредника, личный номер снабженца, работающего на несколько фирм).
- *
- * Слова «дубль»/«дубл» в тексте быть не должно: комментарий заказа разбирается фильтром
- * тендерных дублей (`(?:дубль|дубл|dubl)\D*(\d{3,6})`), и заказ вылетел бы из премии.
- */
-async function buildExistingCustomerHint(keys: { email?: string | null; phone?: string | null }) {
-    for (const [label, filter] of [
-        ['почта', { email: keys.email || undefined }],
-        ['телефон', { phone: keys.phone || undefined }],
-    ] as const) {
-        if (!filter.email && !filter.phone) continue;
-        const found = await lookupCorporateCustomers(filter);
-        // Ровно одна карточка — осмысленная подсказка. Несколько — общий контакт, молчим.
-        if (found.length === 1) {
-            const card = found[0];
-            const name = card.nickName ? ` (${card.nickName})` : '';
-            return `❗ Возможно, клиент уже есть в базе: карточка ${card.id}${name} — совпал ${label}. `
-                + 'Проверьте, объедините карточки и укажите ИНН.';
-        }
-    }
-    return null;
-}
-
-export async function createCorporateCustomerInCrm(details: {
-    companyName: string;
-    inn?: string | null;
-    kpp?: string | null;
-    address?: string | null;
-    contactName?: string | null;
-    contactPhone?: string | null;
-    contactEmail?: string | null;
-    bank?: string | null;
-    bik?: string | null;
-    bankAccount?: string | null;
-    corrAccount?: string | null;
-    fieldHints?: LeadFieldHints;
-}, site: string): Promise<number | null> {
-    // Категория товара и форма закупки обязательны и у карточки клиента —
-    // без них менеджер не сохранит контрагента.
-    const customFields = await buildLeadCustomerCustomFields(details.fieldHints);
-    const payload: any = {
-        nickName: details.companyName,
-        ...(Object.keys(customFields).length > 0 ? { customFields } : {}),
-        contragent: {
-            contragentType: 'legal-entity',
-            legalName: details.companyName,
-            INN: details.inn || undefined,
-            KPP: details.kpp || undefined,
-            bank: details.bank || undefined,
-            BIK: details.bik || undefined,
-            bankAccount: details.bankAccount || undefined,
-            corrAccount: details.corrAccount || undefined,
-            legalAddress: details.address || undefined
-        }
-    };
-
-    if (details.contactName || details.contactPhone || details.contactEmail) {
-        payload.mainContact = {
-            firstName: details.contactName || 'Контактное лицо',
-            email: details.contactEmail || undefined,
-            phones: details.contactPhone ? [{ number: details.contactPhone }] : []
-        };
-    }
-
-    if (details.address) {
-        payload.addresses = [{ text: details.address }];
-    }
-
-    const result = await postRetailCrm('customers-corporate/create', 'customerCorporate', payload, site);
-    if (result.success) {
-        return result.id;
-    } else {
-        console.error('Failed to create corporate customer in CRM:', result);
-        return null;
-    }
 }
 
 export type CorporateLeadDetails = {
@@ -238,81 +32,6 @@ export type CorporateLeadDetails = {
     bankAccount?: string | null;
     corrAccount?: string | null;
 };
-
-/**
- * Найти или завести КОРПОРАТИВНОГО клиента под лид бота.
- * Клиенты у нас корпоративные всегда (B2B), поэтому ищем по ИНН → email → телефону
- * и заводим нового, если не нашли. Название компании, если бот его не распознал,
- * ставим «Требуется уточнить» (название берём из справочника CRM, не выдумываем).
- * Вернёт null в id, если завести контрагента не удалось — вызывающий откатится на физлицо.
- * Вместе с id отдаёт hint: карточка, похожая на этого клиента по почте или телефону, но не
- * найденная по основному ключу. Бот к ней не привязывается — только подсказывает менеджеру.
- */
-export async function ensureCorporateCustomerId(
-    params: {
-        details?: CorporateLeadDetails | null;
-        name?: string | null;
-        phone?: string | null;
-        email?: string | null;
-        fieldHints?: LeadFieldHints;
-    },
-    site: string
-): Promise<{ id: number | null; hint: string | null }> {
-    const details = params.details || null;
-    const phone = details?.contactPhone || params.phone || null;
-    const email = params.email || null;
-
-    // а. В нашем зеркале по ИНН — самый надёжный ключ.
-    if (details?.inn) {
-        try {
-            const { data } = await supabase
-                .from('clients')
-                .select('id')
-                .eq('inn', details.inn)
-                .eq('is_corporate', true)
-                .maybeSingle();
-            if (data) return { id: Number(data.id), hint: null };
-        } catch (err) {
-            console.error('Error finding corporate customer in Supabase:', err);
-        }
-    }
-
-    // б. В CRM по ИНН / email / телефону.
-    const existing = await findCorporateCustomerInCrm({
-        inn: details?.inn || undefined,
-        email: email || undefined,
-        phone: phone || undefined,
-    });
-    if (existing) return { id: existing.id, hint: null };
-
-    // в. Не нашли — но, возможно, карточка есть, просто без ИНН (он заполнен лишь у четверти
-    // карточек). Ищем похожую по почте и телефону ТОЛЬКО ради подсказки менеджеру: привязываться
-    // по этим ключам нельзя, общий ящик посредника висит на десятках разных компаний.
-    const hint = await buildExistingCustomerHint({ email, phone });
-
-    // г. Заводим нового контрагента.
-    const companyName = details?.companyName
-        || params.name
-        || (await unspecifiedLabel());
-    if (!companyName) return { id: null, hint };
-
-    const createdId = await createCorporateCustomerInCrm({
-        companyName,
-        inn: details?.inn,
-        kpp: details?.kpp,
-        address: details?.address,
-        contactName: details?.contactName || params.name,
-        contactPhone: phone,
-        contactEmail: email,
-        bank: details?.bank,
-        bik: details?.bik,
-        bankAccount: details?.bankAccount,
-        corrAccount: details?.corrAccount,
-        fieldHints: params.fieldHints,
-    }, site);
-
-    return { id: createdId, hint };
-}
 
 /**
  * Заявка из веб-формы без ТЗ (обратный звонок / контактная форма): в теле только
@@ -363,40 +82,10 @@ export async function createEmailLead(params: {
     attachmentText?: string;
     fieldHints?: LeadFieldHints;
 }): Promise<{ id: number; number: string }> {
-    // Магазин берём не вслепую из окружения, а с проверкой по справочнику
-    // RetailCRM: если настроенный пропал, переходим на запасной и сообщаем
-    // владельцу (инцидент 30.09.2026 — заявки не заводились четыре часа).
-    const choice = await resolveLeadSite();
-    await reportSiteSubstitution(choice);
-    const site = choice.site || (await getCrmConfig()).site;
-
-    // Клиент всегда корпоративный (B2B): контрагента ищем/заводим по ИНН, email, телефону.
-    const customerLookup = await ensureCorporateCustomerId({
-        details: params.corporateDetails,
-        name: params.corporateDetails?.contactName || params.name,
-        phone: params.phone,
-        email: params.email,
-        fieldHints: params.fieldHints,
-    }, site);
-    let customerId: number | null = customerLookup.id;
-    const existingCustomerHint = customerLookup.hint;
-    let isCorp = customerId !== null;
-
-    if (!customerId) {
-        // Откат на физлицо: контрагента завести не удалось — лид терять нельзя.
-        const existing = params.email ? await findCustomerByEmail(params.email) : null;
-        if (existing) {
-            customerId = existing.id;
-        } else if (params.email || params.phone) {
-            const customerResult = await postRetailCrm('customers/create', 'customer', {
-                firstName: params.name || 'Клиент (письмо)',
-                ...(params.email ? { email: params.email } : {}),
-                ...(params.phone ? { phones: [{ number: params.phone }] } : {}),
-            }, site);
-            if (customerResult.success) customerId = customerResult.id;
-        }
-        isCorp = false;
-    }
+    // Клиент всегда корпоративный (B2B). Карточку найдёт или заведёт запись
+    // заказа — по ИНН, затем по названию с почтой или телефоном. В RetailCRM
+    // карточки больше не уходят (решение владельца 15.10.2026).
+    const existingCustomerHint = await existingClientHint({ email: params.email, phone: params.phone });
 
     // Проверка на дубликат тендера
     let assignedManagerId = params.managerId;
@@ -476,18 +165,15 @@ ${bodyPart}${attLine}${duplicateReason}`;
         status: 'novyi-1', // всегда «Новая»
         firstName: params.corporateDetails?.contactName || params.name || 'Клиент',
         customerComment: comment,
+        // Реквизиты из письма: по ИНН и названию запись заказа найдёт карточку
+        // клиента или заведёт её. Без них карточка плодилась бы на каждую заявку.
+        ...clientHintsForOrder(params.corporateDetails),
         source: { source: 'email-secretary' },
         // Обязательные поля карточки: без них менеджер не сохранит заказ.
         customFields: await buildLeadOrderCustomFields(params.fieldHints),
     };
     if (params.email) orderData.email = params.email;
     if (params.phone) orderData.phone = params.phone;
-    if (customerId) {
-        orderData.customer = { 
-            id: customerId,
-            ...(isCorp ? { type: 'customer_corporate' } : {})
-        };
-    }
     if (duplicateOfNumber) {
         orderData.managerComment = `дубль ${duplicateOfNumber}`;
     } else if (recentHint) {
@@ -501,11 +187,7 @@ ${bodyPart}${attLine}${duplicateReason}`;
     if (assignedManagerId) orderData.managerId = assignedManagerId;
 
     await ensureManager(orderData);
-    const orderResult = (await routeNewOrder(orderData)) ?? await postRetailCrm('orders/create', 'order', orderData, site);
-    if (!orderResult.success) {
-        const errorMessage = orderResult.errors ? JSON.stringify(orderResult.errors) : (orderResult.errorMsg || 'Unknown error');
-        throw new Error(`Email lead create failed: ${errorMessage}`);
-    }
+    const orderResult = await routeNewOrder(orderData);
     const number = (orderResult.order && orderResult.order.number) || orderResult.number || String(orderResult.id);
     return { id: orderResult.id as number, number: String(number) };
 }
@@ -552,12 +234,6 @@ export async function createLeadInCrm(params: {
     fieldHints?: LeadFieldHints;
 }) {
     console.log('Creating lead in RetailCRM:', params);
-    // Тот же выбор магазина с проверкой, что и у заявок с почты: заявка с сайта
-    // не должна теряться из-за магазина, пропавшего в RetailCRM.
-    const siteChoice = await resolveLeadSite();
-    await reportSiteSubstitution(siteChoice);
-    const site = siteChoice.site || (await getCrmConfig()).site;
-
     // Категорию товара подсказывает каталог, если Елена подобрала позиции.
     const fieldHints: LeadFieldHints = {
         productCategory: params.matchedCatalogProducts?.find((p) => p.category)?.category || null,
@@ -565,48 +241,12 @@ export async function createLeadInCrm(params: {
     };
 
     /**
-     * Заявка менеджера нашей CRM клиента в RetailCRM не заводит.
-     *
-     * Курс на свою CRM: карточку найдёт или создаст у себя `insertOwnOrder`
-     * (по ИНН, затем по названию с почтой или телефоном). Раньше карточка
-     * появлялась в RetailCRM, у нас её не было, и в заказе пустовали компания и
-     * реквизиты — разбор заказа 1039А (решение владельца 02.10.2026).
+     * Клиента в RetailCRM не заводим: карточку найдёт или создаст у себя
+     * `insertOwnOrder` (по ИНН, затем по названию с почтой или телефоном).
+     * Раньше карточка появлялась в RetailCRM, у нас её не было, и в заказе
+     * пустовали компания и реквизиты — разбор заказа 1039А (02.10.2026).
      */
-    const ownOrder = params.managerId ? await isOwnCrmManager(params.managerId) : false;
-
-    // 1. Клиент всегда корпоративный (B2B)
-    const customerLookup = ownOrder
-        ? { id: null as number | null, hint: null as string | null }
-        : await ensureCorporateCustomerId({
-            details: params.corporateDetails,
-            name: params.corporateDetails?.contactName || params.name,
-            phone: params.phone,
-            email: params.email,
-            fieldHints,
-        }, site);
-    let customerId: number | null = customerLookup.id;
-    const existingCustomerHint = customerLookup.hint;
-    let isCorp = customerId !== null;
-
-    if (!customerId && !ownOrder) {
-        // Откат на физлицо: контрагента завести не удалось — лид терять нельзя.
-        const existing = params.phone ? await findCustomerByPhone(params.phone) : null;
-        if (existing) {
-            customerId = existing.id;
-        } else {
-            const customerResult = await postRetailCrm('customers/create', 'customer', {
-                firstName: params.name || 'Клиент из чата',
-                phones: params.phone ? [{ number: params.phone }] : [],
-                email: params.email
-            }, site);
-            if (customerResult.success) {
-                customerId = customerResult.id;
-            } else {
-                console.error('Failed to create customer:', customerResult);
-            }
-        }
-        isCorp = false;
-    }
+    const existingCustomerHint = await existingClientHint({ email: params.email, phone: params.phone });
 
     // 3. Format Manager Comment
     const visitedPagesStr = params.visitedPages?.slice(-5).map(p => p.url).join(', ') || 'неизвестно';
@@ -646,6 +286,7 @@ ${historyLog.split('\n').slice(-10).join('\n')}
         phone: params.phone,
         email: params.email,
         customerComment: managerComment,
+        ...clientHintsForOrder(params.corporateDetails),
         ...(existingCustomerHint ? { managerComment: existingCustomerHint } : {}),
         source: {
             source: params.utm?.source || 'ai-widget',
@@ -656,12 +297,6 @@ ${historyLog.split('\n').slice(-10).join('\n')}
         customFields: await buildLeadOrderCustomFields(fieldHints),
     };
 
-    if (customerId) {
-        orderData.customer = { 
-            id: customerId,
-            ...(isCorp ? { type: 'customer_corporate' } : {})
-        };
-    }
 
     if (params.managerId) {
         orderData.managerId = params.managerId;
@@ -671,19 +306,9 @@ ${historyLog.split('\n').slice(-10).join('\n')}
         orderData.customerComment += `\nИнтересовался товарами: ${params.items.join(', ')}`;
     }
 
-    // Магазин — тот же проверенный, что выбран в начале функции. Раньше здесь
-    // заново брался магазин из окружения, и заявка с сайта уходила в него мимо
-    // проверки.
     await ensureManager(orderData);
-    const orderResult = (await routeNewOrder(orderData)) ?? await postRetailCrm('orders/create', 'order', orderData, site);
-
-    if (!orderResult.success) {
-        console.error('Failed to create order:', JSON.stringify(orderResult, null, 2));
-        const errorMessage = orderResult.errors ? JSON.stringify(orderResult.errors) : (orderResult.errorMsg || 'Unknown error');
-        throw new Error(`CRM Order Creation Failed: ${errorMessage} (Full response: ${JSON.stringify(orderResult)})`);
-    }
-
-    return orderResult;
+    // Заказ заводится у нас; не записался — `insertOwnOrder` бросает сам.
+    return routeNewOrder(orderData);
 }
 
 /**
@@ -698,37 +323,9 @@ export async function createSecretaryLead(params: {
     managerId?: number | null;   // выбранный по нагрузке менеджер
     fieldHints?: LeadFieldHints;
 }): Promise<{ id: number; number: string }> {
-    // Магазин берём не вслепую из окружения, а с проверкой по справочнику
-    // RetailCRM: если настроенный пропал, переходим на запасной и сообщаем
-    // владельцу (инцидент 30.09.2026 — заявки не заводились четыре часа).
-    const choice = await resolveLeadSite();
-    await reportSiteSubstitution(choice);
-    const site = choice.site || (await getCrmConfig()).site;
-
-    // 1. Клиент всегда корпоративный (B2B): ищем контрагента по телефону, иначе заводим
-    const customerLookup = await ensureCorporateCustomerId({
-        name: params.name,
-        phone: params.phone,
-        fieldHints: params.fieldHints,
-    }, site);
-    let customerId: number | null = customerLookup.id;
-    const existingCustomerHint = customerLookup.hint;
-    let isCorp = customerId !== null;
-
-    if (!customerId) {
-        // Откат на физлицо: контрагента завести не удалось — заявку терять нельзя.
-        const existing = params.phone ? await findCustomerByPhone(params.phone) : null;
-        if (existing) {
-            customerId = existing.id;
-        } else if (params.phone) {
-            const customerResult = await postRetailCrm('customers/create', 'customer', {
-                firstName: params.name || 'Клиент (звонок)',
-                phones: [{ number: params.phone }],
-            }, site);
-            if (customerResult.success) customerId = customerResult.id;
-        }
-        isCorp = false;
-    }
+    // Клиент всегда корпоративный (B2B). Карточку найдёт или заведёт запись
+    // заказа: по звонку известен только телефон, по нему и ищем.
+    const existingCustomerHint = await existingClientHint({ phone: params.phone });
 
     const comment = `📞 Заявка принята AI-секретарём (входящий звонок)
 
@@ -747,75 +344,11 @@ ${params.summary?.trim() || 'не распознано — уточнить у �
         // Обязательные поля карточки: без них менеджер не сохранит заказ.
         customFields: await buildLeadOrderCustomFields(params.fieldHints),
     };
-    if (customerId) {
-        orderData.customer = {
-            id: customerId,
-            ...(isCorp ? { type: 'customer_corporate' } : {})
-        };
-    }
     if (params.managerId) orderData.managerId = params.managerId;
 
     await ensureManager(orderData);
-    const orderResult = (await routeNewOrder(orderData)) ?? await postRetailCrm('orders/create', 'order', orderData, site);
-    if (!orderResult.success) {
-        const errorMessage = orderResult.errors ? JSON.stringify(orderResult.errors) : (orderResult.errorMsg || 'Unknown error');
-        throw new Error(`Secretary order create failed: ${errorMessage}`);
-    }
+    const orderResult = await routeNewOrder(orderData);
 
     const number = (orderResult.order && orderResult.order.number) || orderResult.number || String(orderResult.id);
     return { id: orderResult.id as number, number: String(number) };
-}
-
-export async function updateExistingOrderInCrm(orderId: number, params: {
-    status?: string;
-    noteText?: string;
-    customFields?: Record<string, any>;
-    firstName?: string;
-    managerId?: number | null;
-}, site?: string): Promise<{ success: boolean; errorMsg?: string }> {
-    const { url: baseUrl, key: apiKey, site: configSite } = await getCrmConfig();
-
-    // Всё пишем одним вызовом orders/edit (единственный метод, доступный API-ключу).
-    // Сводку квалификации (noteText) кладём в managerComment («Комментарий оператора») —
-    // отдельный метод orders/notes/create этому ключу недоступен (404), а edit проходит.
-    if (!(params.status || params.customFields || params.firstName || params.managerId || params.noteText)) {
-        return { success: true };
-    }
-
-    // orders/{id}/edit?by=id СТРОГО требует site, которому принадлежит заказ, а НЕ фиксированный
-    // RETAILCRM_SITE: при несовпадении RetailCRM отвечает {success:false,errorMsg:"Not found"}.
-    // Заказы приходят из разных магазинов (zmktlt-ru-admin, ao-zvto, …), поэтому берём реальный
-    // site заказа: передан вызывающим (если заказ уже фетчили) — иначе резолвим GET-запросом.
-    let editSite = site;
-    if (!editSite) {
-        const order = await fetchRetailCrmOrder(orderId).catch(() => null);
-        editSite = (order?.site as string | undefined) || configSite;
-    }
-
-    const url = `${baseUrl}/api/v5/orders/${orderId}/edit?apiKey=${apiKey}&site=${encodeURIComponent(editSite)}`;
-    const body = new URLSearchParams();
-    const orderData: any = {};
-    if (params.status) orderData.status = params.status;
-    if (params.customFields) orderData.customFields = params.customFields;
-    if (params.firstName) orderData.firstName = params.firstName;
-    if (params.managerId) orderData.managerId = params.managerId;
-    if (params.noteText) orderData.managerComment = params.noteText;
-
-    body.append('order', JSON.stringify(orderData));
-    body.append('site', editSite);
-    body.append('by', 'id');
-
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body.toString()
-    });
-    const result = await response.json();
-    if (!result.success) {
-        console.error(`Failed to update order ${orderId}:`, result);
-        const errorMsg = result.errorMsg || (result.errors ? JSON.stringify(result.errors) : `HTTP ${response.status}`);
-        return { success: false, errorMsg };
-    }
-
-    return { success: true };
 }

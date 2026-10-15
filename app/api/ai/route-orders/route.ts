@@ -2,6 +2,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { editOrder } from '@/lib/own-crm/edit-order';
 import { fieldValue } from '@/lib/own-crm/field-names';
 import { formatEventValue, COMMUNICATION_FIELD_PATTERNS } from '@/lib/order-events';
 import { analyzeOrderForRouting, RoutingOptions, RoutingResult } from '@/lib/ai-router';
@@ -342,48 +343,20 @@ export async function POST(request: Request) {
                             ? `${comment}\n\nОКК: ${decision.reasoning}`
                             : `ОКК: ${decision.reasoning}`;
 
-                        console.log(`[AIRouter] Order ${order.id} is on site: ${orderSite}. Existing comment length: ${comment.length}`);
-
-                        const currentBaseUrl = (order as any)._baseUrl;
-                        const currentApiKey = (order as any)._apiKey;
-
-                        // Update status in RetailCRM
-                        const requestBody = {
-                            status: decision.target_status,
+                        /**
+                         * Статус пишем одной дверью — `editOrder`: он кладёт
+                         * историю и дату входа в статус, без которых заказ не
+                         * виден зарплате. До 15.10.2026 правка уходила прямо в
+                         * RetailCRM, а по заказам нашей базы просто не работала.
+                         */
+                        const applied = await editOrder(Number(order.id), {
+                            statusCode: decision.target_status,
                             managerComment: newComment,
-                            // Clear next_contact_date to avoid validation errors
-                            customFields: {
-                                next_contact_date: null
-                            }
-                        };
-
-                        console.log(`[AIRouter] Updating order ${order.id} in RetailCRM:`, requestBody);
-
-                        const url = `${currentBaseUrl}/api/v5/orders/${order.id}/edit?by=id`;
-                        const retailcrmResponse = await fetch(url, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                            },
-                            body: new URLSearchParams({
-                                apiKey: currentApiKey,
-                                site: orderSite,
-                                order: JSON.stringify(requestBody)
-                            })
                         });
 
-                        const retailcrmUpdateData = await retailcrmResponse.json();
-                        console.log(`[AIRouter] RetailCRM response for order ${order.id}:`, retailcrmUpdateData);
-
-                        if (!retailcrmUpdateData.success) {
-                            throw new Error(JSON.stringify(retailcrmUpdateData));
+                        if (!applied.ok) {
+                            throw new Error(applied.reason || 'статус не записался');
                         }
-
-                        // Also update in our local database
-                        await supabase
-                            .from('orders')
-                            .update({ status: decision.target_status })
-                            .eq('id', order.id);
 
                         wasApplied = true;
 

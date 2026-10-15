@@ -7,7 +7,7 @@
 ### Схема взаимодействия
 ```mermaid
 sequenceDiagram
-    participant CRM as RetailCRM
+    participant CRM as ОКК
     participant Bot as РОП-бот (Артем)
     participant Client as Клиент (Email / Браузер)
     participant Elena as Ловец лидов (Елена)
@@ -58,7 +58,7 @@ sequenceDiagram
 * **Условия выборки:** Обрабатываются сессии, где `is_lead_created = false` И (`has_contacts = true` ИЛИ `utm_campaign IS NOT NULL`).
 * **Контроль завершения диалога:** Сессия обрабатывается только после **2 минут неактивности** клиента (для симуляционных тестов с `visitor_id`, начинающимся на `v_lc_sim_`, эта задержка отключается).
 * **Анализ Семёна:** Семён (OpenAI GPT-4o-mini) анализирует лог чата и извлекает ответы.
-* **Обновление заказа в RetailCRM:**
+* **Обновление заказа в ОКК:**
   * Статус заказа меняется на **«Заявка квалифицирована»** (`zapros-kontaktov`).
   * Добавляется подробный комментарий менеджера со всеми 7 ответами.
   * Заполняются customFields заказа:
