@@ -348,8 +348,10 @@ function ProposalPDF({ data }: { data: ProposalData }) {
                         со скидкой. Так строка читается сама: 92 448 − 18 489,6 = 73 958,4.
                         Раньше в «Цене» стояла цена УЖЕ со скидкой, и арифметика не
                         сходилась на глаз (замечание владельца 05.10.2026). */}
+                    {/* «За 1 шт.» прямо в шапке: рядом с количеством партии скидку
+                        за единицу принимали за скидку на всю строку (владелец 15.10.2026). */}
                     <Text style={[invStyles.tblHeaderText, invStyles.cPrice]}>Цена, ₽</Text>
-                    <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Скидка, ₽</Text>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Скидка за 1 шт., ₽</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Сумма, ₽</Text>
                 </View>
                 {data.items.map((item, idx) => (
@@ -573,7 +575,7 @@ const invStyles = StyleSheet.create({
     cNum: { width: '5%' }, cName: { width: '38%' }, cQty: { width: '9%', textAlign: 'right' },
     cUnit: { width: '9%', textAlign: 'center' }, cPrice: { width: '19%', textAlign: 'right' }, cTotal: { width: '20%', textAlign: 'right' },
     // Счёт: та же таблица плюс колонка скидки — наименованию отдаём меньше места.
-    cInvName: { width: '24%' }, cDisc: { width: '14%', textAlign: 'right' },
+    cInvName: { width: '20%' }, cDisc: { width: '18%', textAlign: 'right' },
     // Размеры и цвет: «сделать больше шрифт, серый шрифт поменять на чёрный»
     // (Евгения 06.10.2026) — в документ приходилось всматриваться.
     cell: { fontSize: 9.5, color: '#111827' },
@@ -726,7 +728,7 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                     <Text style={[invStyles.tblHeaderText, invStyles.cQty]}>Кол-во</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cUnit]}>Ед.</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cPrice]}>Цена, ₽</Text>
-                    <Text style={[invStyles.tblHeaderText, invStyles.cDisc]}>Скидка, ₽</Text>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cDisc]}>Скидка за 1 шт., ₽</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Сумма, ₽</Text>
                 </View>
                 {data.items.map((item, idx) => (
