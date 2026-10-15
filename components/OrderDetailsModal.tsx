@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import AutoTextarea from '@/components/ui/AutoTextarea';
 import { checkCounterpartyByInn, CounterpartyScoreResult } from '@/lib/legal-counterparty-check';
 import CallInitiator from './calls/CallInitiator';
 import PhoneFieldCall from './calls/PhoneFieldCall';
@@ -1858,12 +1859,21 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                     <div className="grid lg:grid-cols-3 gap-6">
                         <div className="bg-white border border-gray-200 p-4">
                             <h4 className="text-sm font-semibold text-gray-900 mb-3">Комментарий клиента</h4>
-                            <textarea
+                            {/* Поле растёт под текст: здесь основной запрос
+                                клиента, и он должен быть виден целиком.
+                                Евгения Матвеева 15.10.2026: «очень маленькое
+                                окошко, оно растягивается, но после каждого
+                                сохранения снова становится маленьким» —
+                                высоту теперь держит само поле, а не мышка. */}
+                            <AutoTextarea
                                 value={draftClientComment}
-                                onChange={(e) => { setDraftClientComment(e.target.value); setDirty(true); }}
-                                rows={6}
+                                onChange={(value) => { setDraftClientComment(value); setDirty(true); }}
+                                rows={10}
+                                maxHeightPx={600}
                                 placeholder="Что просит клиент"
-                                className="w-full border border-gray-200 bg-white p-3 text-sm text-gray-800"
+                                // min-h — чтобы пустое поле не схлопывалось в одну
+                                // строку: в него ещё предстоит писать.
+                                className="min-h-[220px] w-full resize-y border border-gray-200 bg-white p-3 text-sm text-gray-800"
                             />
                         </div>
                         <div className="bg-white border border-gray-200 p-4">

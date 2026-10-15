@@ -4,6 +4,7 @@
 // и все его заказы. Реквизиты в RetailCRM лежат на заказе, поэтому под ними
 // подписано, из какого заказа они взяты — число должно раскладываться.
 import { useCallback, useEffect, useRef, useState } from 'react';
+import AutoTextarea from '@/components/ui/AutoTextarea';
 import ClientFiles from '@/app/components/ClientFiles';
 import { useRouter } from 'next/navigation';
 import { formatIntRu, formatRub } from '@/lib/format';
@@ -115,32 +116,6 @@ function formatDuration(seconds: number | null) {
 
 function Dash() {
     return <span className="text-gray-300">—</span>;
-}
-
-/**
- * Поле на несколько строк, которое растёт под содержимое. Юридический адрес и
- * название организации в одну строку не влезают никогда, а обрезанное значение
- * нельзя проверить глазами (замечание владельца 05.10.2026).
- */
-function AutoTextarea({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-    const ref = useRef<HTMLTextAreaElement | null>(null);
-
-    useEffect(() => {
-        const el = ref.current;
-        if (!el) return;
-        el.style.height = 'auto';
-        el.style.height = `${el.scrollHeight}px`;
-    }, [value]);
-
-    return (
-        <textarea
-            ref={ref}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            rows={2}
-            className="w-full resize-y overflow-hidden border border-gray-300 px-2 py-1"
-        />
-    );
 }
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
