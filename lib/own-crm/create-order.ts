@@ -1,19 +1,16 @@
 /**
  * Создание заказа менеджером из нашего интерфейса.
  *
- * Заказ заводится в RetailCRM через её API — так он сразу попадает в общий
- * поток: производство, зарплата, ОКК и боты видят его как любой другой. Пока
- * обе системы живые, изобретать свой номер заказа и свой поток нельзя.
- *
- * Магазин выбирается проверенным путём (`resolveLeadSite`): настроенный, а если
- * он пропал в RetailCRM — запасной. 30.09.2026 это спасло приём заявок.
+ * Заказ заводится у нас (`insertOwnOrder`) и остаётся здесь: производство,
+ * зарплата, ОКК и боты читают нашу базу. До 15.10.2026 заказ уходил в
+ * RetailCRM, если менеджер ещё не был переведён на свою CRM; теперь переведены
+ * все службы, и такой развилки нет.
  */
 import { supabase } from '@/utils/supabase';
 import { itemTotalWithDiscount, orderTotals } from './discount';
 import { assignManagerForNewOrder } from './assign-manager';
-import { postRetailCrm, ensureCorporateCustomerId } from '@/lib/retailcrm/leads';
-import { resolveLeadSite, reportSiteSubstitution } from '@/lib/retailcrm/lead-site';
-import { isOwnCrmManager, insertOwnOrder } from './own-order-insert';
+import { clientHintsForOrder } from './lead-client';
+import { insertOwnOrder } from './own-order-insert';
 
 export type NewOrderItem = {
     /** Название позиции — то, что увидит клиент в счёте. */
@@ -138,28 +135,8 @@ export async function createManagerOrder(order: NewOrder): Promise<CreatedOrder>
     });
     const managerId = assignment.managerId;
 
-    // Менеджер, переведённый на нашу базу, получает заказ здесь же: в
-    // RetailCRM он не уходит (решение владельца 30.09.2026). Смотрим на того,
-    // кого НАЗНАЧИЛИ: иначе заявка без менеджера уходила бы в RetailCRM даже
-    // после назначения на Женю.
-    const ownManager = await isOwnCrmManager(managerId);
-
-    const choice = await resolveLeadSite();
-    await reportSiteSubstitution(choice);
-    const site = choice.site;
-
-    let customerId = order.customerId ?? null;
-    if (!customerId) {
-        const found = await ensureCorporateCustomerId({
-            details: order.companyName || order.inn
-                ? { legalName: order.companyName || undefined, inn: order.inn || undefined, contactName: order.contactName || undefined }
-                : null,
-            name: order.contactName || order.companyName || undefined,
-            phone: order.phone || undefined,
-            email: order.email || undefined,
-        } as any, site);
-        customerId = found.id;
-    }
+    // Заказ заводится у нас всегда (решение владельца 15.10.2026): RetailCRM —
+    // архив на чтение, туда не уходит ни заказ, ни карточка клиента.
 
     const orderData: any = {
         status: order.statusCode || DEFAULT_STATUS,
@@ -180,19 +157,19 @@ export async function createManagerOrder(order: NewOrder): Promise<CreatedOrder>
     if (order.customerComment) orderData.customerComment = order.customerComment;
     if (order.managerComment) orderData.managerComment = order.managerComment;
     orderData.managerId = managerId;
-    if (customerId) orderData.customer = { id: customerId, type: 'customer_corporate' };
-
-    if (ownManager) {
-        const own = await insertOwnOrder({ ...orderData, managerId });
-        return { id: own.id, number: own.number, site: own.order.site };
+    // Карточка клиента: выбранная человеком — как есть, иначе её найдут или
+    // заведут по ИНН и названию при записи заказа.
+    if (order.customerId) {
+        orderData.customer = { id: order.customerId, type: 'customer_corporate' };
+    } else {
+        Object.assign(orderData, clientHintsForOrder({
+            inn: order.inn,
+            legalName: order.companyName,
+            companyName: order.companyName,
+            contactName: order.contactName,
+        }));
     }
 
-    const result = await postRetailCrm('orders/create', 'order', orderData, site);
-    if (!result?.success) {
-        const reason = result?.errors ? JSON.stringify(result.errors) : (result?.errorMsg || 'неизвестная ошибка');
-        throw new Error(`RetailCRM не принял заказ: ${reason}`);
-    }
-
-    const number = result.order?.number || result.number || String(result.id);
-    return { id: Number(result.id), number: String(number), site };
+    const own = await insertOwnOrder({ ...orderData, managerId });
+    return { id: own.id, number: own.number, site: own.order.site };
 }

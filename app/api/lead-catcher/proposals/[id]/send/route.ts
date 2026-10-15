@@ -1,3 +1,4 @@
+import { appendOrderNote } from '@/lib/own-crm/edit-order';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { getSession } from '@/lib/auth';
@@ -72,26 +73,14 @@ function buildProposalEmail(opts: {
 }
 
 // ── Добавить комментарий к заказу в RetailCRM ─────────────────────────────────
+/**
+ * Пометка в заказ: КП отправлено. Пишем в комментарий менеджера у нас — своей
+ * сущности «заметка» нет намеренно, а заметки RetailCRM по нашим заказам не
+ * ставились (заказа там нет).
+ */
 async function addCrmOrderNote(orderId: number, text: string) {
-    try {
-        const url = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
-        const key = process.env.RETAILCRM_API_KEY;
-        const site = process.env.RETAILCRM_SITE;
-        if (!url || !key) return;
-
-        const body = new URLSearchParams();
-        body.append('note', JSON.stringify({ text, managerId: null }));
-        body.append('order', JSON.stringify({ id: orderId }));
-        if (site) body.append('site', site);
-
-        await fetch(`${url.replace(/\/+$/, '')}/api/v5/orders/${orderId}/notes/create?apiKey=${key}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: body.toString(),
-        });
-    } catch (e) {
-        console.error('[proposals/send] addCrmOrderNote error:', e);
-    }
+    await appendOrderNote(orderId, text, 'Ловец Лидов')
+        .catch((e) => console.error('[proposals/send] пометка в заказ:', e));
 }
 
 // ── POST /api/lead-catcher/proposals/[id]/send ───────────────────────────────

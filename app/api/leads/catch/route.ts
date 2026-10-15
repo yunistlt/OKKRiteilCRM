@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { createLeadInCrm } from '@/lib/retailcrm/leads';
+import { appendOrderNote } from '@/lib/own-crm/edit-order';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logError } from '@/lib/error-monitor';
 
@@ -121,10 +122,15 @@ export async function POST(req: Request) {
                 items: finalSpecs.category_name ? [finalSpecs.category_name] : [],
             });
 
-            // Добавляем теги через отдельный запрос к orders/edit
+            // Откуда заявка — строкой в комментарий менеджера: своих тегов у
+            // заказа нет, а метки RetailCRM по нашим заказам не ставились.
             if (crmResult?.id) {
                 crmOrderId = String(crmResult.id);
-                await tagCrmOrder(crmResult.id, ['Калькулятор', 'СНОЛЕКС', 'Ловец_Лидов_ОКК']);
+                await appendOrderNote(
+                    crmResult.id,
+                    'Источник: Калькулятор · СНОЛЕКС · Ловец Лидов',
+                    'Ловец Лидов',
+                ).catch((e) => console.error('[leads/catch] пометка источника:', e));
             }
         } catch (crmError) {
             // Не блокируем ответ клиенту если CRM недоступна
@@ -150,24 +156,3 @@ export async function POST(req: Request) {
     }
 }
 
-// Добавить теги к заказу в RetailCRM
-async function tagCrmOrder(orderId: number, tags: string[]) {
-    try {
-        const url = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
-        const key = process.env.RETAILCRM_API_KEY;
-        const site = process.env.RETAILCRM_SITE;
-        if (!url || !key) return;
-
-        const body = new URLSearchParams();
-        body.append('order', JSON.stringify({ tags: tags.map(t => ({ name: t })) }));
-        if (site) body.append('site', site);
-
-        await fetch(`${url.replace(/\/+$/, '')}/api/v5/orders/${orderId}/edit?apiKey=${key}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: body.toString(),
-        });
-    } catch (e) {
-        console.error('[leads/catch] tagCrmOrder error:', e);
-    }
-}

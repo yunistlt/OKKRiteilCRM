@@ -80,7 +80,7 @@ pagination: { limit, totalCount, currentPage, totalPageCount }
 
 - `GET /api/v5/orders` — `filter[createdAtFrom]`, `filter[startDate]`, `filter[sinceId]`, `limit`, `page`. Ответ: `orders[]`, `pagination`.
 - `GET /api/v5/customers` — `filter[name]` (поиск по телефону/имени).
-- `POST /api/v5/orders/create` — body `order=<JSON>`.
+- ~~`POST /api/v5/orders/create`~~ — не используется с 15.10.2026: заказы заводятся у нас.
 
 ## Телефония — получение звонков (в `lib/retailcrm/calls.ts`)
 

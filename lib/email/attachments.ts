@@ -51,9 +51,27 @@ function metaList(meta: unknown): StoredAttachment[] {
     }));
 }
 
-/** Номер заказа письма: по готовой отметке приёма или по цепочке ответов. */
+/**
+ * Номер заказа письма: по отметке приёма, по уже проставленной связке с
+ * заказом или по цепочке ответов.
+ *
+ * Связку `linked_order_id` ставит приём почты, когда письмо — ответ по
+ * существующему заказу. Без неё вложения таких писем оставались без заказа:
+ * `findOrderByOurReply` ищет по нашим исходящим, а клиент мог ответить на
+ * письмо, которого в этой цепочке нет.
+ */
 async function orderOfLetter(letter: any): Promise<string | null> {
     if (letter.created_crm_order_number) return String(letter.created_crm_order_number);
+
+    if (letter.linked_order_id) {
+        const { data } = await supabase
+            .from('orders')
+            .select('number')
+            .eq('order_id', letter.linked_order_id)
+            .maybeSingle();
+        if ((data as any)?.number) return String((data as any).number);
+    }
+
     const linked = await findOrderByOurReply(letter);
     return linked ? linked.number : null;
 }
@@ -113,7 +131,7 @@ export async function storePendingAttachments(limit = 10): Promise<SaveResult> {
 
     const { data: letters } = await supabase
         .from('incoming_emails')
-        .select('id, imap_uid, folder, from_email, from_name, attachments_meta, created_crm_order_number, in_reply_to, email_refs')
+        .select('id, imap_uid, folder, from_email, from_name, attachments_meta, created_crm_order_number, linked_order_id, in_reply_to, email_refs')
         .eq('has_attachments', true)
         .is('attachments_stored_at', null)
         .order('received_at', { ascending: false })

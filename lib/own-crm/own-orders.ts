@@ -24,9 +24,9 @@ import { orderTotal, validateNewOrder, type NewOrder, type NewOrderItem, type Cr
 import { loadClientRequisites, toOrderContragent } from './client-requisites';
 import { itemDiscountPerUnit, itemPriceWithDiscount, orderTotals } from './discount';
 import { customFieldValueName, itemLabel, managerName, moneyValue, statusName, statusValue, writeOwnHistory, type HistoryEntry } from './history-write';
-import { OWN_ID_BASE, OWN_SITE, isOwnCrmManager, nextOwnOrderNumber, ownItemIds } from './own-order-insert';
+import { OWN_ID_BASE, OWN_SITE, nextOwnOrderNumber, ownItemIds } from './own-order-insert';
 
-export { isOwnCrmManager, nextOwnOrderNumber };
+export { nextOwnOrderNumber };
 
 /** Статус по умолчанию — «Новая». */
 const DEFAULT_STATUS = 'novyi-1';
