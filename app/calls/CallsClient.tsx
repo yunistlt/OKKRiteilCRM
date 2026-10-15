@@ -3,6 +3,7 @@
 // Все звонки компании: кто звонил, кому, по какому заказу, с записью и расшифровкой.
 import { useCallback, useEffect, useState } from 'react';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
+import DialWithOrder from '@/components/calls/DialWithOrder';
 import { useAuth } from '@/components/auth/AuthProvider';
 import ClearFiltersButton from '@/components/ui/ClearFiltersButton';
 
@@ -47,7 +48,6 @@ export default function CallsClient() {
     const { user } = useAuth();
     const [calls, setCalls] = useState<Call[]>([]);
     // Кому сейчас звоним: по номеру телефона, чтобы не дать нажать дважды.
-    const [dialing, setDialing] = useState<string | null>(null);
     const [dialNote, setDialNote] = useState<string | null>(null);
     const [direction, setDirection] = useState('all');
     const [missed, setMissed] = useState(false);
@@ -71,38 +71,6 @@ export default function CallsClient() {
     // Подтверждение подсказанного заказа: после него звонок привязан к заказу
     // способом «указал менеджер».
     const [bindingId, setBindingId] = useState<string | null>(null);
-    /**
-     * Позвонить по номеру из реестра.
-     *
-     * Набирает софтфон менеджера через Телфин — тот же путь, что и кнопка
-     * «Звонок» в карточке клиента. Если у человека не привязан добавочный,
-     * звонить нечем, и мы честно это говорим, а не делаем вид, что набрали.
-     */
-    const dial = async (phone: string) => {
-        if (!user?.retail_crm_manager_id) {
-            setDialNote('Ваша учётка не связана с менеджером — звонить нечем. Скажите администратору.');
-            return;
-        }
-        setDialing(phone);
-        setDialNote(null);
-        try {
-            const res = await fetch('/api/calls/initiate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phoneNumber: phone, managerId: user.retail_crm_manager_id }),
-            });
-            const payload = await res.json();
-            if (!res.ok) throw new Error(payload.error || 'Звонок не пошёл');
-            setDialNote(payload.mock
-                ? 'Демо-режим: звонок не совершён, ключи телефонии не заданы.'
-                : `Звоним на ${phone} — поднимите трубку софтфона.`);
-        } catch (e: any) {
-            setDialNote(e.message);
-        } finally {
-            setDialing(null);
-        }
-    };
-
     const confirmOrder = async (callId: string, orderId: number) => {
         setBindingId(callId);
         try {
@@ -265,14 +233,16 @@ export default function CallsClient() {
                                             В реестре полно автоответчиков, переадресаций
                                             и чужих номеров — набирать их нельзя. */}
                                         {call.phone && call.knownPhone && (
-                                            <button
-                                                type="button"
-                                                disabled={dialing === call.phone}
-                                                onClick={() => void dial(call.phone!)}
-                                                className="ml-2 border border-gray-900 px-2 py-0.5 text-[11px] font-semibold text-gray-900 hover:bg-gray-900 hover:text-white disabled:border-gray-300 disabled:text-gray-400"
-                                            >
-                                                {dialing === call.phone ? 'Звоню…' : 'Позвонить'}
-                                            </button>
+                                            /* Перед гудком спрашиваем заказ: привязка приходит
+                                               вместе с набором, после разговора её взять
+                                               неоткуда (решение владельца 15.10.2026). */
+                                            <span className="ml-2">
+                                                <DialWithOrder
+                                                    phone={call.phone}
+                                                    managerId={user?.retail_crm_manager_id ?? null}
+                                                    onDialed={setDialNote}
+                                                />
+                                            </span>
                                         )}
                                     </td>
                                     {/* Клиент кликабелен и ведёт в карточку — так же,

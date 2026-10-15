@@ -26,6 +26,8 @@ interface IncomingCallState {
   orderNumber?: string;
 }
 
+type DialOrder = { orderId: number; number: string; status: string | null };
+
 export function PhonePanel() {
   const { user } = useAuth();
   const managerId = user?.retail_crm_manager_id ?? null;
@@ -36,6 +38,8 @@ export function PhonePanel() {
   const [activeCall, setActiveCall] = useState<ActiveCallState | null>(null);
   const [incomingCall, setIncomingCall] = useState<IncomingCallState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Какой заказ выбрать перед набором: у номера их несколько. */
+  const [askOrder, setAskOrder] = useState<{ phone: string; orders: DialOrder[] } | null>(null);
 
   const { subscribeToUpdates } = useCallNotifications();
 
@@ -71,20 +75,21 @@ export function PhonePanel() {
     });
   }, [subscribeToUpdates]);
 
-  const handleInitiateCall = useCallback(
-    async (phoneNumber: string) => {
-      setError(null);
-
-      if (!managerId) {
-        setError('К вашей учётной записи не привязан менеджер RetailCRM — позвонить нельзя.');
-        return;
-      }
-
+  /**
+   * Набор с указанием заказа.
+   *
+   * Решение владельца 15.10.2026: набрать «в никуда» нельзя — привязка
+   * приходит вместе с набором, после разговора её взять неоткуда. Один заказ
+   * подставляем молча, несколько — спрашиваем, ни одного — звоним без заказа
+   * (новый клиент, поставщик).
+   */
+  const call = useCallback(
+    async (phoneNumber: string, orderId: number | null) => {
       try {
         const response = await fetch('/api/calls/initiate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phoneNumber, managerId }),
+          body: JSON.stringify({ phoneNumber, managerId, orderId }),
         });
 
         const data = await response.json();
@@ -102,11 +107,46 @@ export function PhonePanel() {
         if (data.mock) {
           setError(data.mockReason || 'Демо-режим: реальный звонок не совершён.');
         }
+        setAskOrder(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Не удалось начать звонок');
       }
     },
     [managerId]
+  );
+
+  const handleInitiateCall = useCallback(
+    async (phoneNumber: string) => {
+      setError(null);
+      setAskOrder(null);
+
+      if (!managerId) {
+        setError('К вашей учётной записи не привязан менеджер RetailCRM — позвонить нельзя.');
+        return;
+      }
+
+      let orders: DialOrder[] = [];
+      try {
+        const res = await fetch(`/api/calls/orders-by-phone?phone=${encodeURIComponent(phoneNumber)}`);
+        const payload = await res.json();
+        if (res.ok) orders = payload.orders || [];
+      } catch {
+        // Заказы не посмотрелись — звонок важнее, набираем без привязки.
+      }
+
+      // Заказ один — спрашивать нечего, он и есть ответ.
+      if (orders.length === 1) {
+        await call(phoneNumber, orders[0].orderId);
+        return;
+      }
+      if (orders.length === 0) {
+        await call(phoneNumber, null);
+        return;
+      }
+
+      setAskOrder({ phone: phoneNumber, orders });
+    },
+    [managerId, call]
   );
 
   const handleAnswerCall = () => {
@@ -187,6 +227,45 @@ export function PhonePanel() {
           <p className="border-b border-amber-300 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-800">
             {error}
           </p>
+        )}
+
+        {/* Заказ спрашиваем до гудка: после разговора привязку взять неоткуда
+            (решение владельца 15.10.2026). */}
+        {askOrder && (
+          <div className="border-b border-gray-200 bg-amber-50 px-3 py-2">
+            <div className="mb-1 text-[10px] font-black uppercase tracking-widest text-gray-500">
+              По какому заказу звоните на {askOrder.phone}?
+            </div>
+            <div className="max-h-40 overflow-auto">
+              {askOrder.orders.map((order) => (
+                <button
+                  key={order.orderId}
+                  type="button"
+                  onClick={() => void call(askOrder.phone, order.orderId)}
+                  className="block w-full border-b border-amber-200 px-1 py-1.5 text-left text-xs hover:bg-amber-100"
+                >
+                  <span className="font-semibold text-gray-900">{order.number}</span>
+                  {order.status && <span className="ml-2 text-gray-600">{order.status}</span>}
+                </button>
+              ))}
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => void call(askOrder.phone, null)}
+                className="border border-gray-300 bg-white px-2 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-100"
+              >
+                Позвонить без заказа
+              </button>
+              <button
+                type="button"
+                onClick={() => setAskOrder(null)}
+                className="px-1 text-[11px] text-gray-500 hover:text-gray-900"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
         )}
 
         <DialPad
