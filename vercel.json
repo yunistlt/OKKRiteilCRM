@@ -126,7 +126,7 @@
     },
     {
       "path": "/api/cron/system-jobs/nightly-reconciliation",
-      "schedule": "*/10 0-5 * * *"
+      "schedule": "*/10 19-23 * * *"
     },
     {
       "path": "/api/cron/system-jobs/grade-eval",
