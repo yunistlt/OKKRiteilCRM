@@ -1,9 +1,9 @@
 /**
- * Повторная проводка платежа: считаем попытки и решаем, звать ли человека.
+ * Повторный разнос оплаты: считаем попытки и решаем, звать ли человека.
  *
- * Платёж, привязанный к заказу, но не проведённый, крон пробует снова каждые
+ * Платёж, привязанный к заказу, но не разнесённый, крон пробует снова каждые
  * несколько минут — деньги не теряются. Но сообщать об этом человеку каждый раз
- * бессмысленно: 30.09.2026 при поломке магазина в RetailCRM в чат ушёл поток
+ * бессмысленно: 30.09.2026 при поломке на стороне CRM в чат ушёл поток
  * одинаковых «Оплата не проведена».
  *
  * Правило: сообщаем при первой ошибке, потом — только если текст ошибки
@@ -13,18 +13,21 @@ import { supabase } from '@/utils/supabase';
 
 const REPEAT_AFTER_MS = 6 * 60 * 60 * 1000;
 
-/** Сбой, который чинится не у нас: ждать ремонта RetailCRM, руками делать нечего. */
-export function isCrmOutage(error: string): boolean {
-    const text = String(error).toLowerCase();
-    return text.includes("parameter 'site'") || text.includes('parameter "site"');
+/**
+ * Сбой, который руками не чинится: заказа ещё нет в нашей базе — он доедет
+ * синхронизацией, и оплата ляжет сама. Звать человека незачем.
+ */
+export function isWaitingForOrder(error: string): boolean {
+    // Сверяем по концовке причины: в начале может стоять номер заказа.
+    return String(error).toLowerCase().includes('не найден в базе окк');
 }
 
 /** Объяснение для человека — чтобы он понимал, ждать или чинить. */
 export function explainPushError(error: string, attempts: number): string {
-    if (isCrmOutage(error)) {
-        return 'RetailCRM не принимает магазин этого заказа — сбой на их стороне. '
-            + `Платёж сохранён и проводится автоматически, попыток уже ${attempts}. `
-            + 'Как только магазин заработает, оплата пройдёт сама — делать ничего не нужно.';
+    if (isWaitingForOrder(error)) {
+        return 'Заказа ещё нет в базе ОКК — он приедет синхронизацией. '
+            + `Платёж сохранён и разносится автоматически, попыток уже ${attempts}. `
+            + 'Как только заказ появится, оплата ляжет сама — делать ничего не нужно.';
     }
     return 'Платёж сохранён и будет повторён автоматически. Если ошибка повторяется — нужен разбор.';
 }
@@ -67,7 +70,7 @@ export async function registerPushFailure(paymentId: string | number, error: str
     return { attempts, shouldNotify, explanation: explainPushError(error, attempts) };
 }
 
-/** Проводка удалась — забываем накопленные жалобы. */
+/** Разнос удался — забываем накопленные жалобы. */
 export async function clearPushFailure(paymentId: string | number): Promise<void> {
     await supabase
         .from('point_payments')

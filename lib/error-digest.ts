@@ -74,13 +74,13 @@ async function fromEmails(): Promise<ErrorItem[]> {
     }];
 }
 
-/** Оплаты, которые не удалось провести в RetailCRM. */
+/** Оплаты, которые не удалось разнести в заказ. */
 async function fromPayments(): Promise<ErrorItem[]> {
     const { data } = await supabase
         .from('point_payments')
-        .select('retailcrm_error, push_attempts')
-        .not('retailcrm_error', 'is', null)
-        .is('retailcrm_synced_at', null)
+        .select('posting_error, push_attempts')
+        .not('posting_error', 'is', null)
+        .is('posted_at', null)
         .not('matched_order_id', 'is', null);
 
     const rows = (data || []) as any[];
@@ -90,7 +90,7 @@ async function fromPayments(): Promise<ErrorItem[]> {
 
     return [{
         where: 'Оплаты',
-        what: `${rows.length} платежей не проведены в CRM: ${short(rows[0].retailcrm_error)}`,
+        what: `${rows.length} платежей не разнесены в заказы: ${short(rows[0].posting_error)}`,
         count: rows.length,
     }];
 }

@@ -1,21 +1,21 @@
 /**
- * Повторы проводки платежа: деньги не теряются, а человек не тонет в
- * одинаковых сообщениях. Инцидент 30.09.2026 — поломка магазина в RetailCRM.
+ * Повторы разноса оплаты: деньги не теряются, а человек не тонет в
+ * одинаковых сообщениях. Инцидент 30.09.2026 — поток «Оплата не проведена».
  */
 import { describe, it, expect } from 'vitest';
-import { isCrmOutage, explainPushError } from '@/lib/payments/push-retry';
+import { isWaitingForOrder, explainPushError } from '@/lib/payments/push-retry';
 
-describe('сбой проводки платежа', () => {
-    it('ошибку магазина узнаём как сбой на стороне RetailCRM', () => {
-        expect(isCrmOutage("RetailCRM payment create failed: Invalid value for parameter 'site'")).toBe(true);
+describe('сбой разноса оплаты', () => {
+    it('отсутствие заказа в базе узнаём как ожидание, а не поломку', () => {
+        expect(isWaitingForOrder('Оплата не разнесена: заказ 54755 не найден в базе ОКК')).toBe(true);
     });
 
-    it('прочие ошибки не выдаём за сбой CRM', () => {
-        expect(isCrmOutage('{"externalId":"This external id is already used"}')).toBe(false);
+    it('прочие ошибки не выдаём за ожидание заказа', () => {
+        expect(isWaitingForOrder('Не удалось записать оплату: duplicate key')).toBe(false);
     });
 
-    it('при сбое CRM объясняем, что делать ничего не нужно', () => {
-        const text = explainPushError("Invalid value for parameter 'site'", 7);
+    it('пока заказа нет, объясняем, что делать ничего не нужно', () => {
+        const text = explainPushError('заказ 54755 не найден в базе ОКК', 7);
         expect(text).toContain('делать ничего не нужно');
         expect(text).toContain('попыток уже 7');
     });

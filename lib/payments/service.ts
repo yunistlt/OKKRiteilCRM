@@ -1,81 +1,24 @@
 import { supabase } from '@/utils/supabase';
-import { NormalizedPointPayment, kopecksToRubles, isBankSyncExternalId } from './types';
+import { NormalizedPointPayment, kopecksToRubles } from './types';
 import { matchPaymentToOrder, classifyNonCustomerPayment } from './matching';
 import { notifyPaymentTelegram, notifyPendingPaymentsTelegram, notifyPaymentPushErrorTelegram } from './notify';
 import { classifyProject, type ProjectKey } from './projects';
 import { registerPushFailure, clearPushFailure, explainPushError } from './push-retry';
 import { moveOrderToProductionAfterPayment } from './production';
-import {
-  createRetailCrmOrderPayment,
-  deleteRetailCrmPayment,
-  toRetailCrmPaidAt,
-} from '@/lib/retailcrm/payments';
-import { fetchRetailCrmOrder } from '@/lib/retailcrm/orders';
 import { addOwnPayment } from '@/lib/own-crm/payments';
 
-// Единственный источник правды по оплатам — банковский синк (выписка). Дубль оплаты
-// (напр. вручную «оплаченный» счёт invoicejur на ту же сумму, что и наш банковский платёж)
-// УДАЛЯЕМ — статус не меняем. Удаляем только НЕ наши (без externalId tochka-/tbank-)
-// оплаченные записи, сумма которых совпадает с суммой банковского платежа (страховка).
-const RECEIVED_STATUSES = new Set(['paid', 'check-off-full', 'payment-start']);
+/**
+ * Оплата из банка разносится в заказ ОКК — в RetailCRM ничего не уходит
+ * (решение владельца 15.10.2026: своя CRM единственная система учёта, RetailCRM
+ * архив на чтение). Раньше платёж проводился методом `orders/payments/create`,
+ * и на этом пути заказ мог вовсе не доехать: ошибка магазина заказа, правило
+ * «один неоплаченный платёж», удалённые вручную дубли.
+ *
+ * Теперь путь один на все заказы, и свои, и приехавшие из RetailCRM: строка в
+ * `order_payments` со `source = 'okk'` (см. lib/own-crm/payments.ts).
+ */
 
-function isBankSyncPayment(p: any): boolean {
-  return isBankSyncExternalId(p?.externalId);
-}
-
-async function reconcileOrderPaymentsToBank(order: any, newBankAmountRub: number): Promise<number> {
-  const pays = Object.values(order?.payments || {}) as any[];
-  // Суммы, которые считаются «поступившими по банку»: существующие банковские + новый платёж.
-  const bankAmounts = new Set<number>([newBankAmountRub]);
-  for (const p of pays) {
-    if (isBankSyncPayment(p) && RECEIVED_STATUSES.has(p?.status)) bankAmounts.add(Number(p.amount));
-  }
-  let deleted = 0;
-  for (const p of pays) {
-    if (p?.id && RECEIVED_STATUSES.has(p?.status) && !isBankSyncPayment(p) && bankAmounts.has(Number(p.amount))) {
-      const res = await deleteRetailCrmPayment(Number(p.id)).catch(() => ({ success: false }));
-      if (res.success) deleted++;
-    }
-  }
-  return deleted;
-}
-
-// Статус нашего платежа — всегда 'paid' (Оплачен полностью). Банковское поступление —
-// это ПОЛНОСТЬЮ полученные деньги по своей строке платежа, а не «частичная оплата» заказа
-// (частичность заказа RetailCRM выводит сам из суммы завершённых платежей vs суммы заказа).
-// ВАЖНО: статус 'check-off-full' («Частичная оплата») в RetailCRM имеет paymentComplete=false,
-// т.е. считается НЕОПЛАЧЕННЫМ. RetailCRM запрещает держать >1 неоплаченного платежа на заказе
-// («leave only one unpaid cash payment») и на этом отклоняет ЛЮБОЙ orders/edit — в т.ч. перевод
-// в производство: если рядом висит неоплаченный счёт менеджера, наша «частичная» оплата даёт
-// второй неоплаченный платёж и блокирует смену статуса. Помечая приход как 'paid', оставляем
-// неоплаченным максимум счёт менеджера (один) — правило проходит, заказ переводится.
-
-export type CrmPosting = 'posted_auto' | 'posted_manual' | 'not_posted';
-
-// ЧЕСТНОЕ состояние ПРОВОДКИ платежа на заказе RetailCRM (отдельно от неизменного факта прихода).
-// Только читает заказ, ничего не мутирует. Логика:
-//   • наш externalId есть на заказе                       → posted_auto (проведено нами);
-//   • нашего нет, но есть НЕ наша оплата на ту же сумму    → posted_manual (провёл менеджер вручную);
-//   • ни нашей, ни ручной оплаты на эту сумму нет          → not_posted.
-export function computeCrmPosting(
-  order: any,
-  row: PointPaymentRow,
-): { posting: CrmPosting; crmPaymentId: string | null } {
-  const pays = Object.values(order?.payments || {}) as any[];
-  const ourExt = `${row.source}-${row.external_payment_id}`;
-  const ours = pays.find((p) => p?.externalId === ourExt);
-  if (ours) {
-    return { posting: 'posted_auto', crmPaymentId: ours.id != null ? String(ours.id) : row.retailcrm_payment_id ?? null };
-  }
-  const amountRub = kopecksToRubles(Number(row.amount_kopecks));
-  const manual = pays.find(
-    (p) => !isBankSyncPayment(p) && RECEIVED_STATUSES.has(p?.status) && Math.abs(Number(p?.amount) - amountRub) <= 0.5,
-  );
-  if (manual) return { posting: 'posted_manual', crmPaymentId: null };
-  return { posting: 'not_posted', crmPaymentId: null };
-}
-
-// Сервис распределения платежей: приём (идемпотентно) → матчинг → проброс в RetailCRM.
+// Сервис распределения платежей: приём (идемпотентно) → матчинг → разнос в заказ ОКК.
 
 const SELECT_COLUMNS =
   'id, source, external_payment_id, webhook_type, customer_code, signature_verified, ' +
@@ -83,8 +26,8 @@ const SELECT_COLUMNS =
   'payer_name, payer_inn, payer_kpp, payer_account, payer_bank_bic, payer_bank_name, account_id, ' +
   'recipient_name, recipient_inn, ' +
   'status, match_method, match_confidence, extracted_invoice_number, extracted_invoice_numbers, ' +
-  'match_candidates, matched_order_number, matched_order_id, retailcrm_payment_id, ' +
-  'retailcrm_synced_at, retailcrm_error, crm_posting, posting_checked_at, ' +
+  'match_candidates, matched_order_number, matched_order_id, ' +
+  'posted_at, posting_error, ' +
   'raw_payload, notified_at, pending_notified_at, renotify_requested_at, created_at, updated_at';
 
 export interface PointPaymentRow {
@@ -102,7 +45,8 @@ export interface PointPaymentRow {
   status: string;
   matched_order_id: number | null;
   matched_order_number: string | null;
-  retailcrm_synced_at: string | null;
+  /** Когда оплата разнесена в заказ ОКК. NULL — ещё не разнесена. */
+  posted_at: string | null;
   [key: string]: any;
 }
 
@@ -186,146 +130,117 @@ export async function ingestPointPayment(
   return { row: existing as PointPaymentRow, isNew: false };
 }
 
-async function pushMatchedPaymentToCrm(
-  row: PointPaymentRow,
-): Promise<{ movedToProduction: boolean; productionStatusName?: string; productionNotMovedReason?: string }> {
+/** Итог разноса оплаты в заказ: проведена ли и уехал ли заказ в производство. */
+export interface PostPaymentResult {
+  posted: boolean;
+  movedToProduction: boolean;
+  productionStatusName?: string;
+  productionNotMovedReason?: string;
+}
+
+/**
+ * Разнести оплату в заказ ОКК и перевести заказ в производство.
+ *
+ * Путь один на все заказы — и на свои, и на приехавшие когда-то из RetailCRM:
+ * заказ уже лежит у нас, значит и оплата пишется к нам, в `order_payments`.
+ * Наружу, в RetailCRM, не уходит ничего.
+ *
+ * Бросает, если разнести не удалось: платёж остаётся без `posted_at`, и крон
+ * берёт его на следующем прогоне — деньги не теряются.
+ */
+async function postPaymentToOrder(row: PointPaymentRow): Promise<PostPaymentResult> {
   const amountRub = kopecksToRubles(Number(row.amount_kopecks));
 
-  // Свой заказ: в RetailCRM его нет, платёж писать некуда — ведём в своём
-  // журнале оплат (решение владельца 30.09.2026, менеджер целиком у нас).
-  if (row.matched_order_id) {
-    const { data: own } = await supabase
-      .from('orders')
-      .select('id, number, is_own')
-      .eq('order_id', row.matched_order_id)
-      .maybeSingle();
+  // Заказ ищем по id из матчинга: оплату вносим в карточку, которая у нас есть.
+  const { data: order } = row.matched_order_id
+    ? await supabase
+        .from('orders')
+        .select('id, number')
+        .eq('order_id', row.matched_order_id)
+        .maybeSingle()
+    : { data: null };
 
-    if ((own as any)?.is_own) {
-      await addOwnPayment({
-        orderId: Number((own as any).id),
-        orderNumber: String((own as any).number ?? row.matched_order_number ?? ''),
-        amount: amountRub,
-        paidAt: String(row.payment_date || (row.payment_datetime || '').slice(0, 10)),
-        method: 'Банковский перевод',
-        payerName: row.payer_name ?? null,
-        purpose: row.purpose ?? null,
-        pointPaymentId: Number(row.id),
-        createdBy: 'разнос оплат',
-      });
-
-      await supabase
-        .from('point_payments')
-        .update({
-          retailcrm_synced_at: new Date().toISOString(),
-          retailcrm_error: null,
-          crm_posting: 'posted_auto',
-          posting_checked_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', row.id);
-
-      await clearPushFailure(row.id).catch(() => undefined);
-
-      /**
-       * Свой заказ после оплаты переводим в производство так же, как заказ
-       * RetailCRM. Раньше здесь стоял отказ «передают руками»: механизм умел
-       * только RetailCRM, и оплаченный заказ висел на «Счёт на оплате»
-       * (02.10.2026, заказ 54836).
-       *
-       * Передача в сам ЦехУспех — отдельная работа (раздел E бэклога): туда
-       * заказ пока попадает руками, но статус в нашей базе уже меняется.
-       */
-      const moved = await moveOrderToProductionAfterPayment(row.matched_order_id);
-      return {
-        movedToProduction: moved.moved,
-        productionStatusName: moved.statusName,
-        productionNotMovedReason: moved.notMovedReason,
-      };
-    }
+  if (!order) {
+    await registerPostingFailure(row, 'заказ не найден в базе ОКК');
+    throw new Error(`Оплата не разнесена: заказ ${row.matched_order_number ?? row.matched_order_id} не найден в базе ОКК`);
   }
 
-  // Тянем заказ один раз: для сверки дублей оплат и для гарда производства (статус/site).
-  const order = row.matched_order_id ? await fetchRetailCrmOrder(row.matched_order_id) : null;
+  try {
+    await addOwnPayment({
+      orderId: Number((order as any).id),
+      orderNumber: String((order as any).number ?? row.matched_order_number ?? ''),
+      amount: amountRub,
+      paidAt: String(row.payment_date || (row.payment_datetime || '').slice(0, 10)),
+      method: 'Банковский перевод',
+      payerName: row.payer_name ?? null,
+      purpose: row.purpose ?? null,
+      pointPaymentId: Number(row.id),
+      createdBy: 'разнос оплат',
+    });
+  } catch (e: any) {
+    await registerPostingFailure(row, String(e?.message || e));
+    throw e;
+  }
 
-  const result = await createRetailCrmOrderPayment({
-    orderId: row.matched_order_id,
-    orderNumber: row.matched_order_number,
-    amountRub,
-    paidAt: toRetailCrmPaidAt(row.payment_datetime || row.payment_date),
-    externalId: `${row.source}-${row.external_payment_id}`,
-    comment: row.purpose || undefined,
-    // Приход = полностью полученные деньги → 'paid' (см. пояснение выше про правило RetailCRM).
-    status: 'paid',
-  });
+  await supabase
+    .from('point_payments')
+    .update({
+      posted_at: new Date().toISOString(),
+      posting_error: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', row.id);
 
-  if (result.success) {
-    await supabase
-      .from('point_payments')
-      .update({
-        retailcrm_payment_id: result.paymentId ?? null,
-        retailcrm_synced_at: new Date().toISOString(),
-        retailcrm_error: null,
-        // Проводку провели мы, только что — фиксируем честное состояние (сверка потом подтвердит/поправит).
-        crm_posting: 'posted_auto',
-        posting_checked_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', row.id);
+  await clearPushFailure(row.id).catch(() => undefined);
 
-    // Банк — источник правды: удаляем чужие (не из синка) оплаченные дубли на заказе,
-    // чтобы не задваивать деньги (напр. вручную «оплаченный» счёт). Не критично.
-    if (order) await reconcileOrderPaymentsToBank(order, amountRub).catch(() => 0);
+  /**
+   * Оплата пришла — заказ уходит в производство. Статус пишется в нашей базе
+   * через `editOrder` (одна дверь), оттуда же его забирает ЦехУспех.
+   * Не критично: сбой перевода не отменяет факт разнесённой оплаты.
+   */
+  const moved = await moveOrderToProductionAfterPayment(row.matched_order_id);
+  return {
+    posted: true,
+    movedToProduction: moved.moved,
+    productionStatusName: moved.statusName,
+    productionNotMovedReason: moved.notMovedReason,
+  };
+}
 
-    // После оплаты — перевести заказ в «Передано в производство» (не откатывая назад).
-    // Не критично: сбой не должен ломать проброс оплаты (функция не бросает).
-    await clearPushFailure(row.id).catch(() => undefined);
+/**
+ * Записать неудачу разноса и позвать человека — но не на каждую попытку.
+ *
+ * Крон пробует снова каждые несколько минут, и при длительной поломке человек
+ * получал поток одинаковых сообщений (инцидент 30.09.2026).
+ */
+async function registerPostingFailure(row: PointPaymentRow, reason: string): Promise<void> {
+  await supabase
+    .from('point_payments')
+    .update({ posting_error: reason, updated_at: new Date().toISOString() })
+    .eq('id', row.id);
 
-    // Статус заказа функция читает в нашей базе сама — передавать нечего.
-    const mv = await moveOrderToProductionAfterPayment(row.matched_order_id);
-    return {
-      movedToProduction: mv.moved,
-      productionStatusName: mv.statusName,
-      productionNotMovedReason: mv.notMovedReason,
-    };
-  } else {
-    const reason = result.error ?? 'unknown RetailCRM error';
-    await supabase
-      .from('point_payments')
-      .update({
-        retailcrm_error: reason,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', row.id);
+  const failure = await registerPushFailure(row.id, reason).catch(() => ({
+    attempts: 1,
+    shouldNotify: true,
+    explanation: explainPushError(reason, 1),
+  }));
 
-    // Деньги есть, а в CRM их нет — молчать нельзя. Но и повторять одно и то же
-    // сообщение при каждой попытке тоже нельзя: платёж крон пробует снова каждые
-    // несколько минут, и при поломке на стороне RetailCRM человек получал поток
-    // одинаковых «Оплата не проведена» (30.09.2026).
-    const failure = await registerPushFailure(row.id, reason).catch(() => ({
-      attempts: 1,
-      shouldNotify: true,
-      explanation: explainPushError(reason, 1),
-    }));
-
-    if (failure.shouldNotify) {
-      await notifyPaymentPushErrorTelegram(row, reason, failure.explanation).catch((e) =>
-        console.error('[payments] push error notify failed:', e?.message || e),
-      );
-    }
-
-    throw new Error(`RetailCRM payment create failed: ${reason}`);
+  if (failure.shouldNotify) {
+    await notifyPaymentPushErrorTelegram(row, reason, failure.explanation).catch((e) =>
+      console.error('[payments] posting error notify failed:', e?.message || e),
+    );
   }
 }
 
 /**
  * Обработка одного платежа: матчинг и (при уверенном совпадении + проверенной
- * подписи) проброс в RetailCRM. Неоднозначные/непроверенные — в очередь на разбор.
+ * подписи) разнос в заказ ОКК. Неоднозначные/непроверенные — в очередь на разбор.
  */
 export async function processPointPayment(row: PointPaymentRow): Promise<{ status: string }> {
   // Уже привязан, но не проброшен в CRM — повторяем только проброс.
-  if ((row.status === 'matched' || row.status === 'manual') && row.matched_order_id && !row.retailcrm_synced_at) {
-    // Уже привязан (авто или вручную), но не проброшен — повторяем только проброс, не пере-матч.
-    await pushMatchedPaymentToCrm(row);
+  if ((row.status === 'matched' || row.status === 'manual') && row.matched_order_id && !row.posted_at) {
+    // Уже привязан (авто или вручную), но не разнесён — повторяем только разнос, не пере-матч.
+    await postPaymentToOrder(row);
     return { status: row.status };
   }
 
@@ -397,11 +312,9 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
     .single();
   if (error) throw error;
 
-  let push: { movedToProduction: boolean; productionStatusName?: string; productionNotMovedReason?: string } = {
-    movedToProduction: false,
-  };
+  let push: PostPaymentResult = { posted: false, movedToProduction: false };
   if (autoMatch && updated) {
-    push = await pushMatchedPaymentToCrm(updated as PointPaymentRow);
+    push = await postPaymentToOrder(updated as PointPaymentRow);
   }
 
   // Уведомление об оплате в Telegram — один раз на платёж:
@@ -410,6 +323,9 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
   const u = updated as PointPaymentRow;
   if (!row.notified_at && updated && (u.status === 'matched' || project === 'stolyarka' || project === 'consulting')) {
     await notifyPaymentTelegram(u, {
+      // Признак разноса берём из результата, а не из снимка `updated`: снимок
+      // сделан ДО разноса и всегда показывал «ещё не разнесена».
+      posted: push.posted,
       movedToProduction: push.movedToProduction,
       productionStatusName: push.productionStatusName,
       productionNotMovedReason: push.productionNotMovedReason,
@@ -497,7 +413,7 @@ export async function resendRequestedNotifications(limit = 20): Promise<number> 
 
 /**
  * Ручная привязка платежа к заказу оператором.
- * Пробрасывает платёж в RetailCRM независимо от статуса подписи (человек подтвердил).
+ * Разносит платёж в заказ независимо от статуса подписи (человек подтвердил).
  */
 export async function assignPointPaymentToOrder(params: {
   paymentId: number;
@@ -517,8 +433,8 @@ export async function assignPointPaymentToOrder(params: {
       reviewed_by: params.reviewedBy,
       reviewed_at: new Date().toISOString(),
       review_note: params.note ?? null,
-      retailcrm_synced_at: null,
-      retailcrm_error: null,
+      posted_at: null,
+      posting_error: null,
       updated_at: new Date().toISOString(),
     })
     .eq('id', params.paymentId)
@@ -526,7 +442,7 @@ export async function assignPointPaymentToOrder(params: {
     .single();
   if (error) throw error;
 
-  await pushMatchedPaymentToCrm(row as PointPaymentRow);
+  await postPaymentToOrder(row as PointPaymentRow);
   return { status: 'manual' };
 }
 
@@ -593,64 +509,21 @@ export async function ignorePointPayment(params: {
   if (error) throw error;
 }
 
-/** Строки, требующие обработки воркером: новые + привязанные, но не проброшенные. */
+/** Строки, требующие обработки воркером: новые + привязанные, но не разнесённые. */
 export async function claimProcessablePayments(limit = 10): Promise<PointPaymentRow[]> {
-  // Новые (ещё не обработанные) + привязанные, но не проброшенные в CRM (нужен ретрай).
+  // Новые (ещё не обработанные) + привязанные, но не разнесённые в заказ (нужен ретрай).
   const { data, error } = await supabase
     .from('point_payments')
     .select(SELECT_COLUMNS)
     .or(
       'and(status.eq.pending_match,processed_at.is.null),' +
-        'and(status.eq.matched,retailcrm_synced_at.is.null),' +
-        'and(status.eq.manual,retailcrm_synced_at.is.null)',
+        'and(status.eq.matched,posted_at.is.null),' +
+        'and(status.eq.manual,posted_at.is.null)',
     )
     .order('created_at', { ascending: true })
     .limit(limit);
   if (error) throw error;
   return (data || []) as PointPaymentRow[];
-}
-
-/**
- * Сверка ПРОВОДКИ с RetailCRM — чтобы БД не врала, когда проводку в CRM изменили/удалили/внесли
- * вручную. READ-ONLY по отношению к CRM и к ФАКТУ прихода: обновляет только crm_posting /
- * retailcrm_payment_id / posting_checked_at, НЕ пере-пушит и НЕ трогает поля прихода
- * (source/amount/purpose/payer/raw_payload). Берём сматченные на заказ платежи, давно не
- * проверявшиеся (posting_checked_at NULL/старые), небольшим батчем — со временем сверяются все.
- */
-export async function reconcileCrmPostings(limit = 10): Promise<number> {
-  const { data, error } = await supabase
-    .from('point_payments')
-    .select(SELECT_COLUMNS)
-    .not('matched_order_id', 'is', null)
-    .order('posting_checked_at', { ascending: true, nullsFirst: true })
-    .limit(limit);
-  if (error) throw error;
-  const rows = (data || []) as PointPaymentRow[];
-
-  let reconciled = 0;
-  for (const row of rows) {
-    if (row.matched_order_id == null) continue; // страховка (фильтр уже отсёк null)
-    try {
-      const order = await fetchRetailCrmOrder(row.matched_order_id);
-      const { posting, crmPaymentId } = computeCrmPosting(order, row);
-      const patch: Record<string, any> = {
-        crm_posting: posting,
-        // Не держим протухший id, если нашего платежа на заказе больше нет (приход при этом неизменен).
-        retailcrm_payment_id: posting === 'posted_auto' ? crmPaymentId ?? row.retailcrm_payment_id ?? null : null,
-        posting_checked_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      await supabase.from('point_payments').update(patch).eq('id', row.id);
-      reconciled++;
-    } catch {
-      // Сверка не критична: отмечаем попытку, чтобы не залипать на одной строке.
-      await supabase
-        .from('point_payments')
-        .update({ posting_checked_at: new Date().toISOString() })
-        .eq('id', row.id);
-    }
-  }
-  return reconciled;
 }
 
 /**
@@ -666,7 +539,7 @@ export async function setPointPaymentProject(params: {
   project: ProjectKey;
   reviewedBy: string;
 }): Promise<void> {
-  // Привязанный к заказу платёж проект не меняет: он уже проведён в RetailCRM.
+  // Привязанный к заказу платёж проект не меняет: он уже разнесён в заказ.
   const { data: row } = await supabase
     .from('point_payments')
     .select('matched_order_id')
