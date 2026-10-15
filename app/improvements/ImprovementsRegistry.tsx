@@ -11,7 +11,7 @@
  * доработки, а выполненные свёрнуты внизу отдельным списком. Раздел и заказ —
  * необязательные: чем проще форма, тем чаще в неё пишут.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type ClipboardEvent, useCallback, useEffect, useRef, useState } from 'react';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import { NAV_GROUPS } from '@/lib/nav';
 
@@ -60,6 +60,41 @@ export default function ImprovementsRegistry() {
     const [sending, setSending] = useState(false);
     const [showDone, setShowDone] = useState(false);
     const fileInput = useRef<HTMLInputElement>(null);
+    /**
+     * Скриншот: один на доработку, откуда бы он ни пришёл — из буфера или
+     * файлом. Владелец 15.10.2026: «а то файлом это неудобно».
+     */
+    const [shot, setShot] = useState<File | null>(null);
+    const [shotPreview, setShotPreview] = useState<string | null>(null);
+
+    const attach = useCallback((file: File | null) => {
+        setShot(file);
+        setShotPreview((current) => {
+            if (current) URL.revokeObjectURL(current);
+            return file ? URL.createObjectURL(file) : null;
+        });
+    }, []);
+
+    /**
+     * Картинка из буфера прямо в поле: Cmd+V после снимка экрана.
+     *
+     * Браузер кладёт её в `clipboardData` без имени файла («image.png»), и
+     * отличить её от скопированного текста можно только по типу.
+     */
+    const pasteShot = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+        const image = Array.from(event.clipboardData?.items ?? [])
+            .find((item) => item.kind === 'file' && item.type.startsWith('image/'));
+        if (!image) return;
+
+        const file = image.getAsFile();
+        if (!file) return;
+
+        // Текст из буфера не трогаем — вставляем только картинку.
+        event.preventDefault();
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        attach(new File([file], file.name || `screenshot-${stamp}.png`, { type: file.type || 'image/png' }));
+        if (fileInput.current) fileInput.current.value = '';
+    };
 
     const load = useCallback(async () => {
         try {
@@ -88,8 +123,7 @@ export default function ImprovementsRegistry() {
             form.set('text', text.trim());
             if (section) form.set('section', section);
             if (orderNumber.trim()) form.set('orderNumber', orderNumber.trim());
-            const file = fileInput.current?.files?.[0];
-            if (file) form.set('screenshot', file);
+            if (shot) form.set('screenshot', shot);
 
             const res = await fetch('/api/improvements', { method: 'POST', body: form });
             const payload = await res.json();
@@ -98,6 +132,7 @@ export default function ImprovementsRegistry() {
             setText('');
             setSection('');
             setOrderNumber('');
+            attach(null);
             if (fileInput.current) fileInput.current.value = '';
             await load();
         } catch (e: any) {
@@ -181,10 +216,31 @@ export default function ImprovementsRegistry() {
                 <textarea
                     value={text}
                     onChange={(e) => setText(e.target.value)}
+                    onPaste={pasteShot}
                     rows={3}
-                    placeholder="Что доработать? Например: в списке звонков не видно, по какому заказу звонили."
+                    placeholder="Что доработать? Например: в списке звонков не видно, по какому заказу звонили. Скриншот можно вставить сюда же — Cmd+V."
                     className="w-full border border-gray-300 px-3 py-2 text-sm"
                 />
+
+                {/* Вставленный скриншот виден сразу: иначе непонятно,
+                    прилетела картинка или нет. */}
+                {shotPreview && (
+                    <div className="mt-2 flex items-center gap-2 border border-gray-200 bg-gray-50 p-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={shotPreview} alt="Скриншот" className="max-h-24 border border-gray-300" />
+                        <div className="text-xs text-gray-600">
+                            <div className="font-semibold text-gray-900">{shot?.name}</div>
+                            <div>{Math.round((shot?.size ?? 0) / 1024)} КБ</div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => { attach(null); if (fileInput.current) fileInput.current.value = ''; }}
+                            className="ml-auto border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
+                        >
+                            Убрать
+                        </button>
+                    </div>
+                )}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                     <select
                         value={section}
@@ -206,6 +262,7 @@ export default function ImprovementsRegistry() {
                         ref={fileInput}
                         type="file"
                         accept="image/*"
+                        onChange={(e) => attach(e.target.files?.[0] ?? null)}
                         className="text-xs text-gray-600 file:mr-2 file:border file:border-gray-300 file:bg-white file:px-2 file:py-1 file:text-xs"
                     />
                     <button
