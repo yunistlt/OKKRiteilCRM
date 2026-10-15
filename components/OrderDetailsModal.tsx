@@ -3307,6 +3307,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             onClose={() => setPanel(null)}
                             onTasksChanged={(done, total) => setTaskCount({ done, total })}
                             onMailUnread={setMailUnread}
+                            onReload={() => void fetchDetails()}
                         />
                     </div>
                 )}

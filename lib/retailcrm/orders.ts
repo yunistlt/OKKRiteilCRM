@@ -432,6 +432,37 @@ export async function fetchRetailCrmHistoryBySinceId(params: {
   };
 }
 
+/**
+ * Вся история одного заказа из RetailCRM, страницами по 100.
+ *
+ * Нужна кнопке «Скачать историю из ритейла» в карточке: полная история до
+ * 01.01.2025 нам не переносилась (боевой синк начинается с этой даты), и у
+ * старых заказов в ОКК видны только смены статуса. По заказу 32321, например,
+ * в RetailCRM 66 записей против наших 5 — жалоба 15.10.2026.
+ */
+export async function fetchRetailCrmOrderHistory(orderId: number) {
+  const all: any[] = [];
+  let page = 1;
+
+  for (;;) {
+    const searchParams = new URLSearchParams();
+    searchParams.set('page', String(page));
+    searchParams.set('limit', '100');
+    searchParams.set('filter[orderId]', String(orderId));
+
+    const data = await fetchRetailCrm('orders/history', searchParams);
+    all.push(...(data.history || []));
+
+    const pagination = data.pagination;
+    if (!pagination || pagination.currentPage >= pagination.totalPageCount) break;
+    page++;
+    // Заказ с историей длиннее этого — аномалия; упрёмся, но не зациклимся.
+    if (page > 50) break;
+  }
+
+  return all;
+}
+
 export async function upsertRetailCrmOrders(orders: any[]) {
   if (!orders.length) {
     return [];

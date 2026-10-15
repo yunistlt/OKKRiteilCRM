@@ -27,6 +27,8 @@ interface OrderSidePanelProps {
     onClose: () => void;
     onTasksChanged?: (done: number, total: number) => void;
     onMailUnread?: (count: number) => void;
+    /** Перечитать карточку — после того, как историю дотянули из RetailCRM. */
+    onReload?: () => void;
 }
 
 const TITLES: Record<PanelKind, string> = {
@@ -36,7 +38,7 @@ const TITLES: Record<PanelKind, string> = {
     mail: 'Переписка',
 };
 
-export default function OrderSidePanel({ kind, orderNumber, history, statusPalette, onClose, onTasksChanged, onMailUnread }: OrderSidePanelProps) {
+export default function OrderSidePanel({ kind, orderNumber, history, statusPalette, onClose, onTasksChanged, onMailUnread, onReload }: OrderSidePanelProps) {
     return (
         <div className="border border-gray-300 bg-white">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-900 px-3 py-2">
@@ -45,7 +47,7 @@ export default function OrderSidePanel({ kind, orderNumber, history, statusPalet
             </div>
 
             <div className={kind === 'mail' ? 'p-0' : 'max-h-[420px] overflow-y-auto p-3'}>
-                {kind === 'history' && <HistoryList items={history || []} palette={statusPalette || {}} />}
+                {kind === 'history' && <HistoryList items={history || []} palette={statusPalette || {}} orderNumber={orderNumber} onReload={onReload} />}
                 {kind === 'files' && <FilesList orderNumber={orderNumber} />}
                 {kind === 'tasks' && <TasksList orderNumber={orderNumber} onChanged={onTasksChanged} />}
                 {kind === 'mail' && <OrderMailPanel orderNumber={orderNumber} onUnread={onMailUnread} />}
@@ -59,18 +61,25 @@ export default function OrderSidePanel({ kind, orderNumber, history, statusPalet
  * стало / кто / когда». Менеджеры читают историю там же и так же, и своя
  * выдумка тут только мешала бы (требование владельца 01.10.2026).
  */
-function HistoryList({ items, palette }: { items: HistoryItem[]; palette: StatusPalette }) {
+function HistoryList({ items, palette, orderNumber, onReload }: {
+    items: HistoryItem[];
+    palette: StatusPalette;
+    orderNumber: string;
+    onReload?: () => void;
+}) {
     const [tab, setTab] = useState<'status' | 'order'>('order');
-
-    if (!items.length) {
-        return <p className="text-sm text-gray-500">Изменений по заказу пока не записано.</p>;
-    }
 
     const statusItems = items.filter((h) => h.field === 'status');
     const shown = tab === 'status' ? statusItems : items;
 
     return (
         <div>
+            <ImportFromRetailCrm orderNumber={orderNumber} onReload={onReload} />
+
+            {!items.length ? (
+                <p className="text-sm text-gray-500">Изменений по заказу пока не записано.</p>
+            ) : (
+            <>
             <div className="mb-2 flex gap-4 border-b border-gray-200">
                 {([
                     ['status', `Изменения статуса (${statusItems.length})`],
@@ -122,6 +131,61 @@ function HistoryList({ items, palette }: { items: HistoryItem[]; palette: Status
                     </tbody>
                 </table>
             )}
+            </>
+            )}
+        </div>
+    );
+}
+
+/**
+ * Кнопка «Скачать историю из ритейла».
+ *
+ * Полная история переносилась к нам только с 01.01.2025 — у заказов старше
+ * видны одни смены статуса. Массовую докачку владелец отменил (15.10.2026):
+ * тянем по одному заказу, когда он понадобился. Скачивание ничего не затирает,
+ * добавляются только недостающие записи, поэтому нажимать можно сколько угодно.
+ */
+function ImportFromRetailCrm({ orderNumber, onReload }: { orderNumber: string; onReload?: () => void }) {
+    const [busy, setBusy] = useState(false);
+    const [note, setNote] = useState<string | null>(null);
+
+    const run = async () => {
+        setBusy(true);
+        setNote(null);
+        try {
+            const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/history-import`, { method: 'POST' });
+            const data = await res.json();
+
+            if (!res.ok) {
+                setNote(data?.error || 'Не получилось скачать историю.');
+                return;
+            }
+
+            if (data.added > 0) {
+                setNote(`Добавлено записей: ${data.added}. Уже было: ${data.existed}.`);
+                onReload?.();
+            } else if (data.fetched === 0) {
+                setNote('В RetailCRM истории по этому заказу нет.');
+            } else {
+                setNote(`Новых записей нет — все ${data.fetched} уже у нас.`);
+            }
+        } catch (e: any) {
+            setNote(`Не получилось скачать историю: ${e?.message || 'неизвестная ошибка'}`);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-gray-200 pb-3">
+            <button
+                onClick={run}
+                disabled={busy}
+                className="bg-gray-900 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-white hover:bg-black disabled:opacity-50"
+            >
+                {busy ? 'Скачиваю…' : 'Скачать историю из ритейла'}
+            </button>
+            {note && <span className="text-[12px] text-gray-700">{note}</span>}
         </div>
     );
 }
