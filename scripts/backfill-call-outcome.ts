@@ -16,7 +16,7 @@ import postgres from 'postgres';
 // Доступы лежат в .env.local — dotenv сам его не читает.
 loadEnv({ path: '.env.local' });
 loadEnv();
-import { resolveTranscriptionStatus, NO_ANSWER_STATUS, NO_RECORDING_STATUS } from '../lib/telphin-call-outcome';
+import { resolveTranscriptionStatus, NO_ANSWER_STATUS, NO_RECORDING_STATUS, READY_STATUS } from '../lib/telphin-call-outcome';
 
 // Через postgres-js, а не через service-role клиент: ключа service-role в .env.local нет,
 // а DATABASE_URL есть — скрипт должен запускаться с машины разработчика, как остальные разовые операции.
@@ -41,7 +41,9 @@ async function main() {
         ORDER BY started_at ASC
     `;
 
-    const planned: Record<string, string[]> = { [NO_ANSWER_STATUS]: [], [NO_RECORDING_STATUS]: [] };
+    // READY_STATUS здесь тоже возможен: запись бывает видна в ногах звонка, когда ссылки
+    // на неё ещё нет. Без своей корзины такой звонок уронил бы скрипт на push в undefined.
+    const planned: Record<string, string[]> = { [NO_ANSWER_STATUS]: [], [NO_RECORDING_STATUS]: [], [READY_STATUS]: [] };
 
     for (const row of rows) {
         const status = resolveTranscriptionStatus({
@@ -58,7 +60,12 @@ async function main() {
     console.log(`  Не дозвонились (соединения не было): ${int(planned[NO_ANSWER_STATUS].length)}`);
     console.log(`  Без записи (соединение было, записи нет): ${int(planned[NO_RECORDING_STATUS].length)}`);
 
-    const untouched = rows.length - planned[NO_ANSWER_STATUS].length - planned[NO_RECORDING_STATUS].length;
+    if (planned[READY_STATUS].length > 0) {
+        console.log(`  Запись всё-таки есть, вернём в очередь: ${int(planned[READY_STATUS].length)}`);
+    }
+
+    const untouched =
+        rows.length - planned[NO_ANSWER_STATUS].length - planned[NO_RECORDING_STATUS].length - planned[READY_STATUS].length;
     if (untouched > 0) console.log(`  Оставлено как есть: ${int(untouched)}`);
 
     if (!APPLY) {
