@@ -129,17 +129,19 @@ export default function IncomingMailAlerts() {
             /**
              * Сервер уже отдал только новое: повторов тут быть не может.
              *
-             * В углу держим не больше четырёх окошек — дальше они уезжают за
-             * край экрана. Когда места не хватает, уступают задачи и звонки:
-             * они и так гаснут сами, а письмо ждёт крестика (решение владельца
-             * 15.10.2026).
+             * В углу держим не больше четырёх окошек, и уступают место задачи
+             * и звонки: они и так гаснут сами. Письма не вытесняются НИКОГДА —
+             * сколько пришло, столько и висит, пока человек не закроет каждое
+             * крестиком (Евгения Матвеева 15.10.2026: «чтобы не пропадали,
+             * когда пришло письмо, мы сами закроем оповещение»). Если писем
+             * больше четырёх, столбик прокручивается.
              */
             if (fresh.length) setAlerts((current) => {
                 const all = [...fresh, ...current];
                 if (all.length <= 4) return all;
                 const mail = all.filter((item) => item.kind === 'mail');
                 const rest = all.filter((item) => item.kind !== 'mail');
-                return [...mail, ...rest].slice(0, 4);
+                return [...mail, ...rest].slice(0, Math.max(4, mail.length));
             });
         } catch {
             // Молча: оповещение — не та вещь, ради которой стоит пугать человека ошибкой.
@@ -174,7 +176,7 @@ export default function IncomingMailAlerts() {
     if (!alerts.length || pathname === '/login' || pathname.startsWith('/messenger')) return null;
 
     return (
-        <div className="fixed bottom-4 right-4 z-[200] flex w-80 flex-col gap-2">
+        <div className="fixed bottom-4 right-4 z-[200] flex max-h-[calc(100vh-2rem)] w-80 flex-col gap-2 overflow-y-auto">
             {alerts.map((alert) => (
                 <div key={alert.id} className={`border bg-white shadow-lg ${alert.kind === 'task' ? 'border-amber-200' : alert.kind === 'call' ? 'border-green-200' : 'border-blue-200'}`}>
                     <div className={`flex items-center justify-between px-3 py-1.5 ${alert.kind === 'task' ? 'bg-amber-600' : alert.kind === 'call' ? 'bg-green-700' : 'bg-blue-600'}`}>
