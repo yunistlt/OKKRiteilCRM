@@ -23,7 +23,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { callIsRinging, callStopped } from '@/lib/calls/active-call';
+import { callIsRinging, callLegEnded, callStopped } from '@/lib/calls/active-call';
 
 export const dynamic = 'force-dynamic';
 
@@ -125,6 +125,21 @@ export async function POST(req: NextRequest) {
     const toNumber = first(payload.CalledNumber, payload.to_number, payload.dest_number, payload.to, payload.called, payload.to_username);
     const extension = first(payload.CalledExtension, payload.CallerExtension, payload.extension_name, payload.extension, payload.extension_id, payload.ext);
 
+    /**
+     * Нога звонка и был ли по ней разговор.
+     *
+     * Один звонок — несколько ног: клиент плюс каждый добавочный очереди. У
+     * каждой свой `SubCallID` и свой `hangup`, поэтому отбой одной ноги нельзя
+     * принимать за конец звонка (решение владельца 15.10.2026).
+     *
+     * Разговор по ноге был, если Телфин пишет `CallStatus=ANSWER` или
+     * ненулевую длительность. Остальные отбои — CANCEL, CONGESTION, NOANSWER,
+     * BUSY, CHANUNAVAIL — это ноги, которые так и не взяли трубку.
+     */
+    const legId = first(payload.SubCallID, payload.sub_call_id, payload.leg_id);
+    const legTalked = String(payload.CallStatus ?? payload.call_status ?? '').toUpperCase() === 'ANSWER'
+        || Number(payload.Duration ?? payload.duration ?? 0) > 0;
+
     try {
         if (phase === 'ringing') {
             await callIsRinging({
@@ -134,11 +149,13 @@ export async function POST(req: NextRequest) {
                 toNumber,
                 extension,
                 startedAt: first(payload.start_time_gmt, payload.init_time_gmt, payload.timestamp) ?? undefined,
+                legId,
             });
         } else if (phase === 'answered') {
             await callStopped(callId, 'answered');
         } else if (phase === 'ended') {
-            await callStopped(callId, 'ended');
+            // Гасим окно не на любом отбое, а на конце разговора.
+            await callLegEnded(callId, legId, legTalked);
         }
     } catch (e: any) {
         console.error('[telphin-webhook] событие не обработалось:', e?.message);

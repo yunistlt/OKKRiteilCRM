@@ -23,7 +23,7 @@ import { enrichSessionWithManagerIdentity } from '@/lib/manager-identity';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { ordersByPhone } from '@/lib/call-binding';
-import { activeSince, dropStaleCalls } from '@/lib/calls/active-call';
+import { callStillFresh, dropStaleCalls } from '@/lib/calls/active-call';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,7 +95,7 @@ export async function GET() {
 
     const { data: rows } = await supabase
         .from('active_calls')
-        .select('telphin_call_id, direction, from_number, to_number, extension_number, extensions, is_queue, client_name, client_id, order_id, order_number, status, started_at')
+        .select('telphin_call_id, direction, from_number, to_number, extension_number, extensions, is_queue, client_name, client_id, order_id, order_number, status, started_at, legs')
         .order('started_at', { ascending: false })
         .limit(10);
 
@@ -107,7 +107,9 @@ export async function GET() {
          * давности лезли при каждом действии).
          */
         if (call.status === 'ended') return false;
-        if (!call.started_at || String(call.started_at) < activeSince(call.status)) return false;
+        // Пока открыта хоть одна нога, звонок идёт — даже если события
+        // «трубку подняли» Телфин не прислал (решение владельца 15.10.2026).
+        if (!callStillFresh(call)) return false;
 
         if (seeAll) return true;
         // Очередь звонит у нескольких сразу — окно видят все, кто в ней.

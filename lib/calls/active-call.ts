@@ -31,6 +31,11 @@ export type RingingCall = {
     /** Добавочный, на который звонят: по нему понятно, чей это телефон. */
     extension?: string | null;
     startedAt?: string | null;
+    /**
+     * Нога звонка (SubCallID Телфина): нога клиента и по ноге на каждый
+     * добавочный очереди. По ним видно, идёт ли звонок ещё — см. `callLegEnded`.
+     */
+    legId?: string | null;
 };
 
 /**
@@ -96,13 +101,23 @@ export async function callIsRinging(call: RingingCall): Promise<void> {
      */
     const { data: known } = await supabase
         .from('active_calls')
-        .select('extensions')
+        .select('extensions, legs')
         .eq('telphin_call_id', callId)
         .maybeSingle();
 
     const extensions = Array.from(new Set([
         ...(((known as any)?.extensions ?? []) as string[]),
         ...(ext ? [ext] : []),
+    ]));
+
+    /**
+     * Открытые ноги звонка. Телфин шлёт `dial-*` на каждую отдельно, и на
+     * каждую же отдельно присылает `hangup`. Пока хоть одна нога открыта —
+     * звонок идёт, и окно висит (решение владельца 15.10.2026).
+     */
+    const legs = Array.from(new Set([
+        ...(((known as any)?.legs ?? []) as string[]),
+        ...(call.legId ? [String(call.legId)] : []),
     ]));
 
     await supabase.from('active_calls').upsert([{
@@ -114,6 +129,7 @@ export async function callIsRinging(call: RingingCall): Promise<void> {
         extension_number: ext,
         extensions,
         is_queue: isQueue,
+        legs,
         manager_id: managerId,
         client_name: who?.name ?? null,
         client_id: who?.clientId ?? null,
@@ -125,7 +141,7 @@ export async function callIsRinging(call: RingingCall): Promise<void> {
     }], { onConflict: 'telphin_call_id' });
 }
 
-/** Трубку подняли или звонок кончился — окно гаснет. */
+/** Трубку подняли: окно остаётся и пишет «Разговор идёт». */
 export async function callStopped(callId: string, status: 'answered' | 'ended' = 'ended'): Promise<void> {
     const key = String(callId).toUpperCase();
 
@@ -138,6 +154,76 @@ export async function callStopped(callId: string, status: 'answered' | 'ended' =
     }
 
     await supabase.from('active_calls').delete().eq('telphin_call_id', key);
+}
+
+/**
+ * Отбилась одна нога звонка.
+ *
+ * Жалоба владельца 15.10.2026: «время отображения попапа звонка надо на время
+ * длительности звонка». Окно гасло на ПЕРВОМ же `hangup`, а их у одного звонка
+ * столько, сколько ног: клиент плюс каждый добавочный очереди. На живом
+ * входящем 15.10.2026 (разговор 17,6 с) окно прожило шесть секунд — его убил
+ * отбой добавочного 103, который просто не снял трубку.
+ *
+ * Теперь звонок считается законченным, когда:
+ *   • отбилась нога, которая РАЗГОВАРИВАЛА (`talked`) — это конец разговора;
+ *   • либо закрылась последняя открытая нога — никто так и не взял трубку.
+ *
+ * Ноги, которую мы не видели в `dial-*`, в списке нет — такой `hangup`
+ * трогает только разговаривавшую ветку, иначе окно осталось бы висеть.
+ */
+export function callAfterLegEnded(
+    legs: string[],
+    legId: string | null,
+    talked: boolean,
+): { done: boolean; left: string[] } {
+    // Разговор закончился — окно гаснет, сколько бы ног ни оставалось открытыми.
+    if (talked) return { done: true, left: [] };
+
+    /**
+     * Ног не знаем вовсе (старый формат события без `SubCallID`) — ведём себя
+     * как раньше: отбой гасит окно. Лучше погасить рано, чем оставить висеть
+     * навсегда.
+     */
+    if (!legs.length || !legId) return { done: true, left: [] };
+
+    const left = legs.filter((leg) => leg !== String(legId));
+
+    // Открытых ног не осталось — звонок кончился, никто не взял трубку.
+    if (!left.length) return { done: true, left: [] };
+
+    // Звонок идёт дальше на других ногах: окно висит.
+    return { done: false, left };
+}
+
+export async function callLegEnded(callId: string, legId: string | null, talked: boolean): Promise<void> {
+    const key = String(callId).toUpperCase();
+
+    if (talked) {
+        await supabase.from('active_calls').delete().eq('telphin_call_id', key);
+        return;
+    }
+
+    const { data: known } = await supabase
+        .from('active_calls')
+        .select('legs')
+        .eq('telphin_call_id', key)
+        .maybeSingle();
+
+    // Строки уже нет — гасить нечего.
+    if (!known) return;
+
+    const { done, left } = callAfterLegEnded(((known as any).legs ?? []) as string[], legId, talked);
+
+    if (done) {
+        await supabase.from('active_calls').delete().eq('telphin_call_id', key);
+        return;
+    }
+
+    await supabase
+        .from('active_calls')
+        .update({ legs: left, updated_at: new Date().toISOString() })
+        .eq('telphin_call_id', key);
 }
 
 /**
@@ -156,6 +242,24 @@ export function activeSince(status: string | null | undefined, now = Date.now())
 }
 
 /**
+ * Звонок ещё идёт?
+ *
+ * Срок жизни строки меряем не только статусом. Входящий звонок Телфин может
+ * провести вообще без события `answer` — живой звонок 15.10.2026 шёл от
+ * `dial-in` сразу к `hangup`, — и по статусу он до конца выглядел как гудок.
+ * Поэтому: есть открытые ноги или статус «разговор» — меряем разговором
+ * (полчаса), иначе гудком (две минуты).
+ */
+export function callStillFresh(
+    row: { status?: string | null; started_at?: string | null; legs?: string[] | null },
+    now = Date.now(),
+): boolean {
+    if (!row.started_at) return false;
+    const talking = row.status === 'answered' || Boolean(row.legs?.length);
+    return String(row.started_at) >= activeSince(talking ? 'answered' : 'ringing', now);
+}
+
+/**
  * Зависшие звонки: Телфин не всегда присылает событие о завершении, и строка
  * остаётся висеть.
  *
@@ -165,26 +269,18 @@ export function activeSince(status: string | null | undefined, now = Date.now())
  */
 export async function dropStaleCalls(): Promise<number> {
     const now = Date.now();
-    const dropped: string[] = [];
 
-    for (const status of ['ringing', 'answered'] as const) {
-        const { data } = await supabase
-            .from('active_calls')
-            .delete()
-            .eq('status', status)
-            .lt('started_at', activeSince(status, now))
-            .select('telphin_call_id');
-        for (const row of ((data ?? []) as any[])) dropped.push(row.telphin_call_id);
-    }
-
-    // Строка с чужим статусом (или без него) тоже не должна жить вечно.
-    const { data: rest } = await supabase
+    const { data: rows } = await supabase
         .from('active_calls')
-        .delete()
-        .not('status', 'in', '("ringing","answered")')
-        .lt('started_at', activeSince('ringing', now))
-        .select('telphin_call_id');
-    for (const row of ((rest ?? []) as any[])) dropped.push(row.telphin_call_id);
+        .select('telphin_call_id, status, started_at, legs')
+        .limit(200);
 
-    return dropped.length;
+    const stale = ((rows ?? []) as any[])
+        .filter((row) => !callStillFresh(row, now))
+        .map((row) => String(row.telphin_call_id));
+
+    if (!stale.length) return 0;
+
+    await supabase.from('active_calls').delete().in('telphin_call_id', stale);
+    return stale.length;
 }
