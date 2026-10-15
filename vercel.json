@@ -81,10 +81,6 @@
       "schedule": "*/15 * * * *"
     },
     {
-      "path": "/api/cron/system-jobs/order-context-refresh",
-      "schedule": "*/1 * * * *"
-    },
-    {
       "path": "/api/cron/system-jobs/transcription",
       "schedule": "*/1 * * * *"
     },
@@ -149,10 +145,6 @@
       "schedule": "*/1 * * * *"
     },
     {
-      "path": "/api/cron/rop-outreach",
-      "schedule": "*/2 * * * *"
-    },
-    {
       "path": "/api/cron/lead-reminders",
       "schedule": "0 * * * *"
     },
@@ -195,10 +187,6 @@
     {
       "path": "/api/cron/salary-client-canon",
       "schedule": "20 2 * * *"
-    },
-    {
-      "path": "/api/cron/system-jobs/legal-enforcement-parse",
-      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/error-digest",
