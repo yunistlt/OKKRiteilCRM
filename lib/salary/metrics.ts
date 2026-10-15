@@ -12,6 +12,7 @@ export type OrderType = 'new' | 'permanent';
 
 export interface CountedOrderRow {
     order_id: number;
+    number: string | null; // номер заказа, как его видит человек («900072»)
     manager_id: number | null;
     client_id: number | null;
     client_name: string | null;
@@ -35,6 +36,9 @@ export interface OrderFinance {
 
 export interface CountedOrder extends OrderFinance {
     orderId: number;
+    /** Номер заказа для человека. Идентификатор заказа ему не равен: у своего
+     *  заказа номер 900072 при идентификаторе 900000072. */
+    number: string | null;
     managerId: number | null;
     clientId: number | null;
     clientName: string | null; // имя клиента из CRM (компания/ФИО), для отчёта
@@ -287,6 +291,7 @@ export function buildPeriodMetrics(input: {
         const category = row.typ_castomer ? String(row.typ_castomer).trim() || null : null;
         const order: CountedOrder = {
             orderId: Number(row.order_id),
+            number: row.number ? String(row.number).trim() || null : null,
             managerId,
             clientId,
             clientName: row.client_name ? String(row.client_name).trim() || null : null,

@@ -289,7 +289,9 @@ export async function buildPayrollWorkbook(year: number, month: number): Promise
         for (const o of detail) {
             const row = wsO.addRow([
                 managerName(r.manager_id),
-                o.id,
+                // Номер заказа, а не идентификатор: у своего заказа это 900072,
+                // а идентификатор 900000072. Старые снимки номера не хранят.
+                o.number ?? o.id,
                 o.clientName || '',
                 ORDER_TYPE_LABEL[o.type] ?? '',
                 typeof o.deals === 'number' ? o.deals : '',

@@ -24,7 +24,8 @@ import { evaluateEstimate, hasEstimateMarker, type EstimateVerdictRow } from '@/
 // ============================================================================
 
 export interface IncomingOrderBrief {
-    id: number;
+    id: number; // идентификатор заказа в нашей базе
+    number: string | null; // номер заказа для человека — его и показываем
     clientName: string | null;
     source: string | null; // имя источника заявки (orderMethod) из справочника RetailCRM
     createdAt: string;
@@ -36,7 +37,8 @@ export interface IncomingOrderBrief {
 }
 
 export interface TeamOrderBrief {
-    id: number;
+    id: number; // идентификатор заказа в нашей базе
+    number: string | null; // номер заказа для человека — его и показываем
     managerId: number;
     managerName: string;
     clientName: string | null;
@@ -58,14 +60,63 @@ function monthBounds(year: number, month: number): { start: string; end: string 
     return { start, end };
 }
 
-// Имя клиента из CRM (raw_payload): компания → ФИО клиента → ФИО контакта.
-function clientNameFromPayload(p: any): string | null {
-    const cust = p?.customer;
-    const contact = p?.contact;
-    const nick = typeof cust?.nickName === 'string' ? cust.nickName.trim() : '';
-    const custFio = [cust?.firstName, cust?.lastName].filter(Boolean).join(' ').trim();
-    const contactFio = [contact?.firstName, contact?.lastName].filter(Boolean).join(' ').trim();
-    return nick || custFio || contactFio || null;
+// Имя клиента для отчёта. Источник правды — карточка клиента (clients) по
+// orders.customer_id; снимок заказа идёт последним и выручает только там, где
+// карточки клиента в нашей базе ещё нет (старые заказы, перенос неполный). У
+// заказа, заведённого в ОКК, в снимке лежит только {id, type} — имени там нет,
+// отсюда прочерки в ведомости (жалоба владельца 15.10.2026 по 900042, 900072).
+function clientNameOf(card: ClientCard | undefined, payload: any): string | null {
+    const fromCard =
+        card &&
+        (trimOrNull(card.company_name) ??
+            trimOrNull(card.legalName) ??
+            trimOrNull([card.first_name, card.last_name].filter(Boolean).join(' ')) ??
+            trimOrNull(card.contact_name));
+    if (fromCard) return fromCard;
+    const cust = payload?.customer;
+    const contact = payload?.contact;
+    return (
+        trimOrNull(cust?.nickName) ??
+        trimOrNull([cust?.firstName, cust?.lastName].filter(Boolean).join(' ')) ??
+        trimOrNull([contact?.firstName, contact?.lastName].filter(Boolean).join(' ')) ??
+        null
+    );
+}
+
+interface ClientCard {
+    company_name: string | null;
+    legalName: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    contact_name: string | null;
+}
+
+const trimOrNull = (v: unknown): string | null => {
+    const s = typeof v === 'string' ? v.trim() : '';
+    return s || null;
+};
+
+/** Карточки клиентов по id — одним запросом на весь список заказов. */
+async function loadClientCards(ids: number[]): Promise<Map<number, ClientCard>> {
+    const uniq = Array.from(new Set(ids.filter((id) => Number.isFinite(id) && id > 0)));
+    const byId = new Map<number, ClientCard>();
+    const CHUNK = 500;
+    for (let i = 0; i < uniq.length; i += CHUNK) {
+        const { data } = await supabase
+            .from('clients')
+            .select('id,company_name,legalName,first_name,last_name,contact_name')
+            .in('id', uniq.slice(i, i + CHUNK));
+        for (const c of (data as any[]) ?? []) {
+            byId.set(Number(c.id), {
+                company_name: c.company_name ?? null,
+                legalName: c.legalName ?? null,
+                first_name: c.first_name ?? null,
+                last_name: c.last_name ?? null,
+                contact_name: c.contact_name ?? null,
+            });
+        }
+    }
+    return byId;
 }
 
 /**
@@ -107,6 +158,7 @@ export async function buildTeamOrders(
             const revenueNoVat = Math.round(Number(o.revenueNoVat) || 0);
             orders.push({
                 id: Number(o.id),
+                number: o.number ?? null,
                 managerId: mid,
                 managerName: namesById.get(mid) || `#${mid}`,
                 clientName: o.clientName ?? null,
@@ -142,7 +194,7 @@ export async function buildIncomingByManager(
 
     let q = supabase
         .from('orders')
-        .select('order_id,manager_id,totalsumm,created_at,raw_payload,status')
+        .select('order_id,number,customer_id,manager_id,totalsumm,created_at,raw_payload,status')
         .gte('created_at', start)
         .lt('created_at', end)
         .range(0, 9999); // снимаем дефолтный лимит 1000 строк
@@ -304,6 +356,9 @@ export async function buildIncomingByManager(
         }
     }
 
+    // Карточки клиентов на все заявки месяца — имя покупателя в ведомость.
+    const clientCards = await loadClientCards(((data as any[]) ?? []).map((o) => Number(o.customer_id)));
+
     const byManager: Record<number, IncomingOrderBrief[]> = {};
     for (const o of (data as any[]) ?? []) {
         const om = String(o.raw_payload?.orderMethod ?? '');
@@ -333,7 +388,8 @@ export async function buildIncomingByManager(
         if (estimate.isEstimate) {
             (byManager[mid] ??= []).push({
                 id: Number(o.order_id),
-                clientName: clientNameFromPayload(o.raw_payload),
+                number: o.number ?? null,
+                clientName: clientNameOf(clientCards.get(Number(o.customer_id)), o.raw_payload),
                 source: om ? methodName.get(om) || om : null,
                 createdAt: o.created_at,
                 sum: Number(o.totalsumm ?? 0) || 0,
@@ -358,7 +414,8 @@ export async function buildIncomingByManager(
                   );
         (byManager[mid] ??= []).push({
             id: Number(o.order_id),
-            clientName: clientNameFromPayload(o.raw_payload),
+            number: o.number ?? null,
+            clientName: clientNameOf(clientCards.get(Number(o.customer_id)), o.raw_payload),
             source: om ? methodName.get(om) || om : null,
             createdAt: o.created_at,
             sum: Number(o.totalsumm ?? 0) || 0,

@@ -52,7 +52,8 @@ export interface TariffLine {
 // По просьбе ОП (август 2026): в ведомости должно быть видно номера заказов,
 // давших доплату, а не только итоговую сумму.
 export interface BlockOrderRef {
-    id: number; // номер заказа RetailCRM (он же id карточки)
+    id: number; // идентификатор заказа в нашей базе
+    number?: string | null; // номер заказа для человека — его и показываем
     clientName?: string | null;
     note?: string; // за что засчитан («3-я покупка клиента»)
     amount?: number; // сколько дал этот заказ, ₽

@@ -2,6 +2,8 @@
 
 import { Check } from 'lucide-react';
 
+import OrderNumberLink from '@/components/ui/OrderNumberLink';
+
 // ============================================================================
 // Расшифровка показателей расчётной ведомости заказами — общий код для админского
 // отчёта (/salary) и личного кабинета (/salary/my). Таблицы всегда открыты, данные
@@ -50,23 +52,12 @@ const fmtDate = (s?: string) => {
     return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('ru-RU');
 };
 
-// База RetailCRM (инстанс zmktlt.retailcrm.ru, см. lib/retailcrm/README.md). id заказа
-// в нашей БД = внутренний id RetailCRM (raw_payload.id), по нему и строится /edit-ссылка.
-const CRM_BASE = 'https://zmktlt.retailcrm.ru';
-
-// Кликабельный номер заказа — открывает карточку заказа в RetailCRM (в новой вкладке).
-function OrderLink({ id }: { id: number }) {
-    return (
-        <a
-            href={`${CRM_BASE}/orders/${id}/edit`}
-            target="_blank"
-            rel="noreferrer"
-            className="font-medium text-blue-700 hover:underline"
-            title="Открыть карточку заказа в RetailCRM"
-        >
-            Заказ #{id}
-        </a>
-    );
+// Номер заказа — всегда ссылка в карточку заказа ОКК (закон владельца 02.10.2026),
+// и показываем именно НОМЕР, а не идентификатор: у своего заказа это 900072 при
+// идентификаторе 900000072 (жалоба владельца 15.10.2026 про «лишние нули»).
+// Старые закрытые периоды хранятся снимком без номера — там остаётся идентификатор.
+function OrderLink({ id, number }: { id: number; number?: string | null }) {
+    return <OrderNumberLink number={number ?? id} className="font-medium text-blue-700 hover:underline" />;
 }
 
 // ── Засчитанные заказы: две таблицы (Постоянные / Новые) ────────────────────
@@ -137,7 +128,7 @@ function OrdersTypeTable({ title, rows, threshold }: { title: string; rows: any[
                         <tbody>
                             {rows.map((o) => (
                                 <tr key={o.id} className="border-t">
-                                    <td className="px-2 py-1.5"><OrderLink id={o.id} /></td>
+                                    <td className="px-2 py-1.5"><OrderLink id={o.id} number={o.number} /></td>
                                     <td className="px-2 py-1.5">{o.clientName || '—'}</td>
                                     <td className="px-2 py-1.5" title={orderTypeTitle(o, threshold)}>{orderTypeLabel(o, threshold)}</td>
                                     <td className="px-2 py-1.5 text-right">{o.sum != null ? rub(o.sum) : '—'}</td>
@@ -212,7 +203,7 @@ export function ConversionOrdersTable({
                                     : '';
                             return (
                                 <tr key={o.id} className={`border-t ${rowCls}`}>
-                                    <td className="px-2 py-1.5"><OrderLink id={o.id} /></td>
+                                    <td className="px-2 py-1.5"><OrderLink id={o.id} number={o.number} /></td>
                                     <td className="px-2 py-1.5">{o.clientName || '—'}</td>
                                     <td className="px-2 py-1.5">{o.source || '—'}</td>
                                     <td className="px-2 py-1.5">{fmtDate(o.createdAt)}</td>
@@ -278,7 +269,7 @@ export function TeamOrdersTable({
                     <tbody>
                         {rows.map((o) => (
                             <tr key={o.id} className="border-t">
-                                <td className="px-2 py-1.5"><OrderLink id={o.id} /></td>
+                                <td className="px-2 py-1.5"><OrderLink id={o.id} number={o.number} /></td>
                                 <td className="px-2 py-1.5">{o.managerName}</td>
                                 <td className="px-2 py-1.5">{o.clientName || '—'}</td>
                                 <td className="px-2 py-1.5 text-right">{rub(o.revenueNoVat)}</td>

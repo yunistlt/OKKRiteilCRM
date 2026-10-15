@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { BlockContribution, BlockOrderRef, TariffLine } from '@/lib/salary/blocks/types';
 import { effectiveAmount, factorForGroup, summarizeComposition, zeroingFor, type CompositionSummary } from '@/lib/salary/composition-view';
+import OrderNumberLink from '@/components/ui/OrderNumberLink';
 
 // ============================================================================
 // «Из чего сложилась ЗП» — строки по блокам назначенной схемы + ТАРИФ каждого
@@ -14,8 +15,6 @@ import { effectiveAmount, factorForGroup, summarizeComposition, zeroingFor, type
 
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
 
-// База RetailCRM — та же, что в расшифровках ведомости (salary-drilldowns.tsx).
-const CRM_BASE = 'https://zmktlt.retailcrm.ru';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -155,15 +154,12 @@ function BlockOrders({ orders, withTariff }: { orders: BlockOrderRef[]; withTari
                         {orders.map((o) => (
                             <tr key={o.id} className="border-t">
                                 <td className="px-2 py-1.5">
-                                    <a
-                                        href={`${CRM_BASE}/orders/${o.id}/edit`}
-                                        target="_blank"
-                                        rel="noreferrer"
+                                    {/* Номер заказа ведёт в карточку ОКК (закон 02.10.2026) и
+                                        показывает номер, а не идентификатор: 900072, а не 900000072. */}
+                                    <OrderNumberLink
+                                        number={o.number ?? o.id}
                                         className="font-medium text-blue-700 hover:underline"
-                                        title="Открыть карточку заказа в RetailCRM"
-                                    >
-                                        Заказ #{o.id}
-                                    </a>
+                                    />
                                 </td>
                                 <td className="px-2 py-1.5">{o.clientName || '—'}</td>
                                 <td className="px-2 py-1.5">{o.note || '—'}</td>

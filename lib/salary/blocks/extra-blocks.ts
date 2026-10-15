@@ -215,6 +215,7 @@ const repeatClientBonus: BonusBlock<{
             hits.set(o.clientOrdinal, (hits.get(o.clientOrdinal) ?? 0) + 1);
             orders.push({
                 id: o.orderId,
+                number: o.number,
                 clientName: o.clientName,
                 note: `${o.clientOrdinal}-я покупка клиента`,
                 amount: bonus,

@@ -12,7 +12,8 @@ export { pickTier }; // обратная совместимость со ста�
 
 /** Краткая карточка засчитанного заказа для отчёта по менеджеру (номер кликабелен в UI). */
 export interface CountedOrderBrief {
-    id: number;
+    id: number; // идентификатор заказа в нашей базе (он же id RetailCRM)
+    number: string | null; // номер заказа для человека — его и показываем
     type: OrderType;
     clientName: string | null; // имя клиента из CRM (компания/ФИО)
     deals: number; // закрытых сделок у клиента за всё время (почему новый/постоянный)
@@ -155,6 +156,7 @@ export function computeManagerSalary(
             countedOrderIds: m.countedOrders.map((o) => o.orderId),
             countedOrders: m.countedOrders.map((o) => ({
                 id: o.orderId,
+                number: o.number,
                 type: o.type,
                 clientName: o.clientName,
                 deals: o.deals,

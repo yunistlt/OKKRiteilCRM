@@ -140,7 +140,7 @@ export function buildScaledMetrics(b: SimManagerBase, s: number, repeatCounts?: 
         ? assignOrdinalsByCount(N2, repeatCounts)
         : assignOrdinals(N2, b.repeatOrdinalShares ?? {});
     const orders: CountedOrder[] = Array.from({ length: N2 }, (_, i) => ({
-        orderId: -(i + 1), managerId: b.id, clientId: null, clientName: null, deals: 0,
+        orderId: -(i + 1), number: null, managerId: b.id, clientId: null, clientName: null, deals: 0,
         type: 'new' as OrderType, category: null,
         enteredAt: '2026-01-15', createdAt: i < sameDay2 ? '2026-01-15' : '2026-01-10',
         totalsumm: avg, goodsBase: avg, discountAmount: 0, discountPct: 0, revenueNoVat: avg, margin: 0,
@@ -232,7 +232,7 @@ export function buildMetricsFromInputs(b: SimManagerBase, inp: SimManagerInputs)
     const sameDay2 = Math.round(Math.max(0, Math.min(1, inp.sameDayShare)) * N);
     const ordinalsN = assignOrdinals(N, b.repeatOrdinalShares ?? {});
     const orders: CountedOrder[] = Array.from({ length: N }, (_, i) => ({
-        orderId: -(i + 1), managerId: b.id, clientId: null, clientName: null, deals: 0,
+        orderId: -(i + 1), number: null, managerId: b.id, clientId: null, clientName: null, deals: 0,
         type: 'new' as OrderType, category: null,
         enteredAt: '2026-01-15', createdAt: i < sameDay2 ? '2026-01-15' : '2026-01-10',
         totalsumm: avg, goodsBase: avg, discountAmount: 0, discountPct: 0, revenueNoVat: avg, margin: 0,
