@@ -15,7 +15,7 @@
  */
 import { supabase } from '@/utils/supabase';
 import { addClientPhones, findOrCreateOwnClient } from './own-client';
-import { itemLabel, managerName, moneyValue, statusName, writeOwnHistory } from './history-write';
+import { itemLabel, managerName, moneyValue, statusName, statusValue, writeOwnHistory } from './history-write';
 
 /**
  * С какого номера идут наши строки заказов. `orders.id` у приехавших — это
@@ -241,7 +241,12 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
     await writeOwnHistory(
         id,
         [
-            { field: 'status', newValue: await statusName(payload.status || 'novyi-1') },
+            // Статус в историю — кодом и названием (`statusValue`), а не одним
+            // названием: по коду расчёт зарплаты ищет вход заказа в
+            // производство, а вечерний отчёт РОПа — счета и продажи дня.
+            // Здесь годами писалось одно название «Новый» — 12 324 строки, на
+            // которых вечерний отчёт падал с «invalid input syntax for type json».
+            { field: 'status', newValue: await statusValue(payload.status || 'novyi-1') },
             ...(managerId ? [{ field: 'manager', newValue: await managerName(managerId) }] : []),
             ...(payload.orderMethod ? [{ field: 'order_method', newValue: String(payload.orderMethod) }] : []),
             ...(payload.customerComment ? [{ field: 'customer_comment', newValue: String(payload.customerComment) }] : []),
