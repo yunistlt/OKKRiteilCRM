@@ -40,7 +40,14 @@ type Alert = {
 
 /** Как часто спрашиваем о новых письмах. Почта приезжает кроном раз в 5 минут. */
 const POLL_MS = 60_000;
-/** Сколько висит оповещение, если его не трогать. */
+/**
+ * Сколько висит оповещение, если его не трогать.
+ *
+ * Письма сюда не попадают: они висят, пока человек не закроет крестиком
+ * (решение владельца 15.10.2026). Письмо — это работа, которую надо сделать, и
+ * исчезать само оно не должно: менеджер отошёл на пять минут и не узнал о нём
+ * вовсе. Задачи и звонки гаснут как раньше.
+ */
 const HIDE_MS = 60_000;
 
 export default function IncomingMailAlerts() {
@@ -119,8 +126,21 @@ export default function IncomingMailAlerts() {
                 }
             }
 
-            // Сервер уже отдал только новое: повторов тут быть не может.
-            if (fresh.length) setAlerts((current) => [...fresh, ...current].slice(0, 4));
+            /**
+             * Сервер уже отдал только новое: повторов тут быть не может.
+             *
+             * В углу держим не больше четырёх окошек — дальше они уезжают за
+             * край экрана. Когда места не хватает, уступают задачи и звонки:
+             * они и так гаснут сами, а письмо ждёт крестика (решение владельца
+             * 15.10.2026).
+             */
+            if (fresh.length) setAlerts((current) => {
+                const all = [...fresh, ...current];
+                if (all.length <= 4) return all;
+                const mail = all.filter((item) => item.kind === 'mail');
+                const rest = all.filter((item) => item.kind !== 'mail');
+                return [...mail, ...rest].slice(0, 4);
+            });
         } catch {
             // Молча: оповещение — не та вещь, ради которой стоит пугать человека ошибкой.
         }
@@ -132,10 +152,21 @@ export default function IncomingMailAlerts() {
         return () => clearInterval(timer);
     }, [check]);
 
-    // Само исчезает, чтобы не копиться в углу.
+    /**
+     * Само исчезает, чтобы не копиться в углу, — но только задача и звонок.
+     * Письмо снимает человек крестиком (решение владельца 15.10.2026).
+     */
     useEffect(() => {
-        if (!alerts.length) return;
-        const timer = setTimeout(() => setAlerts((current) => current.slice(0, -1)), HIDE_MS);
+        if (!alerts.some((item) => item.kind !== 'mail')) return;
+        const timer = setTimeout(() => setAlerts((current) => {
+            // Гасим самое старое из гаснущих, письма не трогаем.
+            for (let index = current.length - 1; index >= 0; index -= 1) {
+                if (current[index].kind !== 'mail') {
+                    return current.filter((_, position) => position !== index);
+                }
+            }
+            return current;
+        }), HIDE_MS);
         return () => clearTimeout(timer);
     }, [alerts]);
 
