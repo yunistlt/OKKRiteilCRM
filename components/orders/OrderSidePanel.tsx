@@ -464,7 +464,9 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
                                 {f.source === 'manual'
                                     ? ` · приложил ${f.uploadedBy || 'менеджер'}`
                                     : (f.fromName || f.fromEmail ? ` · от ${f.fromName || f.fromEmail}` : '')}
-                                {f.receivedAt ? ` · ${new Date(f.receivedAt).toLocaleDateString('ru-RU')}` : ''}
+                                {f.receivedAt
+                                    ? ` · ${new Date(f.receivedAt).toLocaleDateString('ru-RU')}, ${new Date(f.receivedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
+                                    : ''}
                             </p>
                         </li>
                     ))}
