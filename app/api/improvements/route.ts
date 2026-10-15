@@ -24,7 +24,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 const LINK_TTL_SECONDS = 60;
 
 const FIELDS = 'id, text, section, order_number, screenshot_bucket, screenshot_path, screenshot_name,'
-    + ' author_email, author_name, created_at, done_at, done_by';
+    + ' author_email, author_name, created_at, done_at, done_by, done_note, done_build';
 
 /** Имя человека для реестра: фамилия и имя, иначе логин. */
 function personName(user: { first_name: string | null; last_name: string | null; username: string | null }): string | null {
@@ -57,6 +57,10 @@ async function toRow(row: any) {
         createdAt: row.created_at,
         doneAt: row.done_at ?? null,
         doneBy: row.done_by ?? null,
+        // Что исправлено и в какой сборке: менеджер читает это в реестре и не
+        // спрашивает «а что сделали-то?» (задание владельца 15.10.2026).
+        doneNote: row.done_note ?? null,
+        doneBuild: row.done_build ?? null,
     };
 }
 
@@ -183,12 +187,20 @@ export async function PATCH(request: Request) {
     if (!Number.isFinite(id)) return NextResponse.json({ error: 'Не указана доработка' }, { status: 400 });
 
     const done = (body as any)?.done !== false;
+    /** Пояснение к отметке и сборка, в которой правка уехала на прод. */
+    const note = String((body as any)?.note ?? '').trim() || null;
+    const build = String((body as any)?.build ?? '').trim() || null;
 
     const { data, error } = await supabase
         .from('improvements')
         .update(done
-            ? { done_at: new Date().toISOString(), done_by: personName(session.user) || session.user.email || null }
-            : { done_at: null, done_by: null })
+            ? {
+                done_at: new Date().toISOString(),
+                done_by: personName(session.user) || session.user.email || null,
+                done_note: note,
+                done_build: build,
+            }
+            : { done_at: null, done_by: null, done_note: null, done_build: null })
         .eq('id', id)
         .select(FIELDS)
         .maybeSingle();

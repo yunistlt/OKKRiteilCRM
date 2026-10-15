@@ -26,6 +26,10 @@ type Improvement = {
     createdAt: string;
     doneAt: string | null;
     doneBy: string | null;
+    /** Что исправлено — человеческим языком, для того, кто написал доработку. */
+    doneNote: string | null;
+    /** Сборка, в которой правка уехала на прод: её видно под логотипом ОКК. */
+    doneBuild: string | null;
 };
 
 /**
@@ -218,6 +222,19 @@ export default function ImprovementsRegistry() {
                         </span>
                     )}
                 </div>
+
+                {/* Что исправлено — прямо в строке: человек, написавший
+                    доработку, должен это прочитать, не открывая карточку
+                    (задание владельца 15.10.2026). */}
+                {item.doneNote && (
+                    <div className="mt-2 border-l-2 border-green-700 bg-green-50 px-3 py-2 text-xs text-gray-800">
+                        <span className="font-semibold text-green-800">Что исправлено: </span>
+                        {item.doneNote}
+                        {item.doneBuild && (
+                            <span className="text-gray-500"> · сборка {item.doneBuild}</span>
+                        )}
+                    </div>
+                )}
             </div>
 
             {canClose && (
@@ -396,7 +413,7 @@ export default function ImprovementsRegistry() {
                                             {card.orderNumber ? <OrderNumberLink number={card.orderNumber} /> : 'не указан'}
                                         </td>
                                     </tr>
-                                    <tr>
+                                    <tr className={card.doneNote ? 'border-b border-gray-200' : undefined}>
                                         <th className="border-r border-gray-200 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-600">Состояние</th>
                                         <td className="px-3 py-2 text-gray-900">
                                             {card.doneAt
@@ -406,6 +423,19 @@ export default function ImprovementsRegistry() {
                                                 : 'В работе'}
                                         </td>
                                     </tr>
+                                    {card.doneNote && (
+                                        <tr>
+                                            <th className="border-r border-gray-200 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-600">Что исправлено</th>
+                                            <td className="whitespace-pre-wrap px-3 py-2 text-gray-900">
+                                                {card.doneNote}
+                                                {card.doneBuild && (
+                                                    <div className="mt-1 text-xs text-gray-500">
+                                                        Сборка {card.doneBuild} — номер виден под логотипом ОКК
+                                                    </div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
 
