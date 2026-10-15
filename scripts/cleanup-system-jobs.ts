@@ -44,7 +44,13 @@ const BATCH = (() => {
     return i >= 0 ? Number(args[i + 1]) : 500;
 })();
 
-const sql = postgres(process.env.DATABASE_URL!, { ssl: 'require', max: 2 });
+/**
+ * Одно соединение и без заготовленных запросов. База стоит за пулом в режиме
+ * транзакций: при двух соединениях запросы уходят в разные, типы параметров
+ * теряются, и база отвечает «operator does not exist: bigint = text» — ровно
+ * на этом прогон падал дважды 15.10.2026.
+ */
+const sql = postgres(process.env.DATABASE_URL!, { ssl: 'require', max: 1, prepare: false });
 
 /** Сколько база отвечает на простейший запрос: занята ли она чем-то тяжёлым. */
 async function pingMs() {
@@ -99,7 +105,8 @@ async function main() {
         const ids = found.map((r: any) => Number(r.id));
         cursor = ids[ids.length - 1];
 
-        const deleted = await sql`DELETE FROM system_jobs WHERE id = ANY(${ids}) RETURNING id`;
+        // Тип массива указываем явно — на случай, если пул снова вмешается.
+        const deleted = await sql`DELETE FROM system_jobs WHERE id = ANY(${ids}::int8[]) RETURNING id`;
         const elapsed = Date.now() - t0;
 
         if (!deleted.length) continue;

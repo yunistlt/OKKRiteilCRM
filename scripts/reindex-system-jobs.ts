@@ -22,7 +22,9 @@
  */
 import postgres from 'postgres';
 
-const sql = postgres(process.env.DATABASE_URL!, { ssl: 'require', max: 1, idle_timeout: 0 });
+// Без заготовленных запросов: база стоит за пулом в режиме транзакций, и они
+// там отваливаются с невнятными ошибками о типах.
+const sql = postgres(process.env.DATABASE_URL!, { ssl: 'require', max: 1, idle_timeout: 0, prepare: false });
 
 const INDEXES = [
     'idx_system_jobs_ready',
