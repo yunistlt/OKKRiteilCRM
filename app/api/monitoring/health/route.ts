@@ -91,7 +91,11 @@ export async function GET() {
                 .select('telphin_call_id', { count: 'exact', head: true })
                 .eq('transcription_status', 'processing')
                 .lt('started_at', fiveMinutesAgo)
-                .catch(() => null),
+                // Запрос Supabase — не обещание, а «похожий на обещание»
+                // объект: у него есть `then`, но нет `catch`. Отсюда падала вся
+                // страница проверки — «.catch is not a function» вместо
+                // состояния системы. Ошибку ловим вторым аргументом `then`.
+                .then((r: { count: number | null }) => r, () => null),
             supabase
                 .from('sync_state')
                 .select('key, value')
