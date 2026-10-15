@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { openPickerOnClick } from '@/components/ui/openPickerOnClick';
 import AutoTextarea from '@/components/ui/AutoTextarea';
 import { checkCounterpartyByInn, CounterpartyScoreResult } from '@/lib/legal-counterparty-check';
 import CallInitiator from './calls/CallInitiator';
@@ -191,11 +192,7 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
                     // маленькому значку справа (просьба владельца 05.10.2026).
                     // Руками дату по-прежнему можно напечатать: поле остаётся
                     // обычным полем ввода.
-                    onClick={(e) => {
-                        if (type !== 'date') return;
-                        const el = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
-                        try { el.showPicker?.(); } catch { /* старый браузер — останется значок */ }
-                    }}
+                    onClick={(e) => { if (type === 'date') openPickerOnClick(e); }}
                     className={`w-full px-2 py-1 border text-sm text-gray-900 ${frame} ${type === 'date' ? 'cursor-pointer' : ''}`}
                 />
                 {action}

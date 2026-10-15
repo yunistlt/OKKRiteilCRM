@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { openPickerOnClick } from '@/components/ui/openPickerOnClick';
 import OrderMailPanel from '@/components/orders/OrderMailPanel';
 import { orderFileHref } from '@/lib/orders/file-href';
 
@@ -571,7 +572,8 @@ function TasksList({ orderNumber, onChanged }: { orderNumber: string; onChanged?
                     type="date"
                     value={due}
                     onChange={(e) => setDue(e.target.value)}
-                    className="border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none"
+                    onClick={openPickerOnClick}
+                    className="cursor-pointer border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none"
                 />
                 {/* Время срока: «перезвонить в 14:30», а не «сегодня» (просьба
                     Ирины Гордеевой 05.10.2026). Без даты время смысла не имеет. */}
@@ -579,9 +581,10 @@ function TasksList({ orderNumber, onChanged }: { orderNumber: string; onChanged?
                     type="time"
                     value={dueTime}
                     onChange={(e) => setDueTime(e.target.value)}
+                    onClick={openPickerOnClick}
                     disabled={!due}
                     title={due ? 'Во сколько' : 'Сначала выберите дату'}
-                    className="border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                    className="cursor-pointer border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none disabled:cursor-default disabled:bg-gray-100 disabled:text-gray-400"
                 />
                 <button
                     onClick={add}
@@ -623,15 +626,17 @@ function TasksList({ orderNumber, onChanged }: { orderNumber: string; onChanged?
                                             type="date"
                                             value={editDue}
                                             onChange={(e) => setEditDue(e.target.value)}
-                                            className="border border-gray-300 px-2 py-1 text-sm focus:border-blue-600 focus:outline-none"
+                                            onClick={openPickerOnClick}
+                                            className="cursor-pointer border border-gray-300 px-2 py-1 text-sm focus:border-blue-600 focus:outline-none"
                                         />
                                         <input
                                             type="time"
                                             value={editTime}
                                             onChange={(e) => setEditTime(e.target.value)}
+                                            onClick={openPickerOnClick}
                                             disabled={!editDue}
                                             title={editDue ? 'Во сколько' : 'Сначала выберите дату'}
-                                            className="border border-gray-300 px-2 py-1 text-sm focus:border-blue-600 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                                            className="cursor-pointer border border-gray-300 px-2 py-1 text-sm focus:border-blue-600 focus:outline-none disabled:cursor-default disabled:bg-gray-100 disabled:text-gray-400"
                                         />
                                     </div>
                                     <div className="mt-1 flex gap-3">
