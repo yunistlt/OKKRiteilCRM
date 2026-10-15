@@ -15,10 +15,13 @@ export type CrmLinkBase = string;
 
 const money = (v: number) => Math.round(v).toLocaleString('ru-RU');
 
-/** Ссылка на заказ в RetailCRM: номер должен открываться в один клик. */
-export function orderLink(base: CrmLinkBase, orderId: number, number: string): string {
+/**
+ * Ссылка на заказ: номер должен открываться в один клик — и открываться у нас.
+ * Заказы ведутся в ОКК, RetailCRM — архив на чтение (15.10.2026).
+ */
+export function orderLink(base: CrmLinkBase, _orderId: number, number: string): string {
     if (!base) return `№${number}`;
-    return `<a href="${base}/orders/${orderId}/edit">№${number}</a>`;
+    return `<a href="${base}/orders?order=${encodeURIComponent(number)}">№${number}</a>`;
 }
 
 function tag(username: string, name: string): string {

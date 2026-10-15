@@ -1,5 +1,6 @@
 'use client';
 
+import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getCallTranscript } from '@/app/actions/rules';
@@ -135,9 +136,7 @@ export default function ViolationRow({ violation: v }: ViolationRowProps) {
                     {v.order_id ? (
                         <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2">
-                                <a href={`https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 font-bold underline">
-                                    #{v.orders?.number || v.order_id}
-                                </a>
+                                <OrderNumberLink number={v.orders?.number || v.order_id} className="text-blue-600 hover:text-blue-800 font-bold underline" />
                             </div>
                             {v.orders?.status && (
                                 <span className="self-start inline-block px-2 py-0.5 text-[10px] bg-gray-100 border border-gray-200 rounded text-gray-600">

@@ -220,7 +220,7 @@ export default function ManagerProfilePage() {
                                             {new Date(v.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                         </div>
                                         <a
-                                            href={`https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit`}
+                                            href={`/orders?order=${v.order_number || v.order_id}`}
                                             target="_blank"
                                             className="inline-flex items-center gap-1 font-black text-blue-600 text-sm"
                                         >
@@ -267,7 +267,7 @@ export default function ManagerProfilePage() {
                                             </td>
                                             <td className="p-4 md:p-8 text-right">
                                                 <a
-                                                    href={`https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit`}
+                                                    href={`/orders?order=${v.order_number || v.order_id}`}
                                                     target="_blank"
                                                     className="inline-flex items-center gap-2 font-black text-blue-600 hover:text-blue-800 transition-all text-xs md:text-sm group-hover:scale-105"
                                                 >
@@ -488,7 +488,7 @@ export default function ManagerProfilePage() {
                                                     <div className="flex items-center gap-3">
                                                         {group.order ? (
                                                             <a
-                                                                href={`https://zmktlt.retailcrm.ru/orders/${group.order.order_id}/edit`}
+                                                                href={`/orders?order=${group.order.number || group.order.order_id}`}
                                                                 target="_blank"
                                                                 className="flex items-center gap-3 group/link"
                                                             >
@@ -604,7 +604,7 @@ export default function ManagerProfilePage() {
 
                                                     {c.call_order_matches && c.call_order_matches[0]?.orders && (
                                                         <div className="text-right">
-                                                            <a href={`https://zmktlt.retailcrm.ru/orders/${c.call_order_matches[0].orders.order_id}/edit`} className="inline-flex items-center gap-1 font-black text-blue-600 text-sm">
+                                                            <a href={`/orders?order=${c.call_order_matches[0].orders.number || c.call_order_matches[0].orders.order_id}`} className="inline-flex items-center gap-1 font-black text-blue-600 text-sm">
                                                                 #{c.call_order_matches[0].orders.number}
                                                             </a>
                                                             <div className="mt-1">
@@ -691,7 +691,7 @@ export default function ManagerProfilePage() {
                                                             {c.call_order_matches && c.call_order_matches[0]?.orders && (
                                                                 <div className="flex flex-col items-end gap-1.5">
                                                                     <a
-                                                                        href={`https://zmktlt.retailcrm.ru/orders/${c.call_order_matches[0].orders.order_id}/edit`}
+                                                                        href={`/orders?order=${c.call_order_matches[0].orders.number || c.call_order_matches[0].orders.order_id}`}
                                                                         target="_blank"
                                                                         className={`inline-flex items-center gap-1.5 md:gap-2 font-black transition-all text-sm md:text-base group-hover:scale-105 ${c.call_order_matches[0].orders.priority === 'red' ? 'text-red-700 hover:text-red-800' :
                                                                             c.call_order_matches[0].orders.priority === 'yellow' ? 'text-amber-700 hover:text-amber-800' :

@@ -1274,7 +1274,7 @@ function OKKContent() {
                                             <div className="grid gap-0.5 min-w-0">
                                                 <div className="grid min-w-0 items-center gap-1" style={{ gridTemplateColumns: '14px auto minmax(0, 1fr)' }}>
                                                     <button onClick={() => handleSingleRun(s.order_id)} disabled={running} className="flex h-[14px] w-[14px] items-center justify-center text-[10px] leading-none hover:scale-125 disabled:opacity-30">↩️</button>
-                                                    <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer" className="truncate text-[10px] font-bold text-blue-600 hover:underline font-sans">#{s.order_id}</a>
+                                                    <a href={`/orders?order=${s.order_id}`} target="_blank" rel="noreferrer" className="truncate text-[10px] font-bold text-blue-600 hover:underline font-sans">#{s.order_id}</a>
                                                     <span
                                                         className="block min-w-0 truncate rounded-full px-1 py-0.5 text-[8px] font-bold leading-tight whitespace-nowrap"
                                                         style={getBadgeStyle(s.status_color)}
@@ -1356,7 +1356,7 @@ function OKKContent() {
                                 <div className="flex items-center justify-between gap-2">
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                         <a
-                                            href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`}
+                                            href={`/orders?order=${s.order_id}`}
                                             target="_blank"
                                             rel="noreferrer"
                                             onClick={(e) => e.stopPropagation()}
@@ -1628,7 +1628,7 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                         <h2 className="text-base md:text-lg font-bold text-gray-900 flex items-center gap-1.5 md:gap-2">
                             <span>📞 <span className="hidden md:inline">Детали звонков</span></span>
                             <a
-                                href={`https://zmktlt.retailcrm.ru/orders/${order.order_id}/edit`}
+                                href={`/orders?order=${order.order_id}`}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-blue-600 hover:text-blue-800 hover:underline"

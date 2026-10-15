@@ -162,12 +162,13 @@ describe('как это читается', () => {
         expect(text.startsWith('Гордеева Ирина,')).toBe(true);
     });
 
-    it('номер заказа кликабельный, когда известен адрес CRM', () => {
+    it('номер заказа кликабельный и ведёт в карточку ОКК', () => {
         const text = formatMorning(
             { managerId: 249, managerName: 'Г', telegramUsername: 'x', tasks },
-            'https://zmktlt.retailcrm.ru',
+            'https://okk.zmksoft.com',
         );
-        expect(text).toContain('<a href="https://zmktlt.retailcrm.ru/orders/1/edit">№54132</a>');
+        // Заказ открывается у нас: RetailCRM с 15.10.2026 — архив на чтение.
+        expect(text).toContain('<a href="https://okk.zmksoft.com/orders?order=54132">№54132</a>');
     });
 
     it('вечер: сделал всё — одна строка без разбора', () => {

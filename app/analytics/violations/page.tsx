@@ -292,7 +292,7 @@ function ViolationsContent() {
                                                             </span>
                                                         )}
                                                         <a
-                                                            href={`https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit`}
+                                                            href={`/orders?order=${v.order_number || v.order_id}`}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             className="inline-flex items-center gap-1 px-3 py-1.5 bg-white text-gray-700 rounded-lg hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all duration-300 font-black text-[10px] md:text-xs border border-gray-200"
