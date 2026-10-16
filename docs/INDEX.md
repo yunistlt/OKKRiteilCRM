@@ -1,12 +1,27 @@
 # 📑 Архив описательных файлов проекта OKKRiteilCRM
 
-**Дата обновления:** 1 октября 2026  
+**Дата обновления:** 13 мая 2026  
 **Статус:** Систематизированная структура документации
 
-> Главная тема сейчас — **своя CRM**: [own-crm/OVERVIEW.md](own-crm/OVERVIEW.md)
-> (as-built) и [own-crm/ROADMAP.md](own-crm/ROADMAP.md) (задачи). Начинать с них.
-
 ---
+
+## ⚠️ ОТ RETAILCRM ОТВЯЗАЛИСЬ (09.10.2026)
+
+**ОКК — единственная система учёта.** Заказы, статусы, правки, оплаты, заявки
+всех служб и звонки живут только в нашей базе. **RetailCRM — архив на чтение**,
+и он больше не пополняется: подкачка заказов выключена 05.10.2026, звонки
+(`retailcrm_calls`) не приходят с 09.10.2026.
+
+Пустая или отставшая таблица с префиксом `retailcrm_` — норма, а не поломка.
+Не чинить эти синки и не брать оттуда данные. Источник звонков —
+`raw_telphin_calls` + `call_order_matches` (представление `call_order_link`).
+Запись в RetailCRM запрещена и закреплена сторожем
+`tests/retailcrm-read-only.test.ts`.
+
+Разделы этого документа, написанные до октября 2026, в части обмена с RetailCRM
+устарели — сверяйся с этим абзацем и с `CLAUDE.md`.
+
+
 
 ## 🎯 Быстрая навигация
 
@@ -14,18 +29,9 @@
 
 | Модуль | Статус | Основные документы | Ответственный |
 |--------|--------|-----------------|---------|
-| **Своя CRM (переезд с RetailCRM)** | 🟡 В работе | [docs/own-crm/OVERVIEW.md](own-crm/OVERVIEW.md) ← начни отсюда, [ROADMAP.md](own-crm/ROADMAP.md), [FIELDS.md](own-crm/FIELDS.md) | Владелец |
-| **Телефон в интерфейсе (софтфон)** | 🟢 Production | [docs/softphone/OVERVIEW.md](softphone/OVERVIEW.md) | Team Sales |
-| **Автоприём писем (Катерина)** | 🟢 Production | [docs/email-secretary/OVERVIEW.md](email-secretary/OVERVIEW.md) | Team Sales |
-| **Секретарь Телфина (входящие звонки)** | 🟢 Production | [docs/secretary/OVERVIEW.md](secretary/OVERVIEW.md) | Team Sales |
-| **Бот-РОП (план дня, разбор вечера)** | 🟢 Production | [docs/sales-rop/](sales-rop/) | Team Sales |
-| **Претензионно-исковая работа (реестр дел)** | 🟡 В работе | [docs/legal-matters/OVERVIEW.md](legal-matters/OVERVIEW.md) | Team Legal |
-| **Суды по подписке («Страж»)** | 🟢 Production | [docs/court-watch/OVERVIEW.md](court-watch/OVERVIEW.md) | Team Legal |
-| **Адресация уведомлений** | 🟢 Production | [docs/notifications/OVERVIEW.md](notifications/OVERVIEW.md) | All |
 | **ОКК (контроль качества)** | 🟢 Production | [docs/okk/OVERVIEW.md](okk/OVERVIEW.md) | Team ОКК |
 | **ОКК Консультант (Семён)** | 🟢 Production | [docs/okk-consultant/](okk-consultant/) | Team ОКК |
 | **Юридические ИИ (Лев, Дарья, Борис, Григорий)** | 🟡 4 спринта | [docs/legal-ai/](legal-ai/) | Team Legal |
-| **Исполнительные производства (ФССП)** | 🟡 не влито | [docs/legal-enforcement/OVERVIEW.md](legal-enforcement/OVERVIEW.md) | Team Legal |
 | **Корпоративный мессенджер** | 🟡 92% ready | [docs/messenger/](messenger/) | Team Messenger |
 | **Lead Catcher (Елена)** | 🟢 Реализован | [docs/lead-catcher/](lead-catcher/) | Team Sales |
 | **Штаб владельца («Альянс Стратег»)** | 🟢 Реализован | [docs/shtab/](shtab/OVERVIEW.md) | Владелец |
@@ -34,8 +40,6 @@
 | **Штаб: передача дел на локальную машину** | 🔵 Передача | [docs/shtab/HANDOFF.md](shtab/HANDOFF.md) | Владелец |
 | **Зарплата ОП (конструктор)** | 🟢 Реализован | [docs/salary/](salary/README.md) ← начни отсюда | Team Sales |
 | **Платежи «с точки» (Точка → заказы)** | 🟢 Реализован | [docs/payments/](payments/OVERVIEW.md) | Team Finance |
-| **ЦехУспех: заказ в производство** | 🟡 Наша сторона готова | [docs/tseh-integration/](tseh-integration/OVERVIEW.md) | Владелец |
-| **Режим тестировщика / проверка вёрстки по голдам** | 🟢 Реализован | [docs/ui-audit/OVERVIEW.md](ui-audit/OVERVIEW.md) | Frontend |
 | **Voice of Customer KB** | 🟡 В разработке | [docs/knowledge-base/](knowledge-base/) | Team KM |
 | **Real-time pipeline** | 🟡 В исполнении | [docs/realtime-pipeline/](realtime-pipeline/) | Team Infrastructure |
 | **Транскрибация** | 🟢 ✅ Закрыто | [docs/transcription/](transcription/) | Team Infrastructure |
@@ -115,10 +119,7 @@
 
 | Область | Master Source | Документ |
 |---------|--------------|----------|
-| **Роли ИИ-команды** | `docs/ai-team/STAFF_ROLES.md` | [ai-team/STAFF_ROLES.md](ai-team/STAFF_ROLES.md) |
-| **Своя CRM (as-built)** | `docs/own-crm/OVERVIEW.md` | [own-crm/OVERVIEW.md](own-crm/OVERVIEW.md) |
-| **Интеграция RetailCRM** | `lib/retailcrm/` | `lib/retailcrm/README.md`, `API.md`, `NAMING.md` |
-| **Границы ОКК ↔ ЛВЖ** | `docs/BOUNDARY_OKK_LVZ.md` | [BOUNDARY_OKK_LVZ.md](BOUNDARY_OKK_LVZ.md) |
+| **ОКК роли** | AI_STAFF_ROLES.md | [ai-team/STAFF_ROLES.md](ai-team/STAFF_ROLES.md) |
 | **ОКК план** | PLAN.md | [okk-consultant/PLAN.md](okk-consultant/PLAN.md) |
 | **Legal план** | IMPLEMENTATION_PLAN.md | [legal-ai/IMPLEMENTATION_PLAN.md](legal-ai/IMPLEMENTATION_PLAN.md) |
 | **Real-time архитектура** | ACTUALIZATION_PLAN.md | [realtime-pipeline/ACTUALIZATION_PLAN.md](realtime-pipeline/ACTUALIZATION_PLAN.md) |
@@ -128,10 +129,9 @@
 ## 🎓 Для новых членов команды
 
 Начните отсюда:
-1. 📖 [own-crm/OVERVIEW.md](own-crm/OVERVIEW.md) — куда движется сервис (своя CRM)
-2. 📖 [ai-team/STAFF_ROLES.md](ai-team/STAFF_ROLES.md) — познакомьтесь с командой ИИ
-3. 🎯 [okk-consultant/README.md](okk-consultant/README.md) — обзор консультанта
-4. 📚 Выберите свой модуль из таблицы выше
+1. 📖 [ai-team/STAFF_ROLES.md](ai-team/STAFF_ROLES.md) — познакомьтесь с командой ИИ
+2. 🎯 [okk-consultant/README.md](okk-consultant/README.md) — обзор консультанта
+3. 📚 Выберите свой модуль из таблицы выше
 
 ---
 
