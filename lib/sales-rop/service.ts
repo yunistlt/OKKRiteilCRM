@@ -32,7 +32,8 @@ import type { EveningRow } from '@/lib/sales-rop/format';
 // одном чате, и заводить второй — верный способ, чтобы половину сообщений
 // никто не читал.
 
-const CRM_BASE = (process.env.NEXT_PUBLIC_RETAILCRM_URL || process.env.RETAILCRM_URL || '').replace(/\/$/, '');
+// Адрес ОКК: заказ из сообщения бота открывается в нашей карточке.
+const CRM_BASE = (process.env.NEXT_PUBLIC_APP_URL || 'https://okk.zmksoft.com').replace(/\/$/, '');
 
 export type Settings = Thresholds & {
     chatId: string;

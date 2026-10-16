@@ -203,7 +203,7 @@ export default function RelevanceClient({ managers }: { managers: ManagerOption[
                                 {rows.map((r) => (
                                     <tr key={r.orderId} className="border-b border-slate-100 align-top hover:bg-slate-50">
                                         <td className="px-3 py-2">
-                                            <a href={`https://zmktlt.retailcrm.ru/orders/${r.orderId}/edit`} target="_blank" rel="noreferrer"
+                                            <a href={`/orders?order=${r.orderId}`} target="_blank" rel="noreferrer"
                                                 className="font-bold text-blue-600 hover:underline">#{r.number}</a>
                                             <div className="text-[10px] text-slate-400">{r.itemsCount} поз.</div>
                                         </td>

@@ -331,7 +331,7 @@ export default function TrainingExamplesPage() {
                                         <td className="px-4 py-3">
                                             <div onClick={(e) => e.stopPropagation()}>
                                                 <a
-                                                    href={`https://zmktlt.retailcrm.ru/orders/${example.order_number}/edit`}
+                                                    href={`/orders?order=${example.order_number}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="font-mono font-bold text-blue-600 hover:text-blue-800 hover:underline text-xs md:text-sm"
@@ -425,7 +425,7 @@ export default function TrainingExamplesPage() {
                                             <div>
                                                 <span className="text-gray-500">Номер:</span>
                                                 <a
-                                                    href={`https://zmktlt.retailcrm.ru/orders/${currentOrder.number}/edit`}
+                                                    href={`/orders?order=${currentOrder.number}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="font-mono font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer ml-1"

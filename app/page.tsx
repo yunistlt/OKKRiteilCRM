@@ -7,7 +7,6 @@ function PriorityWidget() {
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<string | null>(null);
-    const [crmUrl, setCrmUrl] = useState<string>('');
     const [analyzingOrderId, setAnalyzingOrderId] = useState<number | null>(null);
     const [analysisResults, setAnalysisResults] = useState<Record<number, any>>({});
     const [queuedAnalyses, setQueuedAnalyses] = useState<Record<number, { message: string; cachedAt?: string | null }>>({});
@@ -67,7 +66,6 @@ function PriorityWidget() {
             .then(data => {
                 if (data.ok) {
                     setOrders(Array.isArray(data.priorities) ? data.priorities : []);
-                    setCrmUrl(data.retailCrmUrl || '');
                 }
                 setLoading(false);
             })
@@ -256,10 +254,9 @@ function PriorityWidget() {
                                                 <div>
                                                     <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-1">
                                                         <a
-                                                            href={crmUrl ? `${crmUrl}/orders/${order.orderId}/edit` : '#'}
-                                                            target={crmUrl ? '_blank' : undefined}
+                                                            href={`/orders?order=${order.orderNumber || order.orderId}`}
+                                                            target="_blank"
                                                             className="font-black text-gray-900 text-base md:text-lg hover:text-blue-600 hover:underline decoration-2 underline-offset-2 transition-colors"
-                                                            onClick={e => !crmUrl && e.preventDefault()}
                                                         >
                                                             #{order.orderNumber}
                                                         </a>

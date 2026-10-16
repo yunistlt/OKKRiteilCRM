@@ -6,6 +6,7 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
 import { supabase } from '../utils/supabase';
 import { analyzeOrderForRouting } from '../lib/ai-router';
+import { editOrder } from '../lib/own-crm/edit-order';
 
 const DRY_RUN = process.argv.includes('--apply') === false;
 const LIMIT = 600;
@@ -25,7 +26,7 @@ async function processBacklog() {
     // 2. Fetch orders
     const { data: orders, error } = await supabase
         .from('orders')
-        .select('id, status, site')
+        .select('id, status, site, raw_payload')
         .eq('status', 'soglasovanie-otmeny')
         .limit(LIMIT);
 
@@ -51,28 +52,13 @@ async function processBacklog() {
 
         await Promise.all(batch.map(async (order) => {
             try {
-                // Fetch fresh from RetailCRM using site for reliability
-                const params = new URLSearchParams({
-                    apiKey: process.env.RETAILCRM_API_KEY!,
-                    'filter[ids][0]': String(order.id)
-                });
-                if (order.site) params.append('site', order.site);
-
-                const fetchRes = await fetch(
-                    `${process.env.RETAILCRM_URL}/api/v5/orders?${params.toString()}`
-                );
-                const fetchData = await fetchRes.json();
-
-                if (!fetchData.success || !fetchData.orders || fetchData.orders.length === 0) {
-                    throw new Error(`Order ${order.id} (site: ${order.site}) not found in CRM`);
-                }
-
-                const retailcrmOrder = fetchData.orders[0];
-                const orderSite = retailcrmOrder.site; // Use the actual site returned
-                const comment = retailcrmOrder.managerComment || '';
+                // Заказ читаем в своей базе: RetailCRM — архив на чтение,
+                // а статусы и комментарии ведутся у нас.
+                const payload = (order as any).raw_payload || {};
+                const comment = payload.managerComment || '';
                 const systemContext = {
                     currentTime: new Date().toISOString(),
-                    orderUpdatedAt: retailcrmOrder.statusUpdatedAt || retailcrmOrder.updatedAt || new Date().toISOString()
+                    orderUpdatedAt: payload.statusUpdatedAt || payload.updatedAt || new Date().toISOString()
                 };
 
                 // Analyze
@@ -94,46 +80,25 @@ async function processBacklog() {
                     });
 
                 if (!DRY_RUN && decision.confidence >= 0.7) {
-                    // Update CRM
+                    // Статус и комментарий пишем одной дверью — `editOrder`:
+                    // он кладёт историю, которую читают зарплата и ОКК.
                     const newComment = comment
                         ? `${comment}\n\nОКК: ${decision.reasoning}`
                         : `ОКК: ${decision.reasoning}`;
 
-                    const updateBody = {
-                        status: decision.target_status,
+                    const applied = await editOrder(Number(order.id), {
+                        statusCode: decision.target_status,
                         managerComment: newComment,
-                        customFields: { next_contact_date: null }
-                    };
+                    });
 
-                    const updateRes = await fetch(
-                        `${process.env.RETAILCRM_URL}/api/v5/orders/${order.id}/edit?by=id`,
-                        {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                            body: new URLSearchParams({
-                                apiKey: process.env.RETAILCRM_API_KEY!,
-                                site: retailcrmOrder.site,
-                                order: JSON.stringify(updateBody)
-                            })
-                        }
-                    );
-
-                    const updateData = await updateRes.json();
-                    if (updateData.success) {
-                        // Update local DB
-                        await supabase.from('orders').update({ status: decision.target_status }).eq('id', order.id);
-
-                        // Update log
+                    if (applied.ok) {
                         await supabase
                             .from('ai_routing_logs')
                             .update({ was_applied: true, applied_at: new Date().toISOString() })
-                            .eq('order_id', order.id)
-                            .order('created_at', { ascending: false })
-                            .limit(1);
-
+                            .eq('order_id', order.id);
                         appliedCount++;
                     } else {
-                        console.error(`[Order ${order.id}] Update failed:`, JSON.stringify(updateData));
+                        console.error(`[Order ${order.id}] Статус не записался:`, applied.reason);
                         errorCount++;
                     }
                 }

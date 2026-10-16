@@ -1015,7 +1015,7 @@ export default function LeadCatcherPage() {
                                                                 {hasOrder ? (
                                                                     <div className="flex flex-col gap-1 min-w-[150px]">
                                                                         <a
-                                                                            href={`https://zmktlt.retailcrm.ru/orders/${item.crm_order_id}/edit`}
+                                                                            href={`/orders?order=${item.crm_order_id}`}
                                                                             target="_blank"
                                                                             rel="noopener noreferrer"
                                                                             className="text-blue-600 font-bold hover:underline text-[11px]"

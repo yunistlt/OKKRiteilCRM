@@ -17,7 +17,8 @@ import { deleteChatAttachmentObjects } from '@/lib/messenger/storage';
 
 export const dynamic = 'force-dynamic';
 
-const RETAILCRM_BASE = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL || process.env.NEXT_PUBLIC_RETAILCRM_URL || 'https://zmktlt.retailcrm.ru').replace(/\/+$/, '');
+// Заказ чата открывается у нас: RetailCRM — архив на чтение (15.10.2026).
+const APP_BASE = (process.env.NEXT_PUBLIC_APP_URL || 'https://okk.zmksoft.com').replace(/\/+$/, '');
 
 type ParticipantRecord = {
     chat_id: string;
@@ -194,7 +195,7 @@ export async function GET(req: Request) {
                 })),
                 context_order: chat.context_order_id ? {
                     ...orderById.get(chat.context_order_id),
-                    retailcrm_url: `${RETAILCRM_BASE}/orders/${chat.context_order_id}/edit`,
+                    retailcrm_url: `${APP_BASE}/orders?order=${chat.context_order_id}`,
                 } : null,
                 last_message: typedLastMessages[0] || null,
                 unread_count: unreadCount || 0

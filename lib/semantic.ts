@@ -94,6 +94,9 @@ export async function analyzeTranscript(transcript: string, rulePrompt: string):
 
 export async function generateHumanNotification(managerName: string, orderId: string, ruleName: string, details: string, telegramUsername: string, senderPersona: 'anna' | 'igor'): Promise<string> {
     const signature = senderPersona === 'anna' ? '— Аня (Бизнес-аналитик)' : '— Игорь (Диспетчер)';
+    // Заказ открывается у нас: заказы ведутся в ОКК, RetailCRM — архив на чтение.
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://okk.zmksoft.com').replace(/\/+$/, '');
+    const orderLink = `${appUrl}/orders?order=${orderId}`;
     const genderRule = senderPersona === 'anna'
         ? 'You are Anna (a female). You MUST use feminine verbs for yourself (e.g., "Я заметила", "Я проверила", "Я нашла").'
         : 'You are Igor (a male). You MUST use masculine verbs for yourself (e.g., "Я заметил", "Я проверил", "Я нашел").';
@@ -105,11 +108,11 @@ Your task is to write a single short, human-like Telegram message to a manager a
 Structure of the message:
 1. First line: EXACTLY the manager's tag: ${telegramUsername ? `@${telegramUsername}` : `@${managerName || 'manager'}`}
 2. Second line: A friendly greeting (e.g., "${managerName}, привет! 👋").
-3. Third line and onwards: Explanation of what exactly was violated in the order <a href="https://zmktlt.retailcrm.ru/orders/${orderId}/edit">#${orderId}</a>.
+3. Third line and onwards: Explanation of what exactly was violated in the order <a href="${orderLink}">#${orderId}</a>.
 
 Requirements:
 1. You MUST start the message with the tag on the first line.
-2. The order number MUST be a clickable HTML link exactly in this format: <a href="https://zmktlt.retailcrm.ru/orders/${orderId}/edit">#${orderId}</a>.
+2. The order number MUST be a clickable HTML link exactly in this format: <a href="${orderLink}">#${orderId}</a>.
 3. Be EXPLICIT about what was violated. Use the rule name ("${ruleName}") and specific details ("${details}") to explain the mistake naturally.
 4. DO NOT mention any penalty points or scores.
 5. Add a friendly, motivational ending with relatable emojis.
@@ -121,7 +124,7 @@ Requirements:
 Example 1:
 ${telegramUsername ? `@${telegramUsername}` : `@${managerName || 'manager'}`}
 Оль, привет! 👋
-${senderPersona === 'anna' ? 'Обратила' : 'Обратил'} внимание на заказ <a href="https://zmktlt.retailcrm.ru/orders/45818/edit">#45818</a>. Там зафиксировано нарушение: "${ruleName}". По деталям: ${details}. Пожалуйста, поправь это 🙏😊
+${senderPersona === 'anna' ? 'Обратила' : 'Обратил'} внимание на заказ <a href="${appUrl}/orders?order=45818">#45818</a>. Там зафиксировано нарушение: "${ruleName}". По деталям: ${details}. Пожалуйста, поправь это 🙏😊
 ${signature}
 
 Generate the HTML message now for manager "${managerName}" regarding order "${orderId}".
@@ -145,6 +148,6 @@ Generate the HTML message now for manager "${managerName}" regarding order "${or
         return content.trim();
     } catch (e) {
         console.error('Human Notification Generation Error:', e);
-        return `⚠️ ${telegramUsername ? `@${telegramUsername}` : `@${managerName || 'manager'}`}, обратите внимание на заказ <a href="https://zmktlt.retailcrm.ru/orders/${orderId}/edit">#${orderId}</a>.\nПравило: ${ruleName}\nПодробности: ${details}\n${signature}`;
+        return `⚠️ ${telegramUsername ? `@${telegramUsername}` : `@${managerName || 'manager'}`}, обратите внимание на заказ <a href="${orderLink}">#${orderId}</a>.\nПравило: ${ruleName}\nПодробности: ${details}\n${signature}`;
     }
 }
