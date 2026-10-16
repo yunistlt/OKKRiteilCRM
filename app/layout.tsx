@@ -20,6 +20,8 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
     title: "OKKRiteilCRM",
+    // Запрет автоперевода страницы браузером — см. комментарий у <html> ниже.
+    other: { google: 'notranslate' },
     description: "RetailCRM and Telphin Analytics",
     applicationName: 'OKKRiteilCRM',
     manifest: '/manifest.webmanifest',
@@ -68,7 +70,11 @@ export default async function RootLayout({
     }
 
     return (
-        <html lang="en">
+        /* Страница русская. При lang="en" браузер считал её английской и
+           включал автоперевод: подписи полей превращались в «орегано фил.» и
+           «эн Парефонф», фильтр переставал искать, интерфейс тормозил вдвое
+           (Евгения Матвеева 16.10.2026). translate="no" запрещает перевод. */
+        <html lang="ru" translate="no">
             <body className="bg-gray-50 min-h-screen flex text-gray-900">
                 <AuthProvider initialSession={session} initialPermissionRules={permissionRules} initialRoleCapabilities={roleCapabilities}>
                     <PwaBootstrap />
