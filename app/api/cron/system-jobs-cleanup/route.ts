@@ -44,6 +44,43 @@ const МЁРТВЫЕ_ТИПЫ = [
     'retailcrm_order_upsert',
 ];
 
+/**
+ * Идёт ли уже уборка.
+ *
+ * На выходных уборщик просыпается каждый час, а один проход может занять до
+ * пяти минут. Если предыдущий запуск почему-то затянулся или завис, новый не
+ * должен лезть следом: две уборки разом — это ровно та нагрузка, из-за которой
+ * 16.10.2026 падала работа.
+ */
+const КЛЮЧ_СТАРТА = `${WORKER_KEY}.started_at`;
+const КЛЮЧ_УСПЕХА = `${WORKER_KEY}.last_success_at`;
+
+async function uborkaUzheIdyot(): Promise<boolean> {
+    const { data } = await supabase
+        .from('sync_state')
+        .select('key, value')
+        .in('key', [КЛЮЧ_СТАРТА, КЛЮЧ_УСПЕХА]);
+
+    const значения = new Map(((data ?? []) as any[]).map((r) => [r.key, r.value]));
+    const началось = Date.parse(String(значения.get(КЛЮЧ_СТАРТА) ?? ''));
+    if (!Number.isFinite(началось)) return false;
+
+    const закончилось = Date.parse(String(значения.get(КЛЮЧ_УСПЕХА) ?? ''));
+    if (Number.isFinite(закончилось) && закончилось >= началось) return false;
+
+    // Запуск не отметился о завершении. Ждём столько, сколько он вообще может
+    // идти (maxDuration 300 с) плюс запас; дальше считаем, что он умер, и идём.
+    return Date.now() - началось < 7 * 60 * 1000;
+}
+
+async function otmetitStart(): Promise<void> {
+    const сейчас = new Date().toISOString();
+    await supabase.from('sync_state').upsert(
+        [{ key: КЛЮЧ_СТАРТА, value: сейчас, updated_at: сейчас }],
+        { onConflict: 'key' },
+    );
+}
+
 /** Сколько миллисекунд база отдаёт обычный список заказов. */
 async function ordersResponseMs(): Promise<number> {
     const t0 = Date.now();
@@ -102,6 +139,12 @@ export async function GET(req: NextRequest) {
                 .eq('status', 'completed');
             return NextResponse.json({ ok: true, dryRun: true, выполненных: count ?? 0 });
         }
+
+        // На выходных уборщик просыпается каждый час — не наступаем на себя.
+        if (await uborkaUzheIdyot()) {
+            return NextResponse.json({ ok: true, пропущено: 'предыдущая уборка ещё идёт' });
+        }
+        await otmetitStart();
 
         let удалено = 0;
         let порций = 0;

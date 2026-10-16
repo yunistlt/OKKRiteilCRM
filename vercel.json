@@ -6,7 +6,15 @@
   "crons": [
         {
             "path": "/api/cron/system-jobs-cleanup",
-            "schedule": "0 16 * * *"
+            "schedule": "0 16-23 * * 5"
+        },
+        {
+            "path": "/api/cron/system-jobs-cleanup",
+            "schedule": "0 * * * 6"
+        },
+        {
+            "path": "/api/cron/system-jobs-cleanup",
+            "schedule": "0 0-17 * * 0"
         },
     {
       "path": "/api/cron/tseh-schema-kb",
