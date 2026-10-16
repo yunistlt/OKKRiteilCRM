@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   claimSystemJobs,
   completeSystemJob,
-  enqueueManagerAggregateRefreshJob,
   failSystemJob,
   isSystemJobsPipelineRuntimeEnabled,
 } from '@/lib/system-jobs';
@@ -70,18 +69,18 @@ export async function GET(req: NextRequest) {
         const priorityResult = await refreshStoredPriorityForOrder(orderId, true);
         const managerId = priorityResult.managerId ? Number(priorityResult.managerId) : null;
 
-        if (managerId) {
-          await enqueueManagerAggregateRefreshJob({
-            managerId,
-            source: 'score_refresh_worker',
-            payload: {
-              order_id: orderId,
-              priority_status: priorityResult.status,
-            },
-            priority: 45,
-            parentJobId: job.id,
-          });
-        }
+        // Показатели менеджера здесь НЕ заказываем.
+        //
+        // Раньше после каждого пересчёта балла сюда ставилась просьба обновить
+        // показатели его менеджера. Но пересчёт показателей берёт ВСЕ данные за
+        // 35 дней и считает человека целиком — одной просьбы хватило бы на всех.
+        // А выходило по одной на каждый заказ: 1 293 задания за неделю на трёх
+        // человек, и 687 из них висели в очереди мёртвым грузом (разбор
+        // 16.10.2026). Защита от дублей работает в окне в минуту и такие пачки
+        // не схлопывает: ночная сверка идёт сорок минут.
+        //
+        // С 16.10.2026 показатели считаются по расписанию раз в три часа, для
+        // всех сразу — цепочка стала лишней.
 
         await completeSystemJob(job.id, {
           order_id: orderId,
