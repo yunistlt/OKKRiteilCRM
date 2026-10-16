@@ -31,6 +31,15 @@ export type ClientHints = {
     email?: string | null;
     phone?: string | null;
     contactName?: string | null;
+    /**
+     * Кто ведёт заказ, из которого заводится карточка.
+     *
+     * Без него карточка создавалась бесхозной: заказ с менеджером, а клиент ни
+     * за кем. На 16.10.2026 так накопилось 55 карточек, из них свежие — за
+     * 13–16 октября. Это ломает закон «ни одной сделки без хозяина»: раздача
+     * заказов идёт по владельцу клиента, а владельца нет.
+     */
+    managerId?: number | string | null;
 };
 
 export type ResolvedClient = {
@@ -162,6 +171,9 @@ export async function findOrCreateOwnClient(hints: ClientHints): Promise<Resolve
         // Колонка — массив: храним так же, как приехавшие из RetailCRM карточки.
         phones: phone ? [phone] : null,
         contact_name: contactName || null,
+        // Хозяин карточки — тот, кто ведёт заказ, из которого она заводится.
+        // Иначе клиент остаётся ничей, и с ним некому работать.
+        manager_id: Number(hints.managerId) > 0 ? String(Number(hints.managerId)) : null,
         is_corporate: true,
         // Карточка наша: в RetailCRM она не уходит, и при сверке это видно.
         source: 'own-crm',
