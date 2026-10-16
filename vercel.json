@@ -5,6 +5,10 @@
   ],
   "crons": [
         {
+            "path": "/api/cron/salary-recalc",
+            "schedule": "30 */3 * * *"
+        },
+        {
             "path": "/api/cron/system-jobs-cleanup",
             "schedule": "0 16 * * *"
         },
