@@ -4,6 +4,10 @@
     "fra1"
   ],
   "crons": [
+        {
+            "path": "/api/cron/system-jobs-cleanup",
+            "schedule": "0 16 * * *"
+        },
     {
       "path": "/api/cron/tseh-schema-kb",
       "schedule": "40 1 * * *"
