@@ -106,7 +106,7 @@
     },
     {
       "path": "/api/cron/system-jobs/manager-aggregate-refresh",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 */3 * * *"
     },
     {
       "path": "/api/cron/system-jobs/order-insight-refresh",
@@ -118,7 +118,7 @@
     },
     {
       "path": "/api/cron/system-jobs/score-refresh",
-      "schedule": "*/3 * * * *"
+      "schedule": "0 */3 * * *"
     },
     {
       "path": "/api/cron/system-jobs/watchdog",
