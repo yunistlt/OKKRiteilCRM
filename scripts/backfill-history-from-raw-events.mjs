@@ -1,3 +1,9 @@
+// УСТАРЕЛО 16.10.2026 — НЕ ЗАПУСКАТЬ.
+//
+// Переносил историю из raw_order_events в order_history_log. Работа сделана
+// миграцией 20261016_merge_raw_order_events.sql (102 617 записей), сама таблица
+// raw_order_events удалена. Оставлен как след операции.
+
 // Разовый перелив статус-событий из raw_order_events в order_history_log.
 // raw_order_events хранит сырые записи истории RetailCRM (raw_payload = элемент
 // /orders/history) с 2024-01, а order_history_log — только с 2026-01-16.

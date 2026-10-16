@@ -1,3 +1,12 @@
+// УСТАРЕЛО 16.10.2026 — НЕ ЗАПУСКАТЬ.
+//
+// Скрипт искал заказы по телефону в raw_order_events, а эта таблица удалена:
+// её содержимое перенесено в order_history_log (миграция
+// 20261016_merge_raw_order_events.sql). Телефонов в живой истории нет вовсе —
+// они были денормализацией старого синка, телефон берётся из orders.
+// Перевести скрипт нельзя: он опирался именно на те поля, которых в новой
+// таблице не существует. Рабочий матчинг живёт в lib/call-matching.ts.
+
 
 // Mocking the environment for the library execution
 process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://lywtzgntmibdpgoijbty.supabase.co';
