@@ -58,13 +58,28 @@ export async function addOwnPayment(payment: NewOwnPayment): Promise<number> {
 
     // Тот же платёж из банка дважды не проводим: поступление приходит с
     // идентификатором, по нему и узнаём повтор.
+    //
+    // Повтор может прийти и с ДРУГИМ заказом — когда платёж разнесли не туда и
+    // привязывают заново (покупатель указал в назначении чужой номер счёта).
+    // Тогда строку не задваиваем и не бросаем: одно поступление из банка — одна
+    // строка оплаты, она просто переезжает в верный заказ.
     if (payment.pointPaymentId) {
         const { data } = await supabase
             .from('order_payments')
-            .select('id')
+            .select('id, order_id')
             .eq('point_payment_id', payment.pointPaymentId)
             .maybeSingle();
-        if (data) return Number((data as any).id);
+        if (data) {
+            const existingId = Number((data as any).id);
+            if (Number((data as any).order_id) !== Number(payment.orderId)) {
+                const { error: moveErr } = await supabase
+                    .from('order_payments')
+                    .update({ order_id: payment.orderId })
+                    .eq('id', existingId);
+                if (moveErr) throw new Error(`Не удалось перенести оплату в заказ: ${moveErr.message}`);
+            }
+            return existingId;
+        }
     }
 
     // `id` в таблице — идентификатор платежа RetailCRM, своей нумерации там нет.

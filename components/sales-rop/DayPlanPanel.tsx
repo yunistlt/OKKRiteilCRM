@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { formatRub } from '@/lib/format';
+import OrderNumberLink from '@/components/ui/OrderNumberLink';
 
 export type PlanTask = {
     orderId: number;
@@ -128,13 +129,22 @@ export default function DayPlanPanel({ onClose }: { onClose?: () => void }) {
                                 className={`px-3 py-2 ${task.done ? 'bg-green-50/60' : ''}`}
                             >
                                 <div className="flex items-baseline justify-between gap-2">
-                                    {/* Один клик — и открыта карточка заказа, а не список. */}
-                                    <a
-                                        href={`/orders?order=${task.orderId}`}
-                                        className={`text-sm font-bold ${task.done ? 'text-gray-400 line-through' : 'text-blue-700 hover:underline'}`}
-                                    >
-                                        №{task.orderNumber}
-                                    </a>
+                                    {/* Номер заказа — ссылка в карточку, одним общим
+                                        способом (закон владельца 02.10.2026). Раньше
+                                        адрес собирался из `orderId`, а у своих заказов
+                                        это не номер (900000260 против 900260), и ссылка
+                                        никуда не вела. У касания по клиенту номера может
+                                        не быть вовсе: последний заказ ведёт другой
+                                        менеджер, и чужой номер мы не называем. */}
+                                    {task.orderNumber ? (
+                                        <OrderNumberLink
+                                            number={task.orderNumber}
+                                            from="my-day"
+                                            className={`text-sm font-bold ${task.done ? 'text-gray-400 line-through' : 'text-blue-700 hover:underline'}`}
+                                        />
+                                    ) : (
+                                        <span className="text-sm font-bold text-gray-700">По клиенту</span>
+                                    )}
                                     <span className="shrink-0 text-xs tabular-nums text-gray-600">{formatRub(task.amount)}</span>
                                 </div>
                                 <p className={`truncate text-xs ${task.done ? 'text-gray-400' : 'text-gray-800'}`} title={task.client}>

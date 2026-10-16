@@ -574,6 +574,29 @@ async function loadClientTouchTasks(settings: Settings, today: string): Promise<
     const byManager = new Map<number | null, Task[]>();
     const newByManager = new Map<number, number>();
 
+    /**
+     * Чей последний заказ у клиента.
+     *
+     * Касание по клиенту уходит тому, за кем закреплена карточка, а последний
+     * заказ этого клиента может вести другой менеджер: тогда в плане стоял
+     * чужой номер («выходит мне заказ Ирины» — Лена Парфёнова 16.10.2026).
+     * Задачу оставляем владельцу клиента, а чужой заказ в строке не называем:
+     * звонить по клиенту — его работа, лезть в чужой заказ — нет.
+     */
+    const lastOrderIds = ((data ?? []) as any[])
+        .map((r) => Number(r.last_order_id ?? 0))
+        .filter((id) => Number.isFinite(id) && id > 0);
+    const orderManager = new Map<number, number | null>();
+    if (lastOrderIds.length) {
+        const { data: ownerRows } = await supabase
+            .from('orders')
+            .select('id, manager_id')
+            .in('id', Array.from(new Set(lastOrderIds)));
+        for (const row of ((ownerRows ?? []) as any[])) {
+            orderManager.set(Number(row.id), row.manager_id === null ? null : Number(row.manager_id));
+        }
+    }
+
     for (const r of (data ?? []) as any[]) {
         const managerId = r.manager_id === null ? null : Number(r.manager_id);
         // Бесхозных клиентов не раздаём наугад: звонок «здравствуйте, я от
@@ -615,9 +638,13 @@ async function loadClientTouchTasks(settings: Settings, today: string): Promise<
                   : `Обращался ${days} дн назад, до просчёта не дошло. Позвонить, узнать, что нужно`;
         // Хвост с описанием компании клеим ко всем поводам одинаково.
 
+        // Заказ называем, только если он ведётся этим же менеджером.
+        const lastOrderId = Number(r.last_order_id ?? 0);
+        const ourOrder = lastOrderId > 0 && orderManager.get(lastOrderId) === managerId;
+
         list.push({
-            orderId: Number(r.last_order_id ?? 0),
-            number: String(r.last_order_number ?? ''),
+            orderId: ourOrder ? lastOrderId : 0,
+            number: ourOrder ? String(r.last_order_number ?? '') : '',
             client: r.client_name ?? '',
             statusCode: 'client_touch',
             statusName: 'Отношения с клиентом',

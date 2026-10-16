@@ -326,6 +326,17 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     // Номер созданного договора — по нему даём ссылку на сам файл.
     const [contractId, setContractId] = useState<number | null>(null);
     /**
+     * Форма договора от клиента: менеджер отправляет её юристу прямо здесь, а не
+     * письмом (просьба Ирины Гордеевой 16.10.2026). Файл при этом ложится в
+     * «Файлы» заказа обычной записью — отдельного хранилища у него нет.
+     */
+    const [clientFormFile, setClientFormFile] = useState<File | null>(null);
+    const [clientFormQuestion, setClientFormQuestion] = useState('');
+    const [clientFormSending, setClientFormSending] = useState(false);
+    const [clientFormNote, setClientFormNote] = useState<string | null>(null);
+    /** Счётчик, которым очищаем поле файла после отправки: иначе в нём остаётся имя. */
+    const [clientFormSeq, setClientFormSeq] = useState(0);
+    /**
      * Какой документ сейчас собирается.
      *
      * Договор и комплект «счёт + договор + спецификация» собираются из заказа
@@ -620,7 +631,13 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
             const res = await fetch(`/api/orders/${encodeURIComponent(number)}/contract`);
             if (!res.ok) return;
             const payload = await res.json();
-            const latest = (payload.contracts ?? [])[0];
+            /**
+             * Берём последний НАШ договор. Форма, присланная клиентом, тоже
+             * лежит в этом списке, и если взять просто первую строку, кнопки
+             * «Открыть договор» и «Счёт + договор + спецификация» начнут
+             * показывать чужой документ как наш.
+             */
+            const latest = (payload.contracts ?? []).find((row: any) => row?.kind !== 'klient');
             if (latest?.id) setContractId(Number(latest.id));
         } catch {
             // Договора может не быть вовсе — это нормальный случай, молчим.
@@ -813,7 +830,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                 percent: Number(payload.discountManualPercent ?? 0),
             });
             setDraftFields({});
-            fetch(`/api/orders/${orderId}/sellers`)
+            fetch('/api/orders/sellers')
                 .then((r) => r.json())
                 .then((payload) => setSellerOptions(payload.sellers || []))
                 .catch(() => setSellerOptions([]));
@@ -1202,19 +1219,18 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 счёт и НДС (у АО «ЗВТО» его нет). Менеджер меняет его сам —
                                 раньше поле было только для чтения, и заказ, заведённый не
                                 на то юрлицо, приходилось переделывать (Лена Парфёнова
-                                05.10.2026). У заказов RetailCRM магазин живёт там и её API
-                                его не меняет, поэтому выбор только у своих заказов. */}
-                            {isOwn ? (
-                                <EditField fieldKey="order.site"
-                                    label="Магазин"
-                                    required
-                                    value={fieldValue('order.site', payload.site || order.site || '')}
-                                    onChange={(v) => setField('order.site', v)}
-                                    options={sellerOptions.map((option) => ({ value: option.code, label: option.name }))}
-                                />
-                            ) : (
-                                <InfoField label="Магазин" required value={names.resolve('site', payload.site || order.site || payload.slug) || '—'} />
-                            )}
+                                05.10.2026). Выбор открыт у любого заказа: правка идёт
+                                только в нашу базу (editOrder, решение владельца
+                                09.10.2026), RetailCRM — архив на чтение. Пока выбор был
+                                лишь у своих заказов, у заказов из ритейла юрлицо не
+                                менялось (Евгения Матвеева 16.10.2026). */}
+                            <EditField fieldKey="order.site"
+                                label="Наше юрлицо"
+                                required
+                                value={fieldValue('order.site', payload.site || order.site || '')}
+                                onChange={(v) => setField('order.site', v)}
+                                options={sellerOptions.map((option) => ({ value: option.code, label: option.name }))}
+                            />
                         </div>
                     </CardSection>
 
@@ -2271,6 +2287,105 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                             )}
                                         </div>
                                     )}
+
+                                    {/* Договор клиента: раньше его отправляли юристу
+                                        письмом, и в реестре юротдела он не появлялся
+                                        (просьба Ирины Гордеевой 16.10.2026). Файл
+                                        ложится в «Файлы» заказа обычной записью, юристу
+                                        уходит ссылка на него — второй копии нет. */}
+                                    <div className="mt-4 border-t border-gray-200 pt-3">
+                                        <h4 className="text-sm font-semibold text-gray-900">
+                                            Договор клиента — юристу на проверку
+                                        </h4>
+                                        <p className="mt-1 text-sm text-gray-600">
+                                            Если договор на своей форме прислал клиент, приложите его файл — он попадёт
+                                            юристу в «Документы на согласовании» и останется в «Файлах» заказа.
+                                        </p>
+                                        {/* Своя кнопка, а не голое поле файла: браузер
+                                            пишет на нём «Choose file / No file chosen»
+                                            по-английски, а в интерфейсе у нас только
+                                            русский язык (закон проекта). */}
+                                        <label className="mt-2 flex items-center gap-2 text-sm">
+                                            <span className="cursor-pointer border border-gray-300 px-3 py-2 font-semibold text-gray-800 hover:bg-gray-50">
+                                                Выбрать файл
+                                            </span>
+                                            <span className="text-gray-600">
+                                                {clientFormFile ? clientFormFile.name : 'Файл не выбран'}
+                                            </span>
+                                            <input
+                                                key={clientFormSeq}
+                                                type="file"
+                                                accept=".pdf,.doc,.docx,.txt,image/*"
+                                                onChange={(e) => {
+                                                    setClientFormFile(e.target.files?.[0] ?? null);
+                                                    setClientFormNote(null);
+                                                }}
+                                                className="hidden"
+                                            />
+                                        </label>
+                                        <input
+                                            value={clientFormQuestion}
+                                            onChange={(e) => setClientFormQuestion(e.target.value)}
+                                            placeholder="Что проверить — например «смотрит ли их подсудность»"
+                                            className="mt-2 w-full border border-gray-200 px-3 py-2 text-sm"
+                                        />
+                                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                disabled={clientFormSending || !clientFormFile}
+                                                onClick={async () => {
+                                                    if (!clientFormFile) return;
+                                                    const orderKey = String(data.order?.number ?? orderId);
+                                                    setClientFormSending(true);
+                                                    setClientFormNote(null);
+                                                    setContractReview(null);
+                                                    try {
+                                                        // Сначала файл в заказ — тем же механизмом, что «Файлы».
+                                                        const form = new FormData();
+                                                        form.append('file', clientFormFile);
+                                                        form.append('note', 'Договор клиента — на проверку юристу');
+                                                        const up = await fetch(
+                                                            `/api/orders/${encodeURIComponent(orderKey)}/files/upload`,
+                                                            { method: 'POST', body: form },
+                                                        );
+                                                        const upPayload = await up.json();
+                                                        if (!up.ok) throw new Error(upPayload.error || 'Файл не приложился к заказу');
+
+                                                        const fileId = upPayload?.file?.id;
+                                                        if (!fileId) throw new Error('Файл приложен, но юристу не отправился — откройте «Файлы» заказа');
+
+                                                        const res = await fetch(
+                                                            `/api/orders/${encodeURIComponent(orderKey)}/contract/client-form`,
+                                                            {
+                                                                method: 'POST',
+                                                                headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({
+                                                                    fileId,
+                                                                    orderId: Number(orderId),
+                                                                    question: clientFormQuestion.trim() || null,
+                                                                }),
+                                                            },
+                                                        );
+                                                        const payload = await res.json();
+                                                        if (!res.ok) throw new Error(payload.error || 'Юристу отправить не получилось');
+                                                        setClientFormNote(payload.note || 'Договор клиента отправлен юристу.');
+                                                        setContractReview(payload.review ?? null);
+                                                        setClientFormFile(null);
+                                                        setClientFormQuestion('');
+                                                        setClientFormSeq((v) => v + 1);
+                                                    } catch (e: any) {
+                                                        setClientFormNote(e.message);
+                                                    } finally {
+                                                        setClientFormSending(false);
+                                                    }
+                                                }}
+                                                className="bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                                            >
+                                                {clientFormSending ? 'Отправляю…' : 'Отправить юристу'}
+                                            </button>
+                                            {clientFormNote && <span className="text-sm text-gray-700">{clientFormNote}</span>}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         )}
