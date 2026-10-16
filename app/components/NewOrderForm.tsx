@@ -33,6 +33,14 @@ export default function NewOrderForm() {
     const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
     const [comment, setComment] = useState('');
+    /**
+     * Наше юрлицо (ЗМК, ПОБТ и т. д.). Выбора не было вовсе, и заказ,
+     * заведённый не на то юрлицо, приходилось переделывать — от юрлица идут
+     * реквизиты, расчётный счёт и НДС (Евгения Матвеева 16.10.2026).
+     * Пусто — сервер заведёт заказ на юрлицо по умолчанию.
+     */
+    const [site, setSite] = useState('');
+    const [sellers, setSellers] = useState<Array<{ code: string; name: string }>>([]);
     const [rows, setRows] = useState<Row[]>([]);
 
     const [query, setQuery] = useState('');
@@ -61,6 +69,14 @@ export default function NewOrderForm() {
         } finally {
             setSearching(false);
         }
+    }, []);
+
+    // Юрлица — те же, что в карточке заказа: справочник витрин RetailCRM.
+    useEffect(() => {
+        fetch('/api/orders/sellers')
+            .then((r) => r.json())
+            .then((payload) => setSellers(payload.sellers || []))
+            .catch(() => setSellers([]));
     }, []);
 
     useEffect(() => {
@@ -95,6 +111,7 @@ export default function NewOrderForm() {
                     phone: phone || null,
                     email: email || null,
                     customerComment: comment || null,
+                    site: site || null,
                     items: rows.map((row) => ({ name: row.name, quantity: row.quantity, price: row.price, xmlId: row.xmlId ?? null })),
                 }),
             });
@@ -158,6 +175,20 @@ export default function NewOrderForm() {
                             />
                         </label>
                     ))}
+                    {/* Юрлицо заказа: от него реквизиты, расчётный счёт и НДС. */}
+                    <label className="mb-3 block">
+                        <span className="mb-1 block text-[11px] uppercase tracking-wide text-gray-500">Наше юрлицо</span>
+                        <select
+                            value={site}
+                            onChange={(e) => setSite(e.target.value)}
+                            className="w-full border border-gray-300 px-2 py-1"
+                        >
+                            <option value="">По умолчанию</option>
+                            {sellers.map((seller) => (
+                                <option key={seller.code} value={seller.code}>{seller.name}</option>
+                            ))}
+                        </select>
+                    </label>
                     <label className="block">
                         <span className="mb-1 block text-[11px] uppercase tracking-wide text-gray-500">Что просит клиент</span>
                         <textarea

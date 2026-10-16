@@ -17,7 +17,9 @@ export async function GET(req: Request) {
 
     let query = supabase
         .from('order_contracts')
-        .select('id, order_number, title, status, version, terms_text, body_text, created_by, created_at, updated_at, reviewed_by, reviewed_at, review_comment, pdf_path')
+        // `kind` нужен списку: форму договора прислал клиент — править её текст
+        // нельзя, можно только решить (просьба Ирины Гордеевой 16.10.2026).
+        .select('id, order_number, kind, title, status, version, terms_text, body_text, created_by, created_at, updated_at, reviewed_by, reviewed_at, review_comment, pdf_path, docx_path')
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .limit(200);
@@ -62,6 +64,27 @@ export async function POST(req: Request) {
 
     if (action === 'revise') {
         if (!bodyText) return NextResponse.json({ error: 'Текст договора пустой' }, { status: 400 });
+
+        /**
+         * Форму договора прислал клиент — её текст мы не правим.
+         *
+         * Правка пересобрала бы файл по нашему шаблону и затёрла ссылку на
+         * подлинник клиента (`saveContractFile` переписывает `pdf_path`).
+         * Кнопку в списке юриста мы не показываем, но дверь закрываем и здесь:
+         * один запрет в одном месте надёжнее двух в разных.
+         */
+        const { data: kindRow } = await supabase
+            .from('order_contracts')
+            .select('kind')
+            .eq('id', contractId)
+            .maybeSingle();
+
+        if ((kindRow as any)?.kind === 'klient') {
+            return NextResponse.json(
+                { error: 'Это договор на форме клиента — его текст правится не здесь. Напишите замечания комментарием и верните менеджеру.' },
+                { status: 400 },
+            );
+        }
         const res = await reviseOrderContract({
             contractId,
             bodyText,

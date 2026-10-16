@@ -32,7 +32,11 @@ export const OWN_NUMBER_BASE = 900_000;
  * Раньше здесь стоял собственный код `own-crm`, которого нет в справочнике
  * витрин. В карточке такое значение не переводилось на человеческий язык, и
  * менеджер видел слагом чужое имя вместо своего юрлица; реквизиты, расчётный
- * счёт и НДС из него тоже не выводятся. Юрлицо меняется в карточке заказа.
+ * счёт и НДС из него тоже не выводятся.
+ *
+ * Это значение по умолчанию: юрлицо выбирается в форме нового заказа и
+ * меняется в карточке (просьба Евгении Матвеевой 16.10.2026 — в форме выбора
+ * юрлица не было вовсе, и заказ ПОБТ приходилось переделывать).
  */
 export const OWN_SITE = 'zmktlt-ru';
 
@@ -149,7 +153,8 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         ...orderData,
         id,
         number,
-        site: OWN_SITE,
+        // Юрлицо выбрал менеджер в форме заказа; не выбрал — наше по умолчанию.
+        site: orderData.site || OWN_SITE,
         // Клиента карточка читает из `customer.id` — закон проекта.
         ...(client
             ? {
@@ -197,7 +202,7 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         id,
         order_id: id,
         number,
-        site: OWN_SITE,
+        site: orderData.site || OWN_SITE,
         status: orderData.status || 'novyi-1',
         manager_id: orderData.managerId ?? null,
         is_own: true,
@@ -264,7 +269,7 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         managerId,
     );
 
-    return { success: true, id, number, order: { id, number, site: OWN_SITE }, own: true };
+    return { success: true, id, number, order: { id, number, site: payload.site }, own: true };
 }
 
 /**

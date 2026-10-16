@@ -28,6 +28,8 @@ const bodySchema = z.object({
     managerId: z.coerce.number().int().positive().optional().nullable(),
     customerComment: z.string().trim().max(5000).optional().nullable(),
     managerComment: z.string().trim().max(5000).optional().nullable(),
+    /** Код нашего юрлица-продавца (магазина) из справочника витрин. */
+    site: z.string().trim().max(100).optional().nullable(),
 });
 
 export async function POST(request: Request) {

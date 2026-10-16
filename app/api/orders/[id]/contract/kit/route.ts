@@ -24,7 +24,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const { data: contract } = await supabase
         .from('order_contracts')
-        .select('id, order_number, order_id, title, body_text')
+        .select('id, order_number, order_id, kind, title, body_text')
         .eq('id', Number(contractId))
         .is('deleted_at', null)
         .maybeSingle();
@@ -32,6 +32,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const row = contract as any;
     if (!row || String(row.order_number) !== orderNumber) {
         return NextResponse.json({ error: 'Договор не найден' }, { status: 404 });
+    }
+
+    /**
+     * Комплект собирается из НАШЕГО договора. Форма клиента в него не идёт:
+     * иначе в документ на подпись попадёт чужой текст под нашим названием.
+     */
+    if (row.kind === 'klient') {
+        return NextResponse.json(
+            { error: 'Это договор на форме клиента — комплект собирается только по нашему договору.' },
+            { status: 400 },
+        );
     }
 
     // Номер своего заказа — число, но не идентификатор: ищем заказ по номеру.

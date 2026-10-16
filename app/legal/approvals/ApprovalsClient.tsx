@@ -8,6 +8,8 @@ import OrderNumberLink from '@/components/ui/OrderNumberLink';
 type Contract = {
     id: number;
     order_number: string;
+    /** `klient` — форму договора прислал клиент, остальное — наши договоры. */
+    kind: string | null;
     title: string;
     status: string;
     statusLabel: string;
@@ -19,6 +21,9 @@ type Contract = {
     reviewed_by: string | null;
     review_comment: string | null;
 };
+
+/** Форма договора пришла от клиента: её текст мы не правим, только решаем. */
+const isClientForm = (row: Contract) => row.kind === 'klient';
 
 const formatDate = (value: string | null) =>
     value ? new Date(value).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
@@ -159,10 +164,12 @@ export default function ApprovalsClient() {
                                 onClick={(e) => e.stopPropagation()}
                                 className="mt-1 inline-block text-xs font-semibold text-blue-700 hover:underline"
                             >
-                                Открыть договор (PDF)
+                                {isClientForm(row) ? 'Открыть файл клиента' : 'Открыть договор (PDF)'}
                             </a>
                             {row.terms_text && (
-                                <div className="mt-1 text-xs text-gray-600">Условия от менеджера: {row.terms_text}</div>
+                                <div className="mt-1 text-xs text-gray-600">
+                                    {isClientForm(row) ? 'Менеджер просит проверить' : 'Условия от менеджера'}: {row.terms_text}
+                                </div>
                             )}
                             {row.review_comment && (
                                 <div className="mt-1 text-xs text-gray-600">Замечание юриста: {row.review_comment}</div>
@@ -174,11 +181,25 @@ export default function ApprovalsClient() {
 
                         {openId === row.id && current && (
                             <div className="border-t border-gray-200 px-4 py-3">
+                                {/* Форму клиента правим не здесь: текст на экране —
+                                    это то, что прочитано из его файла, а сам файл
+                                    у клиента. Правка текста договор клиента не
+                                    изменит, поэтому её и не предлагаем. */}
+                                {isClientForm(current) && (
+                                    <p className="mb-2 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                                        Договор на форме клиента. Ниже — текст, прочитанный из его файла:
+                                        поправить его здесь нельзя, решение пишите комментарием.
+                                        {!current.body_text && ' Текст из файла не прочитался — откройте сам файл.'}
+                                    </p>
+                                )}
                                 <textarea
                                     value={draft}
                                     onChange={(e) => setDraft(e.target.value)}
+                                    readOnly={isClientForm(current)}
                                     rows={20}
-                                    className="w-full border border-gray-200 px-3 py-2 font-mono text-xs leading-relaxed"
+                                    className={`w-full border border-gray-200 px-3 py-2 font-mono text-xs leading-relaxed ${
+                                        isClientForm(current) ? 'bg-gray-50 text-gray-700' : ''
+                                    }`}
                                 />
                                 <input
                                     value={comment}
@@ -187,9 +208,11 @@ export default function ApprovalsClient() {
                                     className="mt-2 w-full border border-gray-200 px-3 py-2 text-sm"
                                 />
                                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                                    <button type="button" disabled={saving} onClick={() => act('revise')} className="bg-white border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-800 disabled:opacity-50">
-                                        Сохранить правку
-                                    </button>
+                                    {!isClientForm(current) && (
+                                        <button type="button" disabled={saving} onClick={() => act('revise')} className="bg-white border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-800 disabled:opacity-50">
+                                            Сохранить правку
+                                        </button>
+                                    )}
                                     <button type="button" disabled={saving} onClick={() => act('approve')} className="bg-green-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
                                         Согласовать
                                     </button>
