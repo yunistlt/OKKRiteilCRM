@@ -4,6 +4,18 @@
     "fra1"
   ],
   "crons": [
+        {
+            "path": "/api/cron/system-jobs-cleanup",
+            "schedule": "0 16-23 * * 5"
+        },
+        {
+            "path": "/api/cron/system-jobs-cleanup",
+            "schedule": "0 * * * 6"
+        },
+        {
+            "path": "/api/cron/system-jobs-cleanup",
+            "schedule": "0 0-17 * * 0"
+        },
     {
       "path": "/api/cron/tseh-schema-kb",
       "schedule": "40 1 * * *"
@@ -62,7 +74,7 @@
     },
     {
       "path": "/api/sync/telphin/recovery",
-      "schedule": "*/1 * * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/system-jobs/call-match",
@@ -90,11 +102,11 @@
     },
     {
       "path": "/api/cron/system-jobs/call-semantic-rules",
-      "schedule": "*/1 * * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/cron/system-jobs/manager-aggregate-refresh",
-      "schedule": "*/1 * * * *"
+      "schedule": "*/15 * * * *"
     },
     {
       "path": "/api/cron/system-jobs/order-insight-refresh",
@@ -106,7 +118,7 @@
     },
     {
       "path": "/api/cron/system-jobs/score-refresh",
-      "schedule": "*/1 * * * *"
+      "schedule": "*/3 * * * *"
     },
     {
       "path": "/api/cron/system-jobs/watchdog",
@@ -162,7 +174,7 @@
     },
     {
       "path": "/api/cron/system-jobs/email-sent-append",
-      "schedule": "* * * * *"
+      "schedule": "*/10 * * * *"
     },
     {
       "path": "/api/cron/system-jobs/email-scheduled-send",

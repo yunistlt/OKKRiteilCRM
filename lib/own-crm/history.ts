@@ -88,6 +88,16 @@ async function humanize(field: string, value: unknown): Promise<string | null> {
         return (await entityName('status', raw)) ?? raw;
     }
 
+    // Менеджер лежит номером — {"id": 249}. Имя подставляем из справочника:
+    // в данных код, в интерфейсе человеческое имя. Старые записи, где годами
+    // писалась фамилия строкой, показываем как есть.
+    if (field === 'manager') {
+        const id = managerIdFromValue(raw);
+        if (id === null) return raw;
+        const names = await managerNames([id]);
+        return names.get(id) ?? raw;
+    }
+
     return raw;
 }
 
@@ -127,6 +137,24 @@ async function managerNames(ids: number[]): Promise<Map<number, string>> {
 function whoId(userData: any): number | null {
     const id = Number(userData?.id);
     return Number.isFinite(id) && id > 0 ? id : null;
+}
+
+/**
+ * Номер менеджера из записи истории.
+ *
+ * В поле `manager` лежит {"id": 249} — так пишет и синхронизация RetailCRM, и
+ * наш код с 16.10.2026. До этого мы годами писали туда фамилию строкой: такие
+ * записи остаются, по ним номер восстановить нельзя — показываем как есть.
+ */
+function managerIdFromValue(value: string): number | null {
+    const text = value.trim();
+    if (!text.startsWith('{')) return null;
+    try {
+        const id = Number(JSON.parse(text)?.id);
+        return Number.isFinite(id) && id > 0 ? id : null;
+    } catch {
+        return null;
+    }
 }
 
 /** Последние события заказа, свежие сверху. */

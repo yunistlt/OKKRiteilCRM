@@ -102,16 +102,22 @@ export async function statusName(code: unknown): Promise<string> {
     return String((data as any)?.name || value);
 }
 
-export async function managerName(id: unknown): Promise<string> {
+/**
+ * Менеджер в историю — НОМЕРОМ, а не фамилией.
+ *
+ * Фамилия в данных — мина: сменит человек фамилию, и все прошлые записи
+ * перестанут с ним сопоставляться. Разбор 16.10.2026: зарплата должна считать
+ * по тому, кто вёл заказ НА МОМЕНТ продажи, а восстановить это можно только по
+ * истории — значит в ней должен лежать неизменный код.
+ *
+ * Формат тот же, что годами писала синхронизация RetailCRM: {"id": 249}.
+ * Имя подставляется при показе (lib/own-crm/history.ts), из справочника —
+ * по закону «имена берём из справочника, а не храним копиями».
+ */
+export function managerValue(id: unknown): string {
     const value = Number(id);
-    if (!Number.isFinite(value)) return '';
-    const { data } = await supabase
-        .from('managers')
-        .select('first_name, last_name')
-        .eq('id', value)
-        .maybeSingle();
-    const row = data as any;
-    return [row?.last_name, row?.first_name].filter(Boolean).join(' ') || String(value);
+    if (!Number.isFinite(value) || value <= 0) return '';
+    return JSON.stringify({ id: value });
 }
 
 export function moneyValue(amount: unknown): string {
