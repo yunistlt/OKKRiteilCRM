@@ -74,6 +74,12 @@ export interface NotifyOptions {
    * делали не сейчас. Говорим, где заказ стоит, а не выдумываем факт перевода.
    */
   currentStatusName?: string | null;
+  /**
+   * Номер заказа, с которого платёж перепривязали. По этой оплате в чате уже
+   * лежит сообщение со старым заказом, и отозвать его Telegram не даёт —
+   * поэтому новое сообщение прямо говорит, какое из них верное.
+   */
+  rebindFromOrderNumber?: string | null;
 }
 
 // Тег участника по его managers.id: @ник, если задан telegram_username; иначе ФИО (без пинга);
@@ -146,6 +152,12 @@ export function buildMessage(row: PointPaymentRow, routed: boolean, opts: Notify
     const where = posted ? ' — оплата разнесена в заказ ОКК' : ' — оплата ещё не разнесена в заказ';
     lines.push(`✅ Заказ ${order}${where}`);
     const num = esc(String(row.matched_order_number));
+    if (opts.rebindFromOrderNumber) {
+      lines.push(
+        `↩️ Перепривязано с заказа №${esc(String(opts.rebindFromOrderNumber))} — `
+          + 'предыдущее сообщение по этой оплате неверно',
+      );
+    }
     if (opts.movedToProduction) {
       const name = opts.productionStatusName || 'Передано в производство';
       lines.push(`🏭 Заказ №${num} переведён в статус «${esc(name)}»`);

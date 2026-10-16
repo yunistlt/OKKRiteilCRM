@@ -414,6 +414,12 @@ export async function resendRequestedNotifications(limit = 20): Promise<number> 
 /**
  * Ручная привязка платежа к заказу оператором.
  * Разносит платёж в заказ независимо от статуса подписи (человек подтвердил).
+ *
+ * Тем же путём идёт ПЕРЕПРИВЯЗКА уже разнесённой оплаты: покупатель пишет в
+ * назначении номер чужого счёта, и деньги уезжают не в тот заказ (платёж
+ * 808 178,40 ₽ от 15.10.2026 ушёл в заказ 40398 вместо 54607). Отличие одно:
+ * про перепривязку сразу говорим в чат — по этой оплате там уже лежит сообщение
+ * со старым заказом, и без нового в чате остаётся неверная правда.
  */
 export async function assignPointPaymentToOrder(params: {
   paymentId: number;
@@ -421,7 +427,29 @@ export async function assignPointPaymentToOrder(params: {
   orderNumber: string;
   reviewedBy: string;
   note?: string | null;
-}): Promise<{ status: string }> {
+}): Promise<{ status: string; rebindFrom?: string | null }> {
+  /**
+   * Несуществующий заказ отбиваем ДО правки строки платежа: иначе платёж уже
+   * числится за новым заказом, а разнос падает — и деньги остаются в старом.
+   */
+  if (!params.orderId) {
+    throw new Error(`Заказ №${params.orderNumber} не найден в базе ОКК`);
+  }
+
+  // «Как было» — чтобы отличить перепривязку от первой привязки и назвать прежний заказ.
+  const { data: before } = await supabase
+    .from('point_payments')
+    .select('matched_order_number, posted_at')
+    .eq('id', params.paymentId)
+    .maybeSingle();
+  const previousNumber = (before as any)?.matched_order_number
+    ? String((before as any).matched_order_number)
+    : null;
+  const rebindFrom =
+    (before as any)?.posted_at && previousNumber && previousNumber !== params.orderNumber
+      ? previousNumber
+      : null;
+
   const { data: row, error } = await supabase
     .from('point_payments')
     .update({
@@ -442,8 +470,50 @@ export async function assignPointPaymentToOrder(params: {
     .single();
   if (error) throw error;
 
-  await postPaymentToOrder(row as PointPaymentRow);
-  return { status: 'manual' };
+  const posted = await postPaymentToOrder(row as PointPaymentRow);
+
+  // Сообщение шлём только по перепривязке: при первой ручной привязке о платеже
+  // уже сказано дайджестом «деньги пришли, не разнесены», и второе письмо о том
+  // же поступлении чат не улучшит.
+  if (rebindFrom) {
+    await notifyRebind(row as PointPaymentRow, rebindFrom, posted).catch((e: any) =>
+      console.error('[payments] rebind notify failed:', params.paymentId, e?.message || e),
+    );
+  }
+
+  return { status: 'manual', rebindFrom };
+}
+
+/**
+ * «Платёж переехал» — в тот же чат, куда ушло неверное сообщение.
+ * Не бросает: не доставленное сообщение не отменяет верно разнесённую оплату.
+ */
+async function notifyRebind(
+  row: PointPaymentRow,
+  rebindFromOrderNumber: string,
+  posted: PostPaymentResult,
+): Promise<void> {
+  const res = await notifyPaymentTelegram(row, {
+    posted: true,
+    movedToProduction: posted.movedToProduction,
+    productionStatusName: posted.productionStatusName,
+    productionNotMovedReason: posted.productionNotMovedReason,
+    // Заказ мог быть уже в производстве — тогда говорим, где он стоит сегодня.
+    currentStatusName: posted.movedToProduction ? null : await orderStatusName(row.matched_order_number),
+    rebindFromOrderNumber,
+  });
+
+  // Отметку «уведомлено» ставим по факту отправки — как и при досылке.
+  if (res?.chatId) {
+    await supabase
+      .from('point_payments')
+      .update({
+        notified_at: new Date().toISOString(),
+        telegram_chat_id: res.chatId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', row.id);
+  }
 }
 
 /**
