@@ -15,7 +15,7 @@
  */
 import { supabase } from '@/utils/supabase';
 import { addClientPhones, findOrCreateOwnClient } from './own-client';
-import { itemLabel, managerName, moneyValue, statusName, statusValue, writeOwnHistory } from './history-write';
+import { itemLabel, managerValue, moneyValue, statusName, statusValue, writeOwnHistory } from './history-write';
 
 /**
  * С какого номера идут наши строки заказов. `orders.id` у приехавших — это
@@ -139,6 +139,9 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         email: orderData.email || null,
         phone: orderData.phone || (orderData.phones || [])[0]?.number || null,
         contactName: [orderData.firstName, orderData.lastName].filter(Boolean).join(' ') || null,
+        // Карточка заводится на того, кто ведёт заказ: клиент не должен
+        // оставаться ничьим (разбор 16.10.2026).
+        managerId: orderData.managerId ?? null,
     };
     const client = await findOrCreateOwnClient(customerHints);
     const itemIds = await ownItemIds((orderData.items || []).length);
@@ -247,7 +250,7 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
             // Здесь годами писалось одно название «Новый» — 12 324 строки, на
             // которых вечерний отчёт падал с «invalid input syntax for type json».
             { field: 'status', newValue: await statusValue(payload.status || 'novyi-1') },
-            ...(managerId ? [{ field: 'manager', newValue: await managerName(managerId) }] : []),
+            ...(managerId ? [{ field: 'manager', newValue: managerValue(managerId) }] : []),
             ...(payload.orderMethod ? [{ field: 'order_method', newValue: String(payload.orderMethod) }] : []),
             ...(payload.customerComment ? [{ field: 'customer_comment', newValue: String(payload.customerComment) }] : []),
             ...(payload.managerComment ? [{ field: 'manager_comment', newValue: String(payload.managerComment) }] : []),
