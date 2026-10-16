@@ -14,6 +14,7 @@
  */
 import { useEffect, useState } from 'react';
 import { formatRub } from '@/lib/format';
+import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import { renderLetter } from '@/lib/sales-rop/letter-render';
 
 /** Сколько секунд окно держится: столько нужно, чтобы прочитать план. */
@@ -106,9 +107,15 @@ export default function MorningPlanModal({ plan, onClose }: { plan: MorningPlan;
                             {fallbackTasks.map((task, index) => (
                                 <li key={`${task.orderNumber}-${index}`} className="border-b border-gray-100 pb-2">
                                     <div className="flex items-baseline justify-between gap-3">
-                                        <a href={`/orders?order=${task.orderId}`} className="text-sm font-bold text-blue-700 hover:underline">
-                                            №{task.orderNumber}
-                                        </a>
+                                        {/* Номер — через общую ссылку: адрес строится
+                                            по номеру, а не по внутреннему номеру строки.
+                                            Нет номера — это касание по клиенту, заказ
+                                            другого менеджера мы не называем. */}
+                                        {task.orderNumber ? (
+                                            <OrderNumberLink number={task.orderNumber} from="my-day" className="text-sm font-bold text-blue-700 hover:underline" />
+                                        ) : (
+                                            <span className="text-sm font-bold text-gray-700">По клиенту</span>
+                                        )}
                                         <span className="text-sm tabular-nums text-gray-700">{formatRub(task.amount)}</span>
                                     </div>
                                     <p className="text-sm text-gray-900">{task.client}</p>
