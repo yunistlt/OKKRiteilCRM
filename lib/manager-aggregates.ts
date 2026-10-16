@@ -44,9 +44,6 @@ async function getControlledManagerIds(managerIds?: Array<number | string>) {
   return (data || []).map((row: any) => String(row.id));
 }
 
-/** По сколько строк просим у базы за раз: больше тысячи она всё равно не отдаёт. */
-const PAGE = 1000;
-
 /**
  * Звонки менеджера за окно наблюдения.
  *
@@ -64,22 +61,25 @@ const PAGE = 1000;
  * менеджера — поменялся только порядок отбора.
  */
 async function fetchManagerMatches(managerId: string, startStr: string) {
-  // 1. Связки за окно. Страницами: база отдаёт не больше тысячи строк за раз.
-  const links: any[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
-      .from('call_order_link')
-      .select('telphin_call_id, order_id, started_at, duration_sec')
-      .gte('started_at', startStr)
-      .order('started_at', { ascending: true })
-      .range(from, from + PAGE - 1);
-    if (error) {
-      throw error;
-    }
-    const page = (data ?? []) as any[];
-    links.push(...page);
-    if (page.length < PAGE) break;
+  // 1. Связки за окно — функцией, а не представлением call_order_link.
+  //
+  //    Представление отвечает «какие звонки к каким заказам относятся» по ВСЕЙ
+  //    истории: читает все 60 тыс. звонков Телфина и в каждом разбирает JSON.
+  //    Отобрать окно заранее оно не может — уникальность ног звонка считается по
+  //    всей таблице. Выборка за 35 дней занимала 16,7 с, не укладывалась в
+  //    таймаут, и 682 задания пересчёта падали по кругу (16.10.2026).
+  //
+  //    Функция отбирает звонки по датам сразу, а ноги выбирает уже среди них:
+  //    ответ тот же (1 566 связок), время 574 мс. Страницы не нужны — она
+  //    возвращает набор целиком, без потолка в тысячу строк.
+  const { data: linkRows, error: linkError } = await supabase.rpc('call_order_links_for_period', {
+    p_from: startStr,
+    p_to: new Date().toISOString(),
+  });
+  if (linkError) {
+    throw linkError;
   }
+  const links = (linkRows ?? []) as any[];
 
   const orderIds = Array.from(new Set(links
     .map((link) => Number(link.order_id))
