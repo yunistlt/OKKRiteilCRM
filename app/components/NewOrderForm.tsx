@@ -175,7 +175,10 @@ export default function NewOrderForm() {
                             />
                         </label>
                     ))}
-                    {/* Юрлицо заказа: от него реквизиты, расчётный счёт и НДС. */}
+                    {/* То же поле заказа, что в карточке (`orders.site`): от него
+                        идут реквизиты, расчётный счёт и НДС. Имя одно на оба
+                        экрана — «Наше юрлицо» (решение владельца 16.10.2026):
+                        в поле лежат ЗМК, ПОБТ, ЗВТО и ИП, а не магазины сайта. */}
                     <label className="mb-3 block">
                         <span className="mb-1 block text-[11px] uppercase tracking-wide text-gray-500">Наше юрлицо</span>
                         <select

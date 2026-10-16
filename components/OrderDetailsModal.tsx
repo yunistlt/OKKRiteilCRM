@@ -1225,7 +1225,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 лишь у своих заказов, у заказов из ритейла юрлицо не
                                 менялось (Евгения Матвеева 16.10.2026). */}
                             <EditField fieldKey="order.site"
-                                label="Магазин"
+                                label="Наше юрлицо"
                                 required
                                 value={fieldValue('order.site', payload.site || order.site || '')}
                                 onChange={(v) => setField('order.site', v)}
