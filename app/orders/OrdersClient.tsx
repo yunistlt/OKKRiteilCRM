@@ -497,6 +497,7 @@ export default function OrdersClient() {
                 <div className="hidden md:block">
                     <OrdersStatusSidebar
                         tree={statusTree}
+                        loading={loading}
                         selected={filter.statuses}
                         onSelect={(statuses) => { setFilter({ ...filter, statuses }); setPage(1); }}
                         collapsed={sidebarCollapsed}
