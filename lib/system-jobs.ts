@@ -398,11 +398,46 @@ function buildManagerAggregateRefreshJobInput(input: EnqueueManagerAggregateRefr
   };
 }
 
+/**
+ * Работает ли ещё этот менеджер.
+ *
+ * Пересчитывать показатели уволенного незачем: его цифры никто не увидит ни в
+ * планах, ни в отчётах, ни в зарплате. 16.10.2026 в очереди висело 323 таких
+ * задания на Хапилову, уволенную два месяца назад, — почти половина всей
+ * очереди. Ставил их пересчёт баллов: за уволенной осталось 323 заказа, и
+ * каждый просил обновить её статистику.
+ *
+ * Закон проекта: работаем только с активными сущностями.
+ */
+async function isManagerActive(managerId: number | string): Promise<boolean> {
+  const id = Number(managerId);
+  if (!Number.isFinite(id) || id <= 0) return false;
+
+  const { data, error } = await supabase
+    .from('managers')
+    .select('active')
+    .eq('id', id)
+    .maybeSingle();
+
+  // Менеджера нет в справочнике или база не ответила — не выдумываем за неё,
+  // работу не ставим: лишний пересчёт дороже пропущенного.
+  if (error || !data) return false;
+  return (data as any).active === true;
+}
+
 export async function enqueueManagerAggregateRefreshJob(input: EnqueueManagerAggregateRefreshJobInput) {
+  if (!(await isManagerActive(input.managerId))) {
+    console.warn(`[SystemJobs] Пересчёт показателей пропущен: менеджер ${input.managerId} не работает.`);
+    return null;
+  }
   return enqueueSystemJob(buildManagerAggregateRefreshJobInput(input));
 }
 
 export async function safeEnqueueManagerAggregateRefreshJob(input: EnqueueManagerAggregateRefreshJobInput) {
+  if (!(await isManagerActive(input.managerId))) {
+    console.warn(`[SystemJobs] Пересчёт показателей пропущен: менеджер ${input.managerId} не работает.`);
+    return null;
+  }
   return safeEnqueueSystemJob(buildManagerAggregateRefreshJobInput(input));
 }
 
