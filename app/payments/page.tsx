@@ -182,6 +182,8 @@ export default function PaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [manualNumber, setManualNumber] = useState<Record<number, string>>({});
+  // Какой разнесённый платёж сейчас перепривязывают: поле ввода открыто у одной строки.
+  const [rebindId, setRebindId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Настройка вебхука Точки (у Точки нет UI — подключаем через её API нашим сервером).
@@ -355,8 +357,8 @@ export default function PaymentsPage() {
     load();
   }, [load]);
 
-  async function assign(paymentId: number, orderNumber: string) {
-    if (!orderNumber?.trim()) return;
+  async function assign(paymentId: number, orderNumber: string): Promise<boolean> {
+    if (!orderNumber?.trim()) return false;
     setBusyId(paymentId);
     setError(null);
     try {
@@ -368,10 +370,35 @@ export default function PaymentsPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Ошибка привязки');
       await load();
+      return true;
     } catch (e: any) {
       setError(e.message);
+      return false;
     } finally {
       setBusyId(null);
+    }
+  }
+
+  /**
+   * Перепривязка уже разнесённой оплаты: покупатель написал в назначении номер
+   * чужого счёта, и деньги уехали не в тот заказ. Спрашиваем подтверждение с
+   * обоими номерами — правка двигает и деньги, и статус заказа.
+   */
+  async function rebind(p: Payment) {
+    const target = (manualNumber[p.id] || '').trim();
+    if (!target) return;
+    if (target === String(p.matched_order_number ?? '')) {
+      setError('Это тот же заказ — переносить нечего');
+      return;
+    }
+    const ok = window.confirm(
+      `Оплата ${formatMoney(p.amount_kopecks, p.currency)} переедет с заказа №${p.matched_order_number} на №${target}.\n`
+        + 'В чат уйдёт сообщение о перепривязке. Продолжить?',
+    );
+    if (!ok) return;
+    if (await assign(p.id, target)) {
+      setManualNumber((m) => ({ ...m, [p.id]: '' }));
+      setRebindId(null);
     }
   }
 
@@ -416,6 +443,10 @@ export default function PaymentsPage() {
   }
 
   const actionable = (s: string) => s === 'pending_match' || s === 'failed';
+  // Перепривязываем уже разнесённую оплату: номер счёта в назначении пишет покупатель,
+  // и он ошибается — деньги уезжают в чужой заказ (платёж от 15.10.2026 на 808 178,40 ₽).
+  const rebindable = (p: Payment) =>
+    Boolean(p.matched_order_id) && (p.status === 'matched' || p.status === 'manual');
   // Проект меняем и у опознанных: автоопределение могло отнести платёж не туда.
   const projectEditable = (p: Payment) =>
     !p.matched_order_id && (actionable(p.status) || p.status === 'recognized');
@@ -990,6 +1021,47 @@ export default function PaymentsPage() {
                             </button>
                           </div>
                         </div>
+                      ) : rebindable(p) ? (
+                        rebindId === p.id ? (
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <input
+                              autoFocus
+                              value={manualNumber[p.id] || ''}
+                              onChange={(e) => setManualNumber((m) => ({ ...m, [p.id]: e.target.value }))}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') rebind(p);
+                                if (e.key === 'Escape') setRebindId(null);
+                              }}
+                              placeholder="Верный номер"
+                              className="w-36 border border-gray-300 px-2 py-1 text-sm focus:border-blue-600 focus:outline-none"
+                            />
+                            <button
+                              disabled={busyId === p.id}
+                              onClick={() => rebind(p)}
+                              className="bg-blue-600 px-3 py-1 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                            >
+                              Перенести
+                            </button>
+                            <button
+                              disabled={busyId === p.id}
+                              onClick={() => setRebindId(null)}
+                              className="border border-gray-300 bg-white px-3 py-1 text-sm font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+                            >
+                              Отмена
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setRebindId(p.id);
+                              setManualNumber((m) => ({ ...m, [p.id]: '' }));
+                            }}
+                            className="border border-gray-300 bg-white px-3 py-1 text-sm font-semibold text-gray-600 hover:bg-gray-100"
+                            title="Оплата разнесена не в тот заказ — перенести в верный"
+                          >
+                            Перепривязать
+                          </button>
+                        )
                       ) : projectEditable(p) ? null : (
                         <Dash />
                       )}
