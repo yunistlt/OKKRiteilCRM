@@ -18,7 +18,7 @@
     },
     {
       "path": "/api/cron/tseh-push",
-      "schedule": "*/5 * * * *"
+      "schedule": "*/5 4-17 * * 1-6"
     },
     {
       "path": "/api/cron/rop-bind",
@@ -106,11 +106,11 @@
     },
     {
       "path": "/api/cron/system-jobs/order-insight-refresh",
-      "schedule": "*/2 * * * *"
+      "schedule": "*/5 5-14 * * 1-5"
     },
     {
       "path": "/api/cron/system-jobs/salary-estimate-classify",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/30 5-14 * * 1-5"
     },
     {
       "path": "/api/cron/system-jobs/score-refresh",
@@ -154,7 +154,7 @@
     },
     {
       "path": "/api/cron/lead-reminders",
-      "schedule": "0 * * * *"
+      "schedule": "0 5-14 * * 1-5"
     },
     {
       "path": "/api/cron/email-poll",
