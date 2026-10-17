@@ -12,6 +12,7 @@
  * и приехавших заказов, и ничего не надо учить заново.
  */
 import { supabase } from '@/utils/supabase';
+import { safeEnqueueOrderRefreshJob } from '@/lib/system-jobs';
 
 export type HistoryEntry = {
     /** Имя поля в терминах RetailCRM. */
@@ -63,10 +64,48 @@ export async function writeOwnHistory(
 
         const { error } = await supabase.from('order_history_log').insert(rows);
         if (error) throw new Error(error.message);
+
+        await requestScoreRefresh(orderId, list);
     } catch (e: any) {
         // История важна, но заказ важнее: правка не должна падать из-за неё.
         console.warn('[own-history] не записал историю:', e.message);
     }
+}
+
+/**
+ * Поля, после правки которых оценку ОКК надо пересчитать.
+ *
+ * Смена статуса и комментарии — это те самые события, ради которых оценка и
+ * существует: взяли ли ТЗ, ответили ли вовремя, куда двинулся заказ. Правка
+ * суммы или состава на оценку не влияет, поэтому очередь ими не тревожим.
+ */
+const SCORE_RELEVANT_FIELDS = new Set(['status', 'manager_comment', 'customer_comment']);
+
+/**
+ * Пересчитать баллы заказа сразу после значимой правки.
+ *
+ * ПОЧЕМУ ЗДЕСЬ. Раньше это делал приём изменений из RetailCRM: оттуда прилетала
+ * история, и она же ставила пересчёт. Приём выключили 05.10.2026, когда ОКК стала
+ * единственной системой учёта, — и пересчёт по статусу и комментарию потерялся.
+ * Ночная сверка затыкала дыру сплошным обходом всех рабочих заказов: 1 377 работ
+ * каждую ночь при 8 разобранных в день (17.10.2026).
+ *
+ * Запись истории — единственное место, через которое проходит любая правка
+ * заказа, поэтому триггер живёт здесь, а не в каждом вызывающем.
+ */
+async function requestScoreRefresh(orderId: number, entries: HistoryEntry[]): Promise<void> {
+    if (!entries.some((entry) => SCORE_RELEVANT_FIELDS.has(String(entry.field)))) return;
+
+    // Через safe-дверь: сорванная постановка в очередь не должна отменять правку
+    // заказа. Не поставили сейчас — заказ подберёт ночная сверка по этой же
+    // записи истории.
+    await safeEnqueueOrderRefreshJob({
+        jobType: 'order_score_refresh',
+        orderId,
+        source: 'order_edit',
+        // Свежая правка важнее ночного разбора (30), но уступает плану дня (12).
+        priority: 20,
+    });
 }
 
 /**
