@@ -114,7 +114,7 @@
     },
     {
       "path": "/api/cron/system-jobs/score-refresh",
-      "schedule": "0 5,8,11,14 * * 1-5"
+      "schedule": "*/1 * * * *"
     },
     {
       "path": "/api/cron/system-jobs/watchdog",

@@ -77,6 +77,38 @@ vi.mock('@/utils/supabase', () => {
     return { supabase: { from } };
 });
 
+/**
+ * Расписания задаём прямо здесь, а не берём из vercel.json: проверяем ЛОГИКУ
+ * сторожа, и она не должна ломаться каждый раз, когда крону меняют частоту.
+ * Что карта типов работ сходится с настоящими кронами, стережёт отдельный тест
+ * tests/system-job-workers.test.ts.
+ */
+const schedules = vi.hoisted(() => ({
+    byType: new Map<string, string | null>(),
+}));
+
+vi.mock('@/lib/system-job-workers', async () => {
+    const { tryParseCron } = await import('@/lib/cron-schedule');
+    const titles: Record<string, string> = {
+        order_score_refresh: 'Баллы ОКК по заказам',
+        call_match: 'Привязка звонков к заказам',
+        retailcrm_order_upsert: 'Запись заказа из RetailCRM',
+    };
+
+    return {
+        describeJobType: (jobType: string) => {
+            const expression = schedules.byType.get(jobType) ?? null;
+            return {
+                title: titles[jobType] || jobType,
+                spec: expression ? tryParseCron(expression) : null,
+                scheduleExpression: expression,
+                retired: jobType.startsWith('retailcrm_'),
+            };
+        },
+        getCronScheduleForPath: () => '*/5 * * * *',
+    };
+});
+
 const { collectPipelinePulse } = await import('@/lib/pipeline-pulse');
 
 /** Суббота, 12:20 МСК: почта ходит, очередь по расписанию отдыхает. */
@@ -96,6 +128,11 @@ beforeEach(() => {
     tables.email_ingest_state = [];
     tables.incoming_emails = [];
     tables.system_jobs = [];
+    schedules.byType.clear();
+    // Баллы считаются по рабочим часам буднего дня, привязка звонков — ежеминутно.
+    schedules.byType.set('order_score_refresh', '0 5,8,11,14 * * 1-5');
+    schedules.byType.set('call_match', '*/1 * * * *');
+    schedules.byType.set('retailcrm_order_upsert', null);
 });
 
 afterEach(() => {
