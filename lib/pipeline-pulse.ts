@@ -10,52 +10,54 @@
  * будильник живёт снаружи (крон на VPS, см. ops/watchdog/README.md). Внешний сторож
  * переживает смерть кронов Vercel — внутренний не переживает по определению.
  *
+ * ТРЕВОГА ТОЛЬКО ПО ПОЛОМКЕ. 17.10.2026 сторож разбудил владельца в выходной тем,
+ * что очередь ничего не доделала за ночь: накануне воркеры перевели на рабочее время
+ * (`0 5,8,11,14 * * 1-5`), а норматив остался общий — «что-то должно доделываться
+ * каждые 45 минут». Теперь перед тревогой выясняется ПРИЧИНА молчания, и ответов три:
+ *
+ *   поломка   — исполнитель по расписанию приходил и работу не взял → тревога;
+ *   расписание — исполнителю ещё рано (ночь, выходной, раз в три часа) → молчим;
+ *   нечего делать — очередь пуста → молчим.
+ *
+ * Расписание не дублируется и не «настраивается» заново: оно читается из vercel.json,
+ * единственного места, где оно настоящее (см. lib/system-job-workers.ts). Поменяли
+ * крон — сторож судит уже по новому, без единой правки здесь.
+ *
  * Каждое число раскладывается до исходных данных: в ответе и сама отметка времени,
  * и норматив, по которому её признали просроченной.
  */
 import { supabase } from '@/utils/supabase';
+import { cronRunsBetween, lastCronRunAt, tryParseCron } from '@/lib/cron-schedule';
+import { describeJobType, getCronScheduleForPath } from '@/lib/system-job-workers';
 
-/**
- * Нормативы тишины (минуты). Считаны от расписания в vercel.json с запасом:
- * крон раз в 5 минут может пропустить пару заходов на деплое, это не авария.
- */
+/** Нормативы тишины (минуты) для того, что не привязано к очереди работ. */
 const THRESHOLDS = {
-    /** email-poll ходит раз в 5 минут */
-    emailPollMinutes: 45,
     /** письмо со status='new' ждёт разбора в том же заходе крона */
     emailStuckMinutes: 120,
-    /** воркеры очереди работают раз в 1–2 минуты, пока есть что делать */
-    jobsFinishedMinutes: 45,
+    /** сколько заходов крона почты разрешено пропустить, прежде чем это авария */
+    emailPollMissedRuns: 3,
+    /** и не меньше получаса в любом случае: деплой не должен считаться аварией */
+    emailPollMinMinutes: 30,
     /**
-     * Ночью тишина в очереди — это ночь, а не авария: работы ставят люди, а
-     * вечером их нет. Решение владельца 05.10.2026: окно с 19:00 до 8:00 по
-     * Москве. В эти часы молчание очереди не поднимает тревогу — иначе сторож
-     * будит владельца всю ночь тем, что никто не работает.
+     * Сколько раз исполнитель должен пройти мимо готовой работы, чтобы это считалось
+     * поломкой. Один проход — не улика: воркер берёт работы малыми порциями и мог
+     * быть занят соседними.
      */
-    quietFromHourMsk: 19,
-    quietToHourMsk: 8,
-    /** работа в очереди не должна ждать исполнителя часами */
-    jobsQueuedMinutes: 120,
+    missedRunsBeforeAlarm: 2,
     /**
-     * За сколько тип работ обязан доделать хоть что-то, прежде чем считать его мёртвым.
-     * Сутки с запасом: ночные типы (сверка, оценки) ходят раз в день, и более короткий
-     * норматив объявлял бы их вставшими каждый день после обеда.
+     * Проходов, после которых очередь признаётся непосильной: исполнитель работает,
+     * но за столько заходов так и не добрался до самой старой работы. Это не сбой
+     * программы, а нехватка пропускной способности — но владельцу знать надо.
      */
-    jobTypeDeadHours: 26,
+    backlogRuns: 12,
+    /**
+     * Тип работ без крон-воркера. Ставить такие работы некому — но если они всё же
+     * появились и лежат сутки, их никто и не возьмёт: это поломка.
+     */
+    orphanJobHours: 24,
 } as const;
 
-/**
- * Ночь по-московски: с 19:00 до 8:00 очередь может молчать — работы ставят люди.
- * Считаем по Москве, а не по часам сервера: он живёт в Гринвиче.
- */
-function isQuietHours(now: Date): boolean {
-    const mskHour = Number(
-        new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', hour12: false }).format(now),
-    );
-    const { quietFromHourMsk: from, quietToHourMsk: to } = THRESHOLDS;
-    // Окно переходит через полночь, поэтому считаем по кругу.
-    return from <= to ? mskHour >= from && mskHour < to : mskHour >= from || mskHour < to;
-}
+export type PulseVerdict = 'ok' | 'broken' | 'waiting_schedule' | 'idle';
 
 export type PulseCheck = {
     /** Технический код — для сравнения снаружи */
@@ -63,13 +65,17 @@ export type PulseCheck = {
     /** Человеческое имя для сообщения владельцу */
     title: string;
     ok: boolean;
+    /** Почему проверка в таком состоянии: поломка, ждём расписания, нечего делать */
+    verdict: PulseVerdict;
+    /** Разбор причины человеческим языком — виден всегда, даже когда тревоги нет */
+    reason: string;
     /** Когда подсистема подавала признаки жизни в последний раз */
     lastAt: string | null;
     /** Сколько минут прошло с тех пор */
     silenceMinutes: number | null;
     /** Норматив, после которого молчание считается аварией */
-    limitMinutes: number;
-    /** Что именно не так — готовая строка для Telegram */
+    limitMinutes: number | null;
+    /** Что именно сломалось — готовая строка для Telegram. Только для поломок */
     problem: string | null;
 };
 
@@ -95,30 +101,19 @@ function formatAge(minutes: number | null): string {
     return `${Math.round(hours / 24)} сут`;
 }
 
-/** Молчание дольше норматива — авария. Пустая отметка тоже авария: значит не работало никогда. */
-function silenceCheck(params: {
-    key: string;
-    title: string;
-    lastAt: string | null;
-    limitMinutes: number;
-    now: Date;
-    /** Как описать просрочку владельцу: «<title> молчит N» */
-    verb?: string;
-}): PulseCheck {
-    const silenceMinutes = minutesSince(params.lastAt, params.now);
-    const ok = silenceMinutes !== null && silenceMinutes <= params.limitMinutes;
+function formatCount(value: number): string {
+    return value.toLocaleString('ru-RU');
+}
 
-    return {
-        key: params.key,
-        title: params.title,
-        ok,
-        lastAt: params.lastAt,
-        silenceMinutes,
-        limitMinutes: params.limitMinutes,
-        problem: ok
-            ? null
-            : `${params.title}: ${params.verb || 'молчит'} ${formatAge(silenceMinutes)} (норматив ${formatAge(params.limitMinutes)})`,
-    };
+function formatMoment(value: string | null): string {
+    if (!value) return 'неизвестно когда';
+    return new Date(value).toLocaleString('ru-RU', {
+        timeZone: 'Europe/Moscow',
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
 }
 
 async function lastEmailPoll(): Promise<string | null> {
@@ -142,60 +137,212 @@ async function oldestUnclassifiedEmail(): Promise<string | null> {
     return data?.created_at ?? null;
 }
 
-async function lastFinishedJob(): Promise<string | null> {
+/**
+ * Приём почты. Норматив считается от расписания самого крона: разрешаем пропустить
+ * несколько заходов (деплой, холодный старт) и не меньше получаса.
+ */
+function emailPollCheck(lastAt: string | null, now: Date): PulseCheck {
+    const expression = getCronScheduleForPath('/api/cron/email-poll');
+    const spec = expression ? tryParseCron(expression) : null;
+
+    // Крон почты ходит круглосуточно, поэтому интервал берём по двум соседним заходам.
+    const previousRun = spec ? lastCronRunAt(spec, now) : null;
+    const intervalMinutes =
+        spec && previousRun
+            ? Math.max(
+                  1,
+                  Math.round(
+                      (previousRun.getTime() -
+                          (lastCronRunAt(spec, new Date(previousRun.getTime() - 60_000))?.getTime() ??
+                              previousRun.getTime() - 5 * 60_000)) /
+                          60000,
+                  ),
+              )
+            : 5;
+
+    const limitMinutes = Math.max(
+        THRESHOLDS.emailPollMinMinutes,
+        intervalMinutes * THRESHOLDS.emailPollMissedRuns,
+    );
+    const silenceMinutes = minutesSince(lastAt, now);
+    const broken = silenceMinutes === null || silenceMinutes > limitMinutes;
+
+    return {
+        key: 'email_poll',
+        title: 'Приём почты',
+        ok: !broken,
+        verdict: broken ? 'broken' : 'ok',
+        reason: broken
+            ? `Крон почты ходит раз в ${intervalMinutes} мин, а писем не забирал ${formatAge(silenceMinutes)}`
+            : `Забирал письма ${formatAge(silenceMinutes)} назад`,
+        lastAt,
+        silenceMinutes,
+        limitMinutes,
+        problem: broken
+            ? `Приём почты: не забирал письма ${formatAge(silenceMinutes)} (норматив ${formatAge(limitMinutes)})`
+            : null,
+    };
+}
+
+function stuckEmailsCheck(oldestAt: string | null, now: Date): PulseCheck {
+    const age = minutesSince(oldestAt, now);
+    const broken = age !== null && age > THRESHOLDS.emailStuckMinutes;
+
+    return {
+        key: 'emails_stuck',
+        title: 'Письма без разбора',
+        ok: !broken,
+        verdict: broken ? 'broken' : age === null ? 'idle' : 'ok',
+        reason:
+            age === null
+                ? 'Неразобранных писем нет'
+                : broken
+                  ? `Самое старое письмо ждёт разбора ${formatAge(age)}`
+                  : `Самое старое письмо ждёт ${formatAge(age)}, это в норме`,
+        lastAt: oldestAt,
+        silenceMinutes: age,
+        limitMinutes: THRESHOLDS.emailStuckMinutes,
+        problem: broken
+            ? `Письма без разбора: самое старое ждёт ${formatAge(age)} (норматив ${formatAge(THRESHOLDS.emailStuckMinutes)})`
+            : null,
+    };
+}
+
+type QueueSlice = { jobType: string; oldestAvailableAt: string; waiting: number };
+
+/** Готовые к взятию работы: сгруппированы по типу, с самой старой и количеством. */
+async function readyQueueByType(now: Date): Promise<QueueSlice[]> {
+    const { data } = await supabase
+        .from('system_jobs')
+        .select('job_type, available_at')
+        .eq('status', 'queued')
+        .lte('available_at', now.toISOString())
+        .order('available_at', { ascending: true })
+        .limit(5000);
+
+    const slices = new Map<string, QueueSlice>();
+
+    for (const row of (data || []) as Array<{ job_type: string; available_at: string }>) {
+        const jobType = String(row.job_type || '');
+        if (!jobType) continue;
+
+        const slice = slices.get(jobType);
+        if (slice) {
+            slice.waiting += 1;
+        } else {
+            slices.set(jobType, { jobType, oldestAvailableAt: row.available_at, waiting: 1 });
+        }
+    }
+
+    return Array.from(slices.values());
+}
+
+async function lastCompletedAt(jobType: string): Promise<string | null> {
     const { data } = await supabase
         .from('system_jobs')
         .select('finished_at')
-        .not('finished_at', 'is', null)
+        .eq('job_type', jobType)
+        .eq('status', 'completed')
         .order('finished_at', { ascending: false, nullsFirst: false })
         .limit(1)
         .maybeSingle();
+
     return data?.finished_at ?? null;
 }
 
 /**
- * Встал ли какой-то ТИП работ.
- *
- * Считать по самой старой работе в очереди нельзя: в очереди всегда лежит хвост,
- * который воркер пропускает (приоритет, ключ конкуренции), — по нему тревога горела бы
- * вечно. 28.09.2026 такой хвост от 25-го был у четырёх типов, хотя воркеры в ту же
- * минуту доделывали свежие работы.
- *
- * Тип считается вставшим, когда сошлись два признака: работа ждёт дольше норматива
- * И этот же тип давно ничего не доделал. Один признак без другого — не авария.
+ * Разбор одного типа работ: исполнитель сломался, ещё не приходил или просто не успевает.
  */
-async function stalledJobTypes(now: Date): Promise<string[]> {
-    const queuedCutoff = new Date(now.getTime() - THRESHOLDS.jobsQueuedMinutes * 60000).toISOString();
+async function inspectQueueSlice(slice: QueueSlice, now: Date): Promise<PulseCheck> {
+    const { title, spec, scheduleExpression, retired } = describeJobType(slice.jobType);
+    const waiting = formatCount(slice.waiting);
+    const since = formatMoment(slice.oldestAvailableAt);
+    const waitingMinutes = minutesSince(slice.oldestAvailableAt, now);
+    const base = {
+        key: `jobs:${slice.jobType}`,
+        title,
+        lastAt: slice.oldestAvailableAt,
+        silenceMinutes: waitingMinutes,
+    };
 
-    const { data: waiting } = await supabase
-        .from('system_jobs')
-        .select('job_type')
-        .eq('status', 'queued')
-        .lt('queued_at', queuedCutoff)
-        .limit(2000);
+    // Тип без крон-воркера: взять эти работы некому.
+    if (!spec) {
+        if (retired) {
+            return {
+                ...base,
+                ok: true,
+                verdict: 'idle',
+                reason: `${waiting} работ лежит наследством: тип снят с производства, новых не ставят`,
+                limitMinutes: null,
+                problem: null,
+            };
+        }
 
-    const types: string[] = Array.from(
-        new Set((waiting || []).map((row: any) => String(row.job_type || '')).filter(Boolean)),
-    );
-    if (!types.length) return [];
-
-    const silenceCutoff = new Date(now.getTime() - THRESHOLDS.jobTypeDeadHours * 3600000).toISOString();
-    const stalled: string[] = [];
-
-    for (const type of types) {
-        const { data: lastDone } = await supabase
-            .from('system_jobs')
-            .select('finished_at')
-            .eq('job_type', type)
-            .eq('status', 'completed')
-            .gte('finished_at', silenceCutoff)
-            .limit(1)
-            .maybeSingle();
-
-        if (!lastDone?.finished_at) stalled.push(type);
+        const brokenByAge = (waitingMinutes ?? 0) > THRESHOLDS.orphanJobHours * 60;
+        return {
+            ...base,
+            ok: !brokenByAge,
+            verdict: brokenByAge ? 'broken' : 'waiting_schedule',
+            reason: scheduleExpression
+                ? `Расписание «${scheduleExpression}» не удалось разобрать`
+                : 'У этого типа работ нет крон-воркера',
+            limitMinutes: THRESHOLDS.orphanJobHours * 60,
+            problem: brokenByAge
+                ? `${title}: ${waiting} работ ждут с ${since}, исполнителя по расписанию нет`
+                : null,
+        };
     }
 
-    return stalled;
+    const runsSinceReady = cronRunsBetween(spec, new Date(slice.oldestAvailableAt), now);
+
+    // Исполнителю ещё рано: ночь, выходной или просто не настал час по расписанию.
+    if (runsSinceReady < THRESHOLDS.missedRunsBeforeAlarm) {
+        const nextRunHint = scheduleExpression ? ` (расписание «${scheduleExpression}»)` : '';
+        return {
+            ...base,
+            ok: true,
+            verdict: 'waiting_schedule',
+            reason: `${waiting} работ ждут с ${since}; исполнитель по расписанию приходил ${runsSinceReady} раз${nextRunHint}`,
+            limitMinutes: null,
+            problem: null,
+        };
+    }
+
+    const lastDone = await lastCompletedAt(slice.jobType);
+    const progressAfterReady = lastDone !== null && new Date(lastDone) > new Date(slice.oldestAvailableAt);
+
+    // Приходил, но не доделал ни одной работы с тех пор, как появилась эта — сломан.
+    if (!progressAfterReady) {
+        return {
+            ...base,
+            ok: false,
+            verdict: 'broken',
+            reason: `Исполнитель приходил ${runsSinceReady} раз по расписанию «${scheduleExpression}» и не доделал ни одной работы`,
+            limitMinutes: null,
+            problem: `${title}: ${waiting} работ ждут с ${since}, исполнитель приходил ${runsSinceReady} раз и не взял ни одной (последняя выполненная — ${formatMoment(lastDone)})`,
+        };
+    }
+
+    // Работает, но не успевает разгрести хвост.
+    if (runsSinceReady >= THRESHOLDS.backlogRuns) {
+        return {
+            ...base,
+            ok: false,
+            verdict: 'broken',
+            reason: `Исполнитель работает, но за ${runsSinceReady} заходов не дошёл до работ от ${since}`,
+            limitMinutes: null,
+            problem: `${title}: ${waiting} работ ждут с ${since} — исполнитель работает, но за ${runsSinceReady} заходов очередь не разгрёб`,
+        };
+    }
+
+    return {
+        ...base,
+        ok: true,
+        verdict: 'ok',
+        reason: `${waiting} работ в очереди, исполнитель разбирает (последняя выполненная — ${formatMoment(lastDone)})`,
+        limitMinutes: null,
+        problem: null,
+    };
 }
 
 /**
@@ -204,75 +351,42 @@ async function stalledJobTypes(now: Date): Promise<string[]> {
 export async function collectPipelinePulse(): Promise<PipelinePulse> {
     const now = new Date();
 
-    const quiet = isQuietHours(now);
-
-    const [emailPoll, stuckEmail, jobFinished, stalledTypes] = await Promise.all([
+    const [emailPoll, stuckEmail, queue] = await Promise.all([
         lastEmailPoll(),
         oldestUnclassifiedEmail(),
-        lastFinishedJob(),
-        stalledJobTypes(now),
+        readyQueueByType(now),
     ]);
 
-    const checks: PulseCheck[] = [
-        silenceCheck({
-            key: 'email_poll',
-            title: 'Приём почты',
-            lastAt: emailPoll,
-            limitMinutes: THRESHOLDS.emailPollMinutes,
-            now,
-            verb: 'не забирал письма',
-        }),
-        silenceCheck({
-            key: 'jobs_finished',
+    const checks: PulseCheck[] = [emailPollCheck(emailPoll, now), stuckEmailsCheck(stuckEmail, now)];
+
+    if (!queue.length) {
+        checks.push({
+            key: 'jobs_queue',
             title: 'Очередь работ',
-            lastAt: jobFinished,
-            // Ночью порог снимаем: пустая очередь в семь вечера — это конец
-            // рабочего дня, а не поломка.
-            limitMinutes: quiet ? Number.MAX_SAFE_INTEGER : THRESHOLDS.jobsFinishedMinutes,
-            now,
-            verb: 'ничего не доделала за',
-        }),
-    ];
+            ok: true,
+            verdict: 'idle',
+            reason: 'Готовых к взятию работ нет — проверять нечего',
+            lastAt: null,
+            silenceMinutes: null,
+            limitMinutes: null,
+            problem: null,
+        });
+    } else {
+        for (const slice of queue) {
+            checks.push(await inspectQueueSlice(slice, now));
+        }
+    }
 
     /**
-     * Проверки «Заказы из RetailCRM» здесь больше нет.
+     * Проверки «Очередь работ ничего не доделала за N минут» здесь больше нет.
      *
-     * Она следила за тем, что приём изменений из RetailCRM жив. Приём выключен
-     * решением владельца 05.10.2026 («никаких изменений по заказам в ритейле
-     * уже не должно быть, все правки в ОКК»), и сторож начал будить владельца
-     * каждые пятнадцать минут тем, что мы отключили сами.
+     * Она звала на помощь всякий раз, когда делать было нечего или исполнителю было
+     * рано: пустая очередь — не авария, а тишина. Живость очереди теперь меряется
+     * по каждому типу работ отдельно и только против его собственного расписания.
      *
-     * Заказы теперь живут у нас: за их движением следят оценки ОКК и план дня,
-     * а молчание ночью — не авария, а ночь.
+     * Проверки «Заказы из RetailCRM» нет с 05.10.2026: приём выключен решением
+     * владельца, и сторож будил владельца тем, что мы отключили сами.
      */
-
-    // Затор: письма и работы, которые лежат дольше норматива, — признак того, что
-    // крон ходит, но конвейер внутри стоит (ИИ отвалился, ключ протух и т.п.).
-    const stuckEmailAge = minutesSince(stuckEmail, now);
-    checks.push({
-        key: 'emails_stuck',
-        title: 'Письма без разбора',
-        ok: stuckEmailAge === null || stuckEmailAge <= THRESHOLDS.emailStuckMinutes,
-        lastAt: stuckEmail,
-        silenceMinutes: stuckEmailAge,
-        limitMinutes: THRESHOLDS.emailStuckMinutes,
-        problem:
-            stuckEmailAge !== null && stuckEmailAge > THRESHOLDS.emailStuckMinutes
-                ? `Письма без разбора: самое старое ждёт ${formatAge(stuckEmailAge)} (норматив ${formatAge(THRESHOLDS.emailStuckMinutes)})`
-                : null,
-    });
-
-    checks.push({
-        key: 'jobs_stalled',
-        title: 'Работы в очереди',
-        ok: stalledTypes.length === 0,
-        lastAt: null,
-        silenceMinutes: null,
-        limitMinutes: THRESHOLDS.jobsQueuedMinutes,
-        problem: stalledTypes.length
-            ? `Работы в очереди: ${stalledTypes.join(', ')} — работа ждёт дольше ${formatAge(THRESHOLDS.jobsQueuedMinutes)}, а исполнитель не доделал ни одной за ${THRESHOLDS.jobTypeDeadHours} ч`
-            : null,
-    });
 
     const problems = checks.map((check) => check.problem).filter((problem): problem is string => Boolean(problem));
 
