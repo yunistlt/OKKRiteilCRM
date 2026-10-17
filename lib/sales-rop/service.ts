@@ -693,6 +693,12 @@ export type MorningResult = {
     sent: boolean;
     /** Кому сообщение не доставлено. Пусто — рассылка прошла целиком. */
     failures: string[];
+    /**
+     * Заказы, попавшие в план. Нужны ночной оценке: прежде чем утром давать по
+     * заказу совет, его баллы ОКК должны быть свежими. Сверка считает план
+     * вхолостую (dryRun) и ставит эти заказы на переоценку первыми.
+     */
+    orderIds: number[];
 };
 
 /**
@@ -1198,6 +1204,7 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         sent,
         preview: messages,
         failures,
+        orderIds: Array.from(new Set(planned.map((t) => Number(t.orderId)).filter((id) => Number.isFinite(id)))),
     };
 }
 
