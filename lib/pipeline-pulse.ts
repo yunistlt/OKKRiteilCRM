@@ -210,31 +210,45 @@ function stuckEmailsCheck(oldestAt: string | null, now: Date): PulseCheck {
 
 type QueueSlice = { jobType: string; oldestAvailableAt: string; waiting: number };
 
-/** Готовые к взятию работы: сгруппированы по типу, с самой старой и количеством. */
+/**
+ * Готовые к взятию работы: по каждому типу — самая старая и сколько их.
+ *
+ * Количество берём отдельным счётом, а не длиной выборки: PostgREST отдаёт не
+ * больше тысячи строк за раз, и при хвосте в 1 159 работ сторож писал владельцу
+ * «1 000» — ровно столько, сколько влезло. Число в сообщении должно раскладываться
+ * до исходных данных, а не упираться в предел выдачи.
+ */
 async function readyQueueByType(now: Date): Promise<QueueSlice[]> {
+    const readyBefore = now.toISOString();
+
     const { data } = await supabase
         .from('system_jobs')
         .select('job_type, available_at')
         .eq('status', 'queued')
-        .lte('available_at', now.toISOString())
+        .lte('available_at', readyBefore)
         .order('available_at', { ascending: true })
-        .limit(5000);
+        .limit(1000);
 
-    const slices = new Map<string, QueueSlice>();
-
+    // Самая старая работа каждого типа — первая встреченная: выборка отсортирована.
+    const oldestByType = new Map<string, string>();
     for (const row of (data || []) as Array<{ job_type: string; available_at: string }>) {
         const jobType = String(row.job_type || '');
-        if (!jobType) continue;
-
-        const slice = slices.get(jobType);
-        if (slice) {
-            slice.waiting += 1;
-        } else {
-            slices.set(jobType, { jobType, oldestAvailableAt: row.available_at, waiting: 1 });
-        }
+        if (jobType && !oldestByType.has(jobType)) oldestByType.set(jobType, row.available_at);
     }
 
-    return Array.from(slices.values());
+    const slices: QueueSlice[] = [];
+    for (const [jobType, oldestAvailableAt] of Array.from(oldestByType.entries())) {
+        const { count } = await supabase
+            .from('system_jobs')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'queued')
+            .eq('job_type', jobType)
+            .lte('available_at', readyBefore);
+
+        slices.push({ jobType, oldestAvailableAt, waiting: Number(count ?? 0) });
+    }
+
+    return slices;
 }
 
 async function lastCompletedAt(jobType: string): Promise<string | null> {

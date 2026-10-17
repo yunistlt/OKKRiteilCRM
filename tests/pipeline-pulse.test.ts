@@ -22,7 +22,8 @@ vi.mock('@/utils/supabase', () => {
         let ascending = true;
         let max = Infinity;
 
-        const rows = () => {
+        // Точный счёт (head: true) предела выдачи не знает — как в PostgREST.
+        const rows = (ignoreLimit = false) => {
             let result = (tables[name] || []).filter((row) => filters.every((check) => check(row)));
             if (sortColumn) {
                 const column = sortColumn;
@@ -32,11 +33,16 @@ vi.mock('@/utils/supabase', () => {
                     return (left < right ? -1 : left > right ? 1 : 0) * (ascending ? 1 : -1);
                 });
             }
-            return result.slice(0, max);
+            return ignoreLimit ? result : result.slice(0, max);
         };
 
+        let headCount = false;
+
         const query: any = {
-            select: () => query,
+            select: (_columns?: string, options?: { count?: string; head?: boolean }) => {
+                headCount = Boolean(options?.head);
+                return query;
+            },
             eq(column: string, value: any) {
                 filters.push((row) => String(row[column]) === String(value));
                 return query;
@@ -59,7 +65,10 @@ vi.mock('@/utils/supabase', () => {
                 return query;
             },
             maybeSingle: () => Promise.resolve({ data: rows()[0] ?? null, error: null }),
-            then: (resolve: any) => resolve({ data: rows(), error: null }),
+            then: (resolve: any) =>
+                headCount
+                    ? resolve({ data: null, count: rows(true).length, error: null })
+                    : resolve({ data: rows(), error: null }),
         };
 
         return query;
@@ -112,6 +121,24 @@ describe('пульс конвейера', () => {
         expect(pulse.checks.find((check) => check.key === 'jobs:order_score_refresh')?.verdict).toBe(
             'waiting_schedule',
         );
+    });
+
+    it('называет верное число работ, даже когда их больше предела выдачи', async () => {
+        setNow(SATURDAY);
+        freshEmailPoll(SATURDAY);
+
+        // 1 159 работ: выдача обрежется на тысяче, счёт обязан остаться точным.
+        tables.system_jobs = Array.from({ length: 1159 }, (_, index) => ({
+            job_type: 'order_score_refresh',
+            status: 'queued',
+            available_at: `2026-10-16T20:${String(index % 60).padStart(2, '0')}:00Z`,
+        }));
+
+        const pulse = await collectPipelinePulse();
+        const check = pulse.checks.find((item) => item.key === 'jobs:order_score_refresh');
+
+        // Разряды разделены неразрывным пробелом, поэтому сверяем по образцу.
+        expect(check?.reason).toMatch(/1\s159 работ/);
     });
 
     it('молчит, когда очередь пуста — проверять нечего', async () => {
