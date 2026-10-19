@@ -287,9 +287,9 @@ export default function EmailsClient() {
                             <th className="px-3 py-2 font-semibold">Тема</th>
                             <th className="px-3 py-2 font-semibold">Заказ</th>
                             <th className="px-3 py-2 font-semibold whitespace-nowrap">Дата</th>
+                            <th className="px-3 py-2 font-semibold whitespace-nowrap">Менеджер</th>
                             <th className="px-3 py-2 font-semibold">Клиент</th>
                             <th className="px-3 py-2 font-semibold">Тип</th>
-                            <th className="px-3 py-2 font-semibold">Менеджер</th>
                             <th className="px-3 py-2 font-semibold">Отправитель</th>
                         </tr>
                     </thead>
@@ -318,7 +318,10 @@ export default function EmailsClient() {
                                         )}
                                     </div>
                                     <div className="text-xs text-gray-500">
-                                        {mail.body ? `${mail.body.slice(0, 120)}${mail.body.length > 120 ? '…' : ''}` : 'Текст письма не сохранён'}
+                                        {/* Начало письма длиннее: по одной строке нельзя было
+                                            понять, о чём письмо и кому оно (просьба Евгении
+                                            Матвеевой 19.10.2026). */}
+                                        {mail.body ? `${mail.body.slice(0, 300)}${mail.body.length > 300 ? '…' : ''}` : 'Текст письма не сохранён'}
                                     </div>
                                 </td>
                                 <td className="px-3 py-2 whitespace-nowrap">
@@ -349,6 +352,10 @@ export default function EmailsClient() {
                                     )}
                                 </td>
                                 <td className="px-3 py-2 whitespace-nowrap text-gray-600">{formatDate(mail.date)}</td>
+                                {/* Менеджер стоит слева от длинных столбцов: иначе его
+                                    уносило за край экрана и приходилось крутить список
+                                    вправо (просьба Евгении Матвеевой 19.10.2026). */}
+                                <td className="px-3 py-2 whitespace-nowrap text-gray-700">{mail.managerName || '—'}</td>
                                 <td className="px-3 py-2">
                                     {mail.clientId ? (
                                         <a
@@ -368,8 +375,7 @@ export default function EmailsClient() {
                                     </span>
                                     {mail.typeLabel && <div className="text-xs text-gray-500">{mail.typeLabel}</div>}
                                 </td>
-                                <td className="px-3 py-2 whitespace-nowrap text-gray-700">{mail.managerName || '—'}</td>
-                                <td className="px-3 py-2 text-gray-600">{mail.partyEmail || '—'}</td>
+                                <td className="px-3 py-2 break-all text-gray-600">{mail.partyEmail || '—'}</td>
                             </tr>
                         ))}
                     </tbody>
