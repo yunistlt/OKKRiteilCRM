@@ -32,6 +32,34 @@ export async function GET(req: Request) {
     }
 
     /**
+     * Поиск по товару: слова ищет база и сразу расставляет по совпадению.
+     *
+     * Правило владельца 20.10.2026: «поиск по прямому вхождению знаков, без
+     * учёта регистра и знаков препинания, сверху — с максимальным вхождением в
+     * условия поиска». Повод — жалоба Ирины Гордеевой: «поиск не ищет по
+     * обозначению, что стеллаж именно на 12 пар нужен, а он есть у нас».
+     * Раньше слова искались строго подряд, и «12 пар стеллаж» не находило
+     * «Сушильный стеллаж … На 12 пар обуви».
+     *
+     * Номера приходят уже в порядке совпадения — по нему и показываем строки,
+     * пока человек не выбрал свой порядок сам.
+     */
+    let searchRank: Map<number, number> | null = null;
+    if (filter.itemName.trim()) {
+        const { data: ranked, error: rankError } = await supabase.rpc('orders_search_ranked', {
+            q: filter.itemName.trim(),
+            max_rows: 300,
+        });
+        if (rankError) {
+            console.error('[orders/list] поиск не отработал:', rankError);
+        } else {
+            const rows = (ranked || []) as Array<{ order_id: number; rank: number }>;
+            searchRank = new Map(rows.map((row) => [Number(row.order_id), Number(row.rank)]));
+            filter.searchIds = rows.map((row) => Number(row.order_id));
+        }
+    }
+
+    /**
      * Возможные дубли считает база: условие «у клиента есть второй незакрытый
      * заказ рядом по времени» одним запросом к таблице не выражается.
      */
@@ -69,6 +97,12 @@ export async function GET(req: Request) {
     };
     const sortKey = SORTABLE[String(searchParams.get('sort') ?? '')] ?? 'created_at';
     const sortAsc = searchParams.get('dir') === 'asc';
+    /**
+     * При поиске строки идут по совпадению — самое полное сверху, как просил
+     * владелец. Выбрал человек свой порядок (нажал на заголовок колонки) —
+     * слушаемся его.
+     */
+    const byRelevance = Boolean(searchRank) && !searchParams.get('sort');
 
     // Менеджер видит заказы всех менеджеров (решение владельца 02.10.2026): без общего
     // списка не распознать ни дубли, ни постоянных клиентов — это двойная работа.
@@ -97,10 +131,18 @@ export async function GET(req: Request) {
     const from = (page - 1) * pageSize;
 
     const [listResult, statusResult, totalsResult] = await Promise.all([
-        base()
-            .select('order_id, number, status, created_at, status_since, manager_id, totalsumm, raw_payload', { count: 'exact' })
-            .order(sortKey, { ascending: sortAsc, nullsFirst: false })
-            .range(from, from + pageSize - 1),
+        byRelevance
+            // По совпадению порядок задаёт поиск, а не колонка таблицы: берём
+            // всё найденное и режем страницу уже в этом порядке.
+            // Триста строк: по поиску дальше никто не листает, а порядок по
+            // совпадению ставит нужное в начало. Меньше строк — быстрее ответ,
+            // у базы слабый диск.
+            ? base().select('order_id, number, status, created_at, status_since, manager_id, totalsumm, raw_payload', { count: 'exact' })
+                .range(0, 299)
+            : base()
+                .select('order_id, number, status, created_at, status_since, manager_id, totalsumm, raw_payload', { count: 'exact' })
+                .order(sortKey, { ascending: sortAsc, nullsFirst: false })
+                .range(from, from + pageSize - 1),
         // Количества по статусам считает база: выборкой их посчитать нельзя —
         // Supabase отдаёт максимум 1000 строк, и на 30 тысячах заказов целые
         // этапы пропадали из колонки. Фильтр по самому статусу не применяем,
@@ -117,7 +159,14 @@ export async function GET(req: Request) {
         error: 'read_failed', details: listResult.error.message }, { status: 500 });
     }
 
-    const rows = listResult.data || [];
+    const found = (listResult.data || []) as any[];
+    // При поиске страницу режем сами: порядок задан совпадением.
+    const rows = byRelevance && searchRank
+        ? [...found]
+            .sort((a, b) => (searchRank!.get(Number(b.order_id)) ?? 0) - (searchRank!.get(Number(a.order_id)) ?? 0)
+                || Number(b.order_id) - Number(a.order_id))
+            .slice(from, from + pageSize)
+        : found;
     const managerIds = Array.from(new Set(rows.map((r: any) => r.manager_id).filter(Boolean)));
 
     const [
