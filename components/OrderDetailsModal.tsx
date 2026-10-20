@@ -2426,7 +2426,25 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                             {/* «Ответить» и в шапке письма: до него не надо
                                                 разворачивать письмо и листать до конца
                                                 (просьба владельца 05.10.2026). */}
-                                            <div className="mb-2 flex justify-end">
+                                            <div className="mb-2 flex justify-end gap-2">
+                                                {/* «Свернуть» тоже сверху: у длинной переписки
+                                                    кнопка внизу, и до неё приходилось каждый раз
+                                                    спускаться (просьба Ирины Гордеевой
+                                                    20.10.2026). Внизу она осталась — кто дочитал
+                                                    письмо до конца, свернёт там. */}
+                                                {open && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setOpenedEmails((prev) => {
+                                                            const next = new Set(prev);
+                                                            next.delete(key);
+                                                            return next;
+                                                        })}
+                                                        className="border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                                                    >
+                                                        Свернуть
+                                                    </button>
+                                                )}
                                                 <button
                                                     type="button"
                                                     onClick={() => {
