@@ -140,7 +140,47 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             : signUpload(orderNumber, body);
     }
 
-    return NextResponse.json({ error: 'Файл присылайте подписанной ссылкой' }, { status: 400 });
+    /**
+     * Файл формой — обычный путь, для всего, что проходит по размеру.
+     *
+     * Прямая загрузка в хранилище осталась для крупных файлов: браузер идёт
+     * туда на чужой домен, и у менеджеров его режет сетевая фильтрация
+     * (жалоба Евгении Матвеевой 20.10.2026).
+     */
+    let form: FormData;
+    try {
+        form = await request.formData();
+    } catch {
+        return NextResponse.json({ error: 'Файл не получен' }, { status: 400 });
+    }
+
+    const file = form.get('file');
+    if (!(file instanceof File) || !file.size) {
+        return NextResponse.json({ error: 'Выберите файл' }, { status: 400 });
+    }
+    if (file.size > MAX_BYTES) {
+        return NextResponse.json(
+            { error: `Файл больше 25 МБ (${(file.size / 1024 / 1024).toFixed(1)} МБ) — пришлите его ссылкой` },
+            { status: 413 },
+        );
+    }
+
+    const path = storagePath(orderNumber, file.name);
+    const upload = await supabase.storage.from(BUCKET).upload(path, new Uint8Array(await file.arrayBuffer()), {
+        contentType: file.type || 'application/octet-stream',
+        upsert: true,
+    });
+    if (upload.error) {
+        return NextResponse.json({ error: `Не удалось сохранить файл: ${upload.error.message}` }, { status: 502 });
+    }
+
+    return registerUploaded(orderNumber, {
+        path,
+        fileName: file.name,
+        size: file.size,
+        contentType: file.type || null,
+        note: String(form.get('note') ?? '').trim() || null,
+    }, actor);
 }
 
 /** Убрать файл из списка заказа: приложили не то. Файл уходит в архив. */
