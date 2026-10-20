@@ -1,5 +1,7 @@
 'use client';
 
+import { uploadOrderFile } from '@/lib/orders/upload-order-file';
+
 import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { openPickerOnClick } from '@/components/ui/openPickerOnClick';
 import AutoTextarea from '@/components/ui/AutoTextarea';
@@ -2341,18 +2343,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                     setContractReview(null);
                                                     try {
                                                         // Сначала файл в заказ — тем же механизмом, что «Файлы».
-                                                        const form = new FormData();
-                                                        form.append('file', clientFormFile);
-                                                        form.append('note', 'Договор клиента — на проверку юристу');
-                                                        const up = await fetch(
-                                                            `/api/orders/${encodeURIComponent(orderKey)}/files/upload`,
-                                                            { method: 'POST', body: form },
+                                                        const uploaded = await uploadOrderFile(
+                                                            orderKey,
+                                                            clientFormFile,
+                                                            'Договор клиента — на проверку юристу',
                                                         );
-                                                        const upPayload = await up.json();
-                                                        if (!up.ok) throw new Error(upPayload.error || 'Файл не приложился к заказу');
-
-                                                        const fileId = upPayload?.file?.id;
-                                                        if (!fileId) throw new Error('Файл приложен, но юристу не отправился — откройте «Файлы» заказа');
+                                                        const fileId = uploaded.id;
 
                                                         const res = await fetch(
                                                             `/api/orders/${encodeURIComponent(orderKey)}/contract/client-form`,
@@ -2607,17 +2603,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         setProductionUploading(true);
         setProductionMessage(null);
         try {
-            const body = new FormData();
-            body.append('file', file);
-            const res = await fetch(`/api/orders/${encodeURIComponent(String(data?.order?.number ?? orderId))}/files/upload`, {
-                method: 'POST',
-                body,
-            });
-            const payload = await res.json().catch(() => null);
-            if (!res.ok) throw new Error(payload?.error || 'Файл не загрузился');
+            const uploaded = await uploadOrderFile(String(data?.order?.number ?? orderId), file);
 
             // Файл для цеха — сразу отмечаем: за этим его и прикладывают.
-            if (payload?.file?.id) await toggleProductionFile(Number(payload.file.id), true);
+            await toggleProductionFile(Number(uploaded.id), true);
             await loadProduction();
             setProductionMessage(`Файл «${file.name}» приложен и отмечен для цеха`);
         } catch (e: any) {

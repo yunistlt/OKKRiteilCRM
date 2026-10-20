@@ -1,5 +1,7 @@
 'use client';
 
+import { uploadOrderFile } from '@/lib/orders/upload-order-file';
+
 import { useEffect, useRef, useState } from 'react';
 import { Loader, Send } from 'lucide-react';
 import { stripOrderThreadTag } from '@/lib/email-subject';
@@ -321,14 +323,8 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
         const work = (async () => {
             const ids = [...attachedFileIds];
             for (const file of pending) {
-                const form = new FormData();
-                form.append('file', file);
-                const up = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files/upload`, { method: 'POST', body: form });
-                const payload = await up.json().catch(() => null);
-                if (!up.ok || !payload?.file?.id) {
-                    throw new Error(payload?.error || `Файл «${file.name}» не загрузился — попробуйте ещё раз`);
-                }
-                ids.push(Number(payload.file.id));
+                const uploaded = await uploadOrderFile(orderNumber, file);
+                ids.push(Number(uploaded.id));
             }
 
             // Файлы уехали в заказ: в списке «с компьютера» им больше не место.
