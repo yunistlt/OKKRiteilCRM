@@ -4,7 +4,7 @@ import { supabase } from '@/utils/supabase';
 import { resolveOrderRef } from '@/lib/own-crm/order-ref';
 import { buildOrderContext, renderTemplate } from '@/lib/templates/render';
 import { writeLetter } from '@/lib/templates/ai-letter';
-import { managerSignature, withSignature } from '@/lib/templates/signature';
+import { senderSignature, withSignature } from '@/lib/templates/signature';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,7 +38,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const { data: orderRow } = ref
         ? await supabase.from('orders').select('manager_id').eq('id', ref.id).maybeSingle()
         : { data: null };
-    const signature = await managerSignature((orderRow as any)?.manager_id ?? null);
+    const signature = await senderSignature(session.user?.retail_crm_manager_id ?? null, (orderRow as any)?.manager_id ?? null);
 
     // Шаблон с заданием: письмо пишет ИИ под этот заказ, менеджер правит руками.
     if ((template as any).mode === 'ai') {
