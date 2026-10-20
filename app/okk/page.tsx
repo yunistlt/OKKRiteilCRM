@@ -1740,12 +1740,12 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                         {activeCall.recording_url && (
                                             <div className="flex items-center gap-2 w-full md:w-auto">
                                                 <audio
-                                                    src={activeCall.raw_payload?.storage_url || `/api/okk/proxy-audio?url=${encodeURIComponent(activeCall.recording_url)}`}
+                                                    src={`/api/okk/proxy-audio?url=${encodeURIComponent(activeCall.recording_url)}`}
                                                     controls
                                                     className="h-10 md:h-8 md:w-64 w-full accent-blue-600"
                                                 />
                                                 <a
-                                                    href={activeCall.raw_payload?.storage_url || activeCall.recording_url}
+                                                    href={`/api/okk/proxy-audio?url=${encodeURIComponent(activeCall.recording_url)}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     title="Скачать/Открыть"
