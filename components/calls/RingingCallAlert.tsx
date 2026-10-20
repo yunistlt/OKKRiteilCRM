@@ -33,6 +33,12 @@ type Ringing = {
     is_queue: boolean | null;
     /** Заказы этого клиента, когда звонок ни к одному не привязан. */
     client_orders?: Array<{ orderId: number; number: string }>;
+    /**
+     * Кому звонит телефон: добавочный и менеджер за ним. При переводе здесь
+     * оба — кому звонили сначала и на кого перевели (просьба Ирины Гордеевой
+     * 20.10.2026: в оповещении не видно, кому звонят).
+     */
+    ringing_at?: Array<{ extension: string; name: string | null }>;
 };
 
 /** Как часто спрашиваем о звонках. Звонок звонит 20–30 секунд. */
@@ -127,6 +133,18 @@ export default function RingingCallAlert() {
                         ) : (
                             <div className="mt-0.5 text-sm text-gray-500">Номер неизвестен</div>
                         )}
+
+                        {/* Кому звонят. На очередь телефон звонит у нескольких
+                            сразу, и окно видят все — без фамилии непонятно, чей
+                            это разговор. */}
+                        {call.ringing_at?.length ? (
+                            <div className="mt-1 text-xs text-gray-600">
+                                {call.is_queue ? 'Звонок на отдел, телефон звонит у: ' : 'Звонят: '}
+                                {call.ringing_at
+                                    .map((who) => who.name ?? `добавочный ${who.extension}`)
+                                    .join(', ')}
+                            </div>
+                        ) : null}
 
                         {call.order_number ? (
                             <>

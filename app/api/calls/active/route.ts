@@ -49,6 +49,41 @@ async function sweepStale(): Promise<void> {
     await dropStaleCalls().catch(() => 0);
 }
 
+/**
+ * Добавочный → имя менеджера.
+ *
+ * Просьба Ирины Гордеевой 20.10.2026: «можно в оповещениях звонков добавить
+ * менеджера, чтобы было видно, кому звонят?» Окно звонка на очередь видят все
+ * в отделе, и по одному номеру клиента непонятно, чей это разговор.
+ *
+ * Справочник маленький и меняется редко — держим пять минут, чтобы не ходить
+ * в базу каждые две секунды у каждого открытого ОКК.
+ */
+let extensionNamesCache: { at: number; byExtension: Map<string, string> } | null = null;
+const EXTENSION_NAMES_CACHE_MS = 5 * 60_000;
+
+async function extensionNames(): Promise<Map<string, string>> {
+    if (extensionNamesCache && Date.now() - extensionNamesCache.at < EXTENSION_NAMES_CACHE_MS) {
+        return extensionNamesCache.byExtension;
+    }
+
+    const { data } = await supabase
+        .from('managers')
+        .select('first_name, last_name, telphin_extension')
+        .not('telphin_extension', 'is', null);
+
+    const byExtension = new Map<string, string>();
+    for (const row of ((data ?? []) as any[])) {
+        const ext = String(row.telphin_extension ?? '').trim();
+        if (!ext) continue;
+        const name = [row.last_name, row.first_name].filter(Boolean).join(' ').trim();
+        if (name) byExtension.set(ext, name);
+    }
+
+    extensionNamesCache = { at: Date.now(), byExtension };
+    return byExtension;
+}
+
 const ordersCache = new Map<string, { at: number; orders: Array<{ orderId: number; number: string }> }>();
 const ORDERS_CACHE_MS = 60_000;
 
@@ -139,5 +174,25 @@ export async function GET() {
         return { ...call, client_orders: await clientOrders(phone) };
     }));
 
-    return NextResponse.json({ calls: withOrders, extension, seeAll });
+    /**
+     * Кому звонит телефон — пофамильно.
+     *
+     * Берём все добавочные звонка: при переводе их несколько, и человеку важно
+     * видеть обоих — кому звонили сначала и на кого перевели. Добавочный без
+     * менеджера в справочнике не показываем именем, только номером: выдумывать
+     * фамилию нельзя.
+     */
+    const names = await extensionNames();
+    const withNames = withOrders.map((call: any) => {
+        const all: string[] = Array.isArray(call.extensions) && call.extensions.length
+            ? call.extensions.map((e: unknown) => String(e ?? '').trim()).filter(Boolean)
+            : [String(call.extension_number ?? '').trim()].filter(Boolean);
+
+        return {
+            ...call,
+            ringing_at: all.map((ext) => ({ extension: ext, name: names.get(ext) ?? null })),
+        };
+    });
+
+    return NextResponse.json({ calls: withNames, extension, seeAll });
 }
