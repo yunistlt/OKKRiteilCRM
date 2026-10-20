@@ -23,6 +23,7 @@ import { buildCrmDossier } from '@/lib/email/dossier';
 import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
 import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked, getNoreplyAllowlist, getCrmTagStaleDays, getThreadDedupDays } from '@/lib/email/routes';
 import { sendAppEmail, parseOrderNumberFromSubject } from '@/lib/email';
+import { looksLikeYearNotOrder } from '@/lib/email/order-tag';
 import { createEmailLead } from '@/lib/retailcrm/leads';
 
 export const dynamic = 'force-dynamic';
@@ -631,6 +632,24 @@ export async function GET(req: Request) {
                     if (!orderNum && e.body_text) {
                         const m = e.body_text.slice(0, 1000).match(/(?:заказ|счет|№|order|invoice)\s*#?\s*(\d{4,6})/i);
                         if (m) orderNum = m[1];
+                    }
+
+                    /**
+                     * «Акт сверки за 2026 год» — это год, а не заказ №2026.
+                     *
+                     * Такой заказ в базе есть (отменённый, от 2017 года), письмо
+                     * к нему привязывалось, и в бухгалтерию уже не ехало: письмо
+                     * по заказу ведёт менеджер заказа. Так ушли три письма за
+                     * месяц, все про акты сверки (жалоба Евгении Матвеевой
+                     * 19.10.2026). Тег [#N/NNNNN] эта проверка не трогает — он
+                     * однозначен и сюда не попадает.
+                     */
+                    if (orderNum
+                        && orderNum !== ourReplyOrder?.number
+                        && orderNum !== threadOrder?.number
+                        && looksLikeYearNotOrder(orderNum, e.subject, e.body_text?.slice(0, 2000))) {
+                        reasoning = `${reasoning} | Число ${orderNum} в письме — это год, а не номер заказа`;
+                        orderNum = null;
                     }
 
                     // Привязываем ТОЛЬКО по явному номеру заказа (тег [#N/N] / номер в теме или теле).

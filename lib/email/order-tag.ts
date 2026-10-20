@@ -36,3 +36,33 @@ export function orderFromSubject(subject: unknown): SubjectOrder {
 export function taggedOrderNumber(subject: unknown): string | null {
     return orderFromSubject(subject).tagged;
 }
+
+/**
+ * Число похоже на ГОД, а не на номер заказа.
+ *
+ * Жалоба Евгении Матвеевой 19.10.2026: письмо с запросом акта сверки ушло ей,
+ * а должно было уйти в бухгалтерию. Разбор: клиент писал «прошу сделать акт
+ * сверки за 2026 год», классификатор принял «2026» за номер заказа, а такой
+ * заказ в базе есть — отменённый, от 2017 года. Письмо привязалось к нему и
+ * поэтому в бухгалтерию не поехало: письмо по заказу ведёт менеджер заказа.
+ * Так ушли три письма за месяц, все про акты сверки.
+ *
+ * Поэтому число-год, стоящее рядом со словами про год, квартал или период,
+ * номером заказа не считаем. Номер в теге `[#N/NNNNN]` эта проверка не
+ * трогает: он однозначен.
+ */
+const YEAR_CONTEXT = [
+    // «за 2026 год», «2026 г.», «2026г»
+    (n: string) => new RegExp(`${n}\\s*(?:год|года|г\\.|г\\b)`, 'i'),
+    // «за 2026», «период 2026», «сверки 2026»
+    (n: string) => new RegExp(`(?:за|период|сверк\\w*|квартал\\w*|кв\\.)\\s+(?:[^\\d]{0,20})?${n}`, 'i'),
+];
+
+export function looksLikeYearNotOrder(orderNumber: string, ...texts: Array<unknown>): boolean {
+    const n = String(orderNumber ?? '').trim();
+    // Номер заказа у нас четырёхзначный тоже бывает — отсекаем только диапазон лет.
+    if (!/^(19|20)\d{2}$/.test(n)) return false;
+
+    const haystack = texts.map((t) => String(t ?? '')).join('\n');
+    return YEAR_CONTEXT.some((build) => build(n).test(haystack));
+}
