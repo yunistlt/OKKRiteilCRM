@@ -12,6 +12,7 @@
  * и приехавших заказов, и ничего не надо учить заново.
  */
 import { supabase } from '@/utils/supabase';
+import { statusNamesByCode } from '@/lib/own-crm/status-code';
 import { safeEnqueueOrderRefreshJob } from '@/lib/system-jobs';
 
 export type HistoryEntry = {
@@ -133,12 +134,9 @@ export async function statusValue(code: unknown): Promise<string | null> {
 export async function statusName(code: unknown): Promise<string> {
     const value = String(code ?? '').trim();
     if (!value) return '';
-    const { data } = await supabase
-        .from('crm_statuses')
-        .select('name')
-        .eq('external_code', value)
-        .maybeSingle();
-    return String((data as any)?.name || value);
+    // Статус ищем по обоим кодам: свой основной и старый из RetailCRM.
+    const names = await statusNamesByCode([value]);
+    return names.get(value) || value;
 }
 
 /**

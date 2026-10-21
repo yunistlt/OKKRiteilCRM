@@ -12,6 +12,7 @@
 import { supabase } from '@/utils/supabase';
 import { formatEventValue } from '@/lib/order-events';
 import { buildFieldLabelResolver } from '@/lib/order-field-labels';
+import { statusKeysOf, statusNamesByCode } from '@/lib/own-crm/status-code';
 
 export type CallSummary = {
     orderNumber: string;
@@ -56,7 +57,8 @@ export async function callSummary(orderId: number): Promise<CallSummary | null> 
     const orderNumber = String(row.number ?? orderId);
 
     const [statusRow, items, history, tasks, mail, manager] = await Promise.all([
-        supabase.from('crm_statuses').select('name').eq('external_code', row.status).maybeSingle(),
+        // Статус опознаём по обоим кодам: свой основной, external_code — у заказов до отвязки.
+        statusNamesByCode([row.status]),
         supabase.from('order_items').select('"offer", quantity').eq('order_id', orderId).limit(6),
         // Последнее содержательное событие: по нему видно, на чём остановились.
         // Берём с запасом — часть записей служебные и человеку ничего не говорят.
@@ -115,14 +117,16 @@ export async function callSummary(orderId: number): Promise<CallSummary | null> 
     // Коды статусов в истории переводим в имена: закон проекта — только
     // человеческий язык, «tender-s-dubliruyuschimi-zayavkami» никому не понятно.
     const [{ data: allStatuses }, { data: crmStatuses }] = await Promise.all([
-        supabase.from('crm_statuses').select('external_code, name'),
+        supabase.from('crm_statuses').select('code, external_code, name'),
         // Коды RetailCRM шире нашего справочника: заказы ходят с их кодами
         // («dubliu-zaiavki»), и без этого в сводке был бы латинский код.
         supabase.from('retailcrm_dictionaries').select('item_code, item_name').eq('entity_type', 'status'),
     ]);
     const statusNames = new Map<string, string>();
     for (const st of ((crmStatuses ?? []) as any[])) statusNames.set(String(st.item_code), String(st.item_name));
-    for (const st of ((allStatuses ?? []) as any[])) statusNames.set(String(st.external_code), String(st.name));
+    for (const st of ((allStatuses ?? []) as any[])) {
+        for (const key of statusKeysOf(st)) statusNames.set(key, String(st.name));
+    }
 
     const lastHistory = (((history as any).data ?? []) as any[])
         .map((event) => {
@@ -138,7 +142,7 @@ export async function callSummary(orderId: number): Promise<CallSummary | null> 
 
     return {
         orderNumber,
-        status: ((statusRow as any).data?.name as string) ?? statusNames.get(String(row.status)) ?? row.status ?? null,
+        status: (statusRow as Map<string, string>).get(String(row.status)) ?? statusNames.get(String(row.status)) ?? row.status ?? null,
         daysInStatus,
         sum: row.totalsumm === null || row.totalsumm === undefined ? null : Number(row.totalsumm),
         items: names,

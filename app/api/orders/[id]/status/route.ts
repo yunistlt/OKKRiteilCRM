@@ -8,6 +8,7 @@ import { queueOrderForProduction } from '@/lib/own-crm/tseh-outbox';
 import { INN_GATE_MESSAGE, INN_REQUIRED_STATUSES, ensureInnTask, orderInn } from '@/lib/own-crm/inn-gate';
 import { editOrder } from '@/lib/own-crm/edit-order';
 import { writeOwnHistory } from '@/lib/own-crm/history-write';
+import { findStatus, statusCodeOf, statusMatches } from '@/lib/own-crm/status-code';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,13 +84,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (!order) return NextResponse.json({ error: 'order_not_found' }, { status: 404 });
 
     const [{ data: statuses }, { data: groups }, { data: transitions }] = await Promise.all([
-        supabase.from('crm_statuses').select('id, name, color, group_id, external_code, ordering, requires_reason, is_working').eq('active', true),
+        supabase.from('crm_statuses').select('id, name, color, group_id, code, external_code, ordering, requires_reason, is_working').eq('active', true),
         supabase.from('crm_status_groups').select('id, name, color, ordering, icon'),
         supabase.from('crm_status_transitions').select('from_status_id, to_status_id'),
     ]);
 
     const list = (statuses || []) as any[];
-    const current = list.find((s) => s.external_code === order.status);
+    const current = findStatus(list, order.status);
 
     // Переходы не настроены — не выдумываем разрешения и честно говорим об этом.
     const allTransitions = (transitions || []) as any[];
@@ -103,9 +104,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     // заказ вообще может пойти. Перейти можно только в разрешённые матрицей —
     // у остальных стоит allowed: false (требование владельца 01.10.2026).
     const options = list
-        .filter((s) => s.external_code)
+        .filter((s) => statusCodeOf(s))
         .map((s) => ({
-            code: s.external_code as string,
+            // Код свой: от RetailCRM отвязались, external_code — только след старой связи.
+            code: statusCodeOf(s) as string,
             name: s.name as string,
             // Цвет статуса — это цвет его группы (решение владельца 01.10.2026):
             // на уровне статуса цвет не назначается.
@@ -118,7 +120,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             allowed: allowedIds.has(s.id),
             // Карточка спросит причину окном, прежде чем звать POST.
             requiresReason: Boolean(s.requires_reason),
-            current: s.external_code === order.status,
+            current: statusMatches(s, order.status),
         }))
         .sort((a, b) => a.groupOrdering - b.groupOrdering || a.ordering - b.ordering || a.name.localeCompare(b.name));
 
@@ -156,13 +158,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     // Проверяем переход на сервере: интерфейс мог отстать от настроек.
     const [{ data: statuses }, { data: transitions }] = await Promise.all([
-        supabase.from('crm_statuses').select('id, name, external_code, requires_reason, is_working').eq('active', true),
+        supabase.from('crm_statuses').select('id, name, code, external_code, requires_reason, is_working').eq('active', true),
         supabase.from('crm_status_transitions').select('from_status_id, to_status_id'),
     ]);
 
     const list = (statuses || []) as any[];
-    const from = list.find((s) => s.external_code === order.status);
-    const to = list.find((s) => s.external_code === body.status);
+    const from = findStatus(list, order.status);
+    const to = findStatus(list, body.status);
 
     if (!from || !to) {
         return NextResponse.json({ error: 'status_not_mapped' }, { status: 400 });

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { byStatusCode, statusCodeOf, statusKeysOf } from '@/lib/own-crm/status-code';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { parseOrdersFilter, applyOrdersFilter, applyOverdueFilter, filterToCountParams } from '@/lib/orders-filter';
@@ -112,14 +113,12 @@ export async function GET(req: Request) {
     // Оттуда же берём порядок показа — он утверждён на доске «Статусы и переходы».
     const { data: ownStatuses } = await supabase
         .from('crm_statuses')
-        .select('external_code, name, norm_days, ordering, group_id, active')
-        .not('external_code', 'is', null);
-    const normByStatus = new Map<string, number | null>(
-        ((ownStatuses || []) as any[]).map((s) => [s.external_code, s.norm_days])
-    );
+        .select('code, external_code, name, norm_days, ordering, group_id, active');
+    const normByStatus = byStatusCode((ownStatuses || []) as any[], (s) => s.norm_days as number | null);
+    // Норматив проверяем по всем кодам статуса: старые заказы лежат с кодом RetailCRM.
     const norms = ((ownStatuses || []) as any[])
         .filter((s) => typeof s.norm_days === 'number' && s.norm_days >= 0)
-        .map((s) => ({ status: s.external_code as string, normDays: s.norm_days as number }));
+        .flatMap((s) => statusKeysOf(s).map((status) => ({ status, normDays: s.norm_days as number })));
 
     const base = () => {
         // Удалённые в CRM заказы в рабочем списке не показываем.
@@ -207,16 +206,16 @@ export async function GET(req: Request) {
     const groupIconById = new Map<string, string | null>(
         ((ownGroups || []) as any[]).map((g) => [String(g.id), g.icon || null]),
     );
-    const statusIconMap = new Map<string, string | null>(
-        ((ownStatuses || []) as any[])
-            .filter((s) => s.external_code && s.group_id)
-            .map((s) => [String(s.external_code), groupIconById.get(String(s.group_id)) ?? null]),
+    const statusIconMap = byStatusCode(
+        ((ownStatuses || []) as any[]).filter((s) => s.group_id),
+        (s) => groupIconById.get(String(s.group_id)) ?? null,
     );
     const statusColorMap = new Map<string, string | null>([
         ...((statusColors || []) as any[]).map((s) => [s.code, s.color || null] as [string, string | null]),
-        ...((ownStatuses || []) as any[])
-            .filter((s) => s.external_code && s.group_id && groupColorById.get(String(s.group_id)))
-            .map((s) => [String(s.external_code), groupColorById.get(String(s.group_id))!] as [string, string | null]),
+        ...Array.from(byStatusCode(
+            ((ownStatuses || []) as any[]).filter((s) => s.group_id && groupColorById.get(String(s.group_id))),
+            (s) => groupColorById.get(String(s.group_id))!,
+        ).entries()),
     ]);
 
     // Дерево статусов с количествами для левой колонки.
@@ -236,11 +235,7 @@ export async function GET(req: Request) {
             .filter((g) => g.external_code)
             .map((g) => [String(g.external_code), Number(g.ordering ?? 999)]),
     );
-    const statusOrderByCode = new Map<string, number>(
-        ((ownStatuses || []) as any[])
-            .filter((s) => s.external_code)
-            .map((s) => [String(s.external_code), Number(s.ordering ?? 999)]),
-    );
+    const statusOrderByCode = byStatusCode((ownStatuses || []) as any[], (s) => Number(s.ordering ?? 999));
     // ЗАКОН: состав и порядок левой колонки берём с доски «Статусы и переходы»
     // (`crm_status_groups` / `crm_statuses`), а не из групп RetailCRM. Статус,
     // переставленный человеком в другую группу, должен ехать туда же и здесь.
@@ -250,10 +245,9 @@ export async function GET(req: Request) {
             { name: String(g.name || 'Без названия'), ordering: Number(g.ordering ?? 999), code: g.external_code ? String(g.external_code) : null },
         ]),
     );
-    const ownGroupIdByStatus = new Map<string, string>(
-        ((ownStatuses || []) as any[])
-            .filter((s) => s.external_code && s.group_id)
-            .map((s) => [String(s.external_code), String(s.group_id)]),
+    const ownGroupIdByStatus = byStatusCode(
+        ((ownStatuses || []) as any[]).filter((s) => s.group_id),
+        (s) => String(s.group_id),
     );
 
     type TreeStatus = { code: string; label: string; count: number; color: string | null; icon: string | null; ordering: number };
@@ -270,11 +264,12 @@ export async function GET(req: Request) {
     const shownCodes = new Set<string>();
     for (const own of ((ownStatuses || []) as any[])) {
         if (own.active === false) continue;
-        const code = String(own.external_code);
+        const code = statusCodeOf(own);
+        if (!code) continue;
         const group = own.group_id ? ownGroupById.get(String(own.group_id)) : undefined;
         if (!group) continue; // статус без группы на доске — показывать его негде
 
-        shownCodes.add(code);
+        for (const key of statusKeysOf(own)) shownCodes.add(key);
         pushStatus(
             String(own.group_id),
             { groupName: group.name, groupCode: group.code, ordering: group.ordering },
@@ -283,7 +278,8 @@ export async function GET(req: Request) {
                 // Название — из справочника RetailCRM (закон «имена из RetailCRM»),
                 // своё имя с доски — только если в справочнике его нет.
                 label: statusNames.get(code) || String(own.name || code),
-                count: counts.get(code) ?? 0,
+                // Заказы могут лежать и под старым кодом RetailCRM — считаем по обоим.
+                count: statusKeysOf(own).reduce((sum, key) => sum + (counts.get(key) ?? 0), 0),
                 color: statusColorMap.get(code) || null,
                 icon: statusIconMap.get(code) || null,
                 ordering: Number(own.ordering ?? 999),

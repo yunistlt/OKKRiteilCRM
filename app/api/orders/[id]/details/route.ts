@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
+import { findStatus, statusKeysOf } from '@/lib/own-crm/status-code';
 import { supabase } from '@/utils/supabase';
 import { formatEventValue, MAIL_FEED_FIELD_PATTERNS } from '@/lib/order-events';
 import { buildFieldLabelResolver } from '@/lib/order-field-labels';
@@ -173,7 +174,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         // вид и цвет — как в RetailCRM (закон: в интерфейсе только человеческий язык).
         const [{ data: statusDict }, { data: ownStatusRows }, { data: ownGroupRows }] = await Promise.all([
             supabase.from('retailcrm_dictionaries').select('item_code, item_name').eq('entity_type', 'status'),
-            supabase.from('crm_statuses').select('external_code, group_id'),
+            supabase.from('crm_statuses').select('code, external_code, name, group_id'),
             supabase.from('crm_status_groups').select('id, color'),
         ]);
 
@@ -185,12 +186,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             statusPalette[row.item_code] = { name: row.item_name || row.item_code, color: null };
         }
         for (const row of ((ownStatusRows as any[]) ?? [])) {
-            const code = row.external_code;
-            if (!code) continue;
-            statusPalette[code] = {
-                name: statusPalette[code]?.name ?? code,
-                color: groupColor.get(String(row.group_id)) ?? null,
-            };
+            // Статус опознаём по обоим кодам: свой — основной, external_code
+            // остался у заказов, созданных до отвязки от RetailCRM.
+            for (const code of statusKeysOf(row)) {
+                statusPalette[code] = {
+                    // Название из справочника RetailCRM, а у своих статусов — наше.
+                    name: statusPalette[code]?.name ?? String(row.name || code),
+                    color: groupColor.get(String(row.group_id)) ?? null,
+                };
+            }
         }
 
         const asStatus = (value: string) => statusPalette[value]?.name ?? value;
@@ -234,8 +238,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         return NextResponse.json({
             // Палитра статусов — для плашек в истории, как в RetailCRM.
             statusPalette,
-            statusColor: groupColor.get(String(((ownStatusRows as any[]) ?? []).find((r) => r.external_code === order.status)?.group_id)) || (statusRow as any)?.color || null,
-            statusName: (statusRow as any)?.name || null,
+            statusColor: groupColor.get(String(findStatus(((ownStatusRows as any[]) ?? []), order.status)?.group_id)) || (statusRow as any)?.color || null,
+            // Своего статуса в справочнике RetailCRM нет — берём наше название.
+            statusName: (statusRow as any)?.name || findStatus(((ownStatusRows as any[]) ?? []), order.status)?.name || null,
             statusGroup: (statusRow as any)?.group_name || null,
             order: {
                 ...order,
