@@ -1,5 +1,6 @@
 import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
+import { logError } from '@/lib/error-monitor';
 import { localToday } from '@/lib/sales-rop/local-day';
 import { notifyOwnerFailure, runMorning } from '@/lib/sales-rop/service';
 
@@ -29,6 +30,10 @@ export async function GET(req: NextRequest) {
         const result = await runMorning(today, { dryRun });
         return NextResponse.json({ ok: true, ...result });
     } catch (e: any) {
+        // Ошибку кладём в журнал, а не только в Telegram: сообщение в чате
+        // теряется, а причину падения потом ищут по скриншоту переписки
+        // (так искали 21.10.2026, когда отдел три дня жил без плана).
+        logError('sales-rop/morning', e, { step: 'прогон целиком' });
         // Молчащий бот неотличим от бота без работы: о поломке сообщаем сами.
         if (!dryRun) await notifyOwnerFailure('Утренний план', e.message);
         return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
