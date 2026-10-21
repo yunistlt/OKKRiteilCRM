@@ -1043,7 +1043,15 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     if (!opts.dryRun && rows.length > 0) {
         // Сохраняем ДО отправки: вечером сверяется то, что просили утром, а не
         // то, что подошло бы под правило вечером.
-        const { error } = await supabase.from('sales_rop_task').upsert(rows, { onConflict: 'plan_date,order_id' });
+        // Одна и та же работа могла попасть в план дважды (например, клиент
+        // пришёл и по сделке, и по отношениям) — пишем по одной строке на ключ,
+        // иначе Postgres отклоняет ВЕСЬ план целиком.
+        const unique = new Map<string, any>();
+        for (const row of rows) unique.set(String(row.task_key), row);
+
+        const { error } = await supabase
+            .from('sales_rop_task')
+            .upsert(Array.from(unique.values()), { onConflict: 'plan_date,task_key' });
         if (error) throw new Error(error.message);
     }
 
@@ -1068,6 +1076,8 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         for (const t of planned) {
             // Тем, у кого контакт и так назначен на сегодня, писать нечего.
             if (t.reasonCode === 'contact_today') continue;
+            // Касание клиента — работа без заказа: писать дату и комментарий некуда.
+            if (Number(t.orderId) <= 0) continue;
             const res = await setContactDate(
                 t.orderId,
                 siteById.get(t.orderId) || '',
@@ -1089,7 +1099,7 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
                         .from('sales_rop_task')
                         .update({ note_written_at: new Date().toISOString() })
                         .eq('plan_date', today)
-                        .eq('order_id', t.orderId);
+                        .eq('task_key', taskKey(t));
                 } else if (note.skipped === 'not-worked') {
                     notesSkipped += 1;
                 }
@@ -1098,7 +1108,7 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
                 .from('sales_rop_task')
                 .update({ crm_date_set: res.ok, crm_error: res.error ?? null })
                 .eq('plan_date', today)
-                .eq('order_id', t.orderId);
+                .eq('task_key', taskKey(t));
         }
     }
 
@@ -1208,9 +1218,24 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     };
 }
 
+/**
+ * Ключ задачи в плане дня.
+ *
+ * «Один заказ в день» перестало быть правдой: у касаний клиента заказа нет, и
+ * все они ложились с order_id = 0 — запись плана падала целиком на уникальности
+ * (plan_date, order_id). Заказ ключуем номером заказа, касание — менеджером и
+ * клиентом: это и есть «одна и та же работа» в пределах дня.
+ */
+function taskKey(t: Task): string {
+    return Number(t.orderId) > 0
+        ? `order:${Number(t.orderId)}`
+        : `client:${t.managerId ?? '-'}:${String(t.client ?? '').trim().toLowerCase()}`;
+}
+
 function taskRow(date: string, t: Task) {
     return {
         plan_date: date,
+        task_key: taskKey(t),
         manager_id: t.managerId,
         order_id: t.orderId,
         order_number: t.number,
