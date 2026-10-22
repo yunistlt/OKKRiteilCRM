@@ -2,6 +2,7 @@ import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { createLeadInCrm, formatMatchedCatalogProducts } from '@/lib/retailcrm/leads';
+import { sanitizeClientName } from '@/lib/leads/client-name';
 import { editOrder, appendOrderNote } from '@/lib/own-crm/edit-order';
 import { enrichWithLivePrice } from '@/lib/webasyst';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
@@ -287,13 +288,16 @@ export async function GET(req: Request) {
                         Array.isArray(session.matched_catalog_products) ? session.matched_catalog_products : []
                     );
 
+                    // Имя клиента: без имён наших ботов и заглушек (доработка №35).
+                    const clientName = sanitizeClientName(extractedData.name, session.nickname);
+
                     const corpDetails = extractedData.corporate_details ? {
                         isCorporate: Boolean(extractedData.corporate_details.is_corporate),
                         companyName: extractedData.corporate_details.company_name || null,
                         inn: extractedData.corporate_details.inn || null,
                         kpp: extractedData.corporate_details.kpp || null,
                         address: extractedData.corporate_details.address || null,
-                        contactName: extractedData.corporate_details.contact_name || null,
+                        contactName: sanitizeClientName(extractedData.corporate_details.contact_name),
                         contactPhone: extractedData.corporate_details.contact_phone || null,
                         bank: extractedData.corporate_details.bank || null,
                         bik: extractedData.corporate_details.bik || null,
@@ -338,10 +342,7 @@ ${chatLog.split('\n').slice(-10).join('\n')}`;
                             customFields.ozhidaemaya_summa = Number(qualification.budget) || null;
                         }
 
-                        let nameToUpdate = extractedData.name || null;
-                        if (nameToUpdate === 'Клиент из чата' || nameToUpdate === session.nickname) {
-                            nameToUpdate = null;
-                        }
+                        const nameToUpdate = sanitizeClientName(extractedData.name, session.nickname);
 
                         await editOrder(existingOrderId, {
                             statusCode: 'zapros-kontaktov',
@@ -363,7 +364,7 @@ ${chatLog.split('\n').slice(-10).join('\n')}`;
                         const orderMethod = callbackReq ? 'missed-call' : 'live-chat';
 
                         const crmResult = await createLeadInCrm({
-                            name: extractedData.name || session.nickname || 'Клиент из чата',
+                            name: clientName || undefined,
                             phone: extractedData.phone,
                             email: extractedData.email,
                             telegram: extractedData.telegram,
@@ -386,7 +387,7 @@ ${chatLog.split('\n').slice(-10).join('\n')}`;
                         crm_order_id: parseInt(orderNumber) || null,
                         contact_phone: extractedData.phone,
                         contact_email: extractedData.email,
-                        contact_name: extractedData.name || session.nickname || null,
+                        contact_name: clientName,
                         assigned_manager_id: managerId
                     };
 

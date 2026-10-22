@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { sanitizeClientName } from '@/lib/leads/client-name';
 import { fetchRetailCrmOrder } from './orders';
 import {
     buildLeadCustomerCustomFields,
@@ -163,7 +164,9 @@ ${bodyPart}${attLine}${duplicateReason}`;
 
     const orderData: any = {
         status: 'novyi-1', // всегда «Новая»
-        firstName: params.corporateDetails?.contactName || params.name || 'Клиент',
+        // Имя клиента: без имён наших ботов и заглушек; не узнали — «Лид»
+        // (менеджеру не должно прилетать обращение «Елена» к мужчине, доработка №35).
+        firstName: sanitizeClientName(params.corporateDetails?.contactName) || sanitizeClientName(params.name) || 'Лид',
         customerComment: comment,
         // Реквизиты из письма: по ИНН и названию запись заказа найдёт карточку
         // клиента или заведёт её. Без них карточка плодилась бы на каждую заявку.
@@ -216,7 +219,8 @@ export function formatMatchedCatalogProducts(
 }
 
 export async function createLeadInCrm(params: {
-    name: string;
+    /** Имя клиента, если он назвался; не назвался — не передаём (в карточке будет «ИИ-Лид»). */
+    name?: string;
     phone?: string;
     email?: string;
     telegram?: string;
@@ -282,7 +286,9 @@ ${historyLog.split('\n').slice(-10).join('\n')}
         status: 'novyi-1', // Correct code for "Новый" from dictionary
         orderMethod: params.orderMethod || 'live-chat',
         lastName: 'ИИ-Лид',
-        firstName: params.corporateDetails?.contactName || params.name || 'Клиент',
+        // Имени не узнали — оставляем пустым: в карточке будет «ИИ-Лид», а не
+        // выдуманное имя и не имя нашего бота (доработка №35).
+        firstName: sanitizeClientName(params.corporateDetails?.contactName) || sanitizeClientName(params.name) || '',
         phone: params.phone,
         email: params.email,
         customerComment: managerComment,
@@ -336,7 +342,7 @@ ${params.summary?.trim() || 'не распознано — уточнить у �
 
     const orderData: any = {
         status: 'novyi-1', // всегда «Новая»
-        firstName: params.name || 'Клиент',
+        firstName: sanitizeClientName(params.name) || 'Лид',
         phone: params.phone,
         customerComment: comment,
         ...(existingCustomerHint ? { managerComment: existingCustomerHint } : {}),
