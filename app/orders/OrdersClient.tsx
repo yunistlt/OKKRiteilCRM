@@ -91,6 +91,8 @@ export default function OrdersClient() {
     }, []);
 
     const [filter, setFilter] = useState<OrdersFilter>(EMPTY_FILTER);
+    /** Последнее состояние полей фильтра, включая ещё не применённое. */
+    const draftRef = useRef<OrdersFilter>(EMPTY_FILTER);
     const [orders, setOrders] = useState<OrderRow[]>([]);
     const [statusTree, setStatusTree] = useState<StatusGroup[]>([]);
     const [managers, setManagers] = useState<Array<{ value: string; label: string }>>([]);
@@ -488,7 +490,8 @@ export default function OrdersClient() {
                 value={filter}
                 managers={managers}
                 statuses={statusTree.flatMap((g) => g.statuses.map((s) => ({ value: s.code, label: s.label })))}
-                onApply={(next) => { setFilter(next); setPage(1); }}
+                onApply={(next) => { draftRef.current = next; setFilter(next); setPage(1); }}
+                onDraftChange={(next) => { draftRef.current = next; }}
                 open={filterOpen}
                 onOpenChange={(next) => { setFilterOpen(next); saveLayout({ filterOpen: next }); }}
             />
@@ -499,7 +502,10 @@ export default function OrdersClient() {
                         tree={statusTree}
                         loading={loading}
                         selected={filter.statuses}
-                        onSelect={(statuses) => { setFilter({ ...filter, statuses }); setPage(1); }}
+                        /* Вместе со статусом применяем набранное в панели фильтра:
+                           иначе менеджер и дата, введённые до клика по статусу,
+                           молча не учитывались (доработка №28). */
+                        onSelect={(statuses) => { setFilter({ ...draftRef.current, statuses }); setPage(1); }}
                         collapsed={sidebarCollapsed}
                         onCollapsedChange={(next) => { setSidebarCollapsed(next); saveLayout({ sidebarCollapsed: next }); }}
                     />

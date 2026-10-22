@@ -14,6 +14,8 @@ interface OrdersFilterPanelProps {
     managers: Option[];
     statuses: Option[];
     onApply: (filter: OrdersFilter) => void;
+    /** Набранный, но ещё не применённый фильтр — чтобы выбор статуса применил и его. */
+    onDraftChange?: (filter: OrdersFilter) => void;
     /** Развёрнут ли фильтр. Запоминается за человеком списком заказов. */
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
@@ -25,7 +27,7 @@ interface Preset { id: string; name: string; filters: Partial<OrdersFilter>; own
  * Панель фильтров списка заказов — повторяет экран «Заказы» RetailCRM: те же поля,
  * тот же порядок, полоса сохранённых фильтров справа и шестерёнка выбора полей.
  */
-export default function OrdersFilterPanel({ value, managers, statuses, onApply, open: openProp, onOpenChange }: OrdersFilterPanelProps) {
+export default function OrdersFilterPanel({ value, managers, statuses, onApply, onDraftChange, open: openProp, onOpenChange }: OrdersFilterPanelProps) {
     /**
      * Свёрнут фильтр или нет — личная настройка человека, а не состояние
      * страницы: она переживает обновление (жалоба владельца 05.10.2026 —
@@ -49,7 +51,31 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply, 
     const [registry, setRegistry] = useState(FILTER_FIELDS);
     const registryRef = useRef(FILTER_FIELDS);
 
-    useEffect(() => { setDraft(value); }, [value]);
+    /**
+     * Фильтр, пришедший снаружи, вливаем в набранный, а не затираем им.
+     *
+     * Статусы человек выбирает в левой колонке, и это сразу меняет фильтр
+     * страницы. Раньше в этот момент панель переписывалась целиком, и
+     * набранные, но ещё не применённые менеджер с датой следующего контакта
+     * пропадали — список показывал заказы всех менеджеров, а поля стояли
+     * пустые (доработка №28, Ирина Гордеева, 21.10.2026). Берём снаружи
+     * только то, что там действительно поменялось.
+     */
+    const appliedRef = useRef<OrdersFilter>(value);
+    const draftRef = useRef<OrdersFilter>(value);
+    draftRef.current = draft;
+    useEffect(() => {
+        const merged: OrdersFilter = { ...draftRef.current };
+        for (const key of Object.keys(value) as Array<keyof OrdersFilter>) {
+            const next = JSON.stringify(value[key] ?? null);
+            const prev = JSON.stringify(appliedRef.current[key] ?? null);
+            if (next !== prev) (merged as any)[key] = value[key];
+        }
+        appliedRef.current = value;
+        setDraft(merged);
+        onDraftChange?.(merged);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [value]);
 
     useEffect(() => {
         fetch('/api/okk/filter-options')
@@ -100,7 +126,12 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply, 
         }).catch(() => undefined);
     };
 
-    const set = (patch: Partial<OrdersFilter>) => setDraft({ ...draft, ...patch });
+    const set = (patch: Partial<OrdersFilter>) => {
+        const next = { ...draft, ...patch };
+        setDraft(next);
+        // Статусы человек выбирает в левой колонке — там нужен и набранный здесь фильтр.
+        onDraftChange?.(next);
+    };
 
     const savePreset = async () => {
         const name = prompt('Название фильтра — например «Заказы на завтра»');
