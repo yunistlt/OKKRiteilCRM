@@ -530,7 +530,7 @@ export default function OrdersClient() {
                                 {columns.map((key, index) => (
                                     <th
                                         key={key}
-                                        className="relative px-4 py-3 text-[13px] font-normal"
+                                        className="group relative px-4 py-3 text-[13px] font-normal"
                                         style={widths[key] ? { width: widths[key], minWidth: widths[key] } : undefined}
                                     >
                                         <span className="flex items-center justify-between gap-2">
@@ -568,12 +568,19 @@ export default function OrdersClient() {
                                             )}
                                         </span>
                                         {/* Ширину колонки тянут за правый край, как в
-                                            RetailCRM. Запоминается за человеком. */}
+                                            RetailCRM. Запоминается за человеком.
+                                            Полоса шириной в пиксель была невидимой и
+                                            про неё не знали («можно самим сделать
+                                            регулировку по ширине столбцов?» — доработка
+                                            №30, Лена Парфёнова, 21.10.2026): теперь
+                                            граница видна, а взяться можно за 7 px. */}
                                         <span
                                             onMouseDown={(e) => startResize(e, key)}
-                                            className="absolute right-0 top-0 h-full w-1 cursor-col-resize select-none hover:bg-blue-400"
-                                            title="Потяните, чтобы изменить ширину"
-                                        />
+                                            className="absolute right-0 top-0 flex h-full w-[7px] translate-x-[3px] cursor-col-resize select-none items-stretch justify-center"
+                                            title="Потяните, чтобы изменить ширину столбца"
+                                        >
+                                            <span className="w-px bg-gray-300 transition-colors group-hover:bg-blue-400" />
+                                        </span>
                                     </th>
                                 ))}
                             </tr>
