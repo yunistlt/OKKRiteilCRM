@@ -27,6 +27,24 @@ OKKRiteilCRM — a Next.js 14 (App Router) CRM/quality-control platform for a Ru
 
 **Language policy (hard rule):** All user-facing text, AI-generated reasons, rule names, and explanations MUST be in **Russian**. Internal logic, slugs, filtering, and data comparisons use technical codes only. Never hardcode Russian display strings or status lists in logic — fetch mappings dynamically from the DB. See `.agent/workflows/constraints.md`.
 
+## Нагрузка — проверять до выкатки (ЗАКОН)
+
+Любая правка оценивается на нагрузку ДО выкатки: сколько запросов в минуту она
+добавит («частота × вкладки × люди», для виджета — «× одновременные посетители
+сайта») и какой план у её запросов к базе.
+
+Правила фонового опроса во фронте и виджете:
+
+- интервал не чаще 5 с;
+- скрытую вкладку не опрашиваем (`document.hidden`);
+- не опрашиваем, пока нечего получать (виджет — только при начатом разговоре).
+
+Почему: 22.10.2026 сервис лежал час. Нагрузка копилась неделю — виджет «Елена»
+всегда давал 60–170 тыс. запросов в день, окно входящего звонка (с 07.10)
+добавило ещё 100–220 тыс.; вместе ~1350 запросов в секунду при пяти работающих
+людях. Прокси перед Vercel упёрся в лимиты и отдавал 504, хотя база простаивала.
+После выкатки смотреть коды ответов и топ URL в `access.log` на VPS-прокси.
+
 ## Commands
 
 ```bash
