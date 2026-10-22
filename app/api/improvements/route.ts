@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { safeStorageSegment } from '@/lib/storage-path';
+import { sendNotification } from '@/lib/notify/send';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -24,7 +25,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 const LINK_TTL_SECONDS = 60;
 
 const FIELDS = 'id, text, section, order_number, screenshot_bucket, screenshot_path, screenshot_name,'
-    + ' author_email, author_name, created_at, done_at, done_by, done_note, done_build';
+    + ' author_email, author_name, author_manager_id, created_at, done_at, done_by, done_note, done_build';
 
 /** Имя человека для реестра: фамилия и имя, иначе логин. */
 function personName(user: { first_name: string | null; last_name: string | null; username: string | null }): string | null {
@@ -159,6 +160,8 @@ export async function POST(request: Request) {
             screenshot_name: name,
             author_email: session.user.email || session.user.username || null,
             author_name: personName(session.user),
+            // По номеру менеджера автору уходит ответ, когда доработку закроют.
+            author_manager_id: session.user.retail_crm_manager_id ?? null,
         })
         .select(FIELDS)
         .maybeSingle();
@@ -208,5 +211,47 @@ export async function PATCH(request: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!data) return NextResponse.json({ error: 'Доработка не найдена' }, { status: 404 });
 
+    if (done) await tellAuthor(data);
+
     return NextResponse.json({ ok: true, improvement: await toRow(data) });
+}
+
+/**
+ * Ответ автору доработки: его просьба и пояснение, что сделано.
+ *
+ * Решение владельца 22.10.2026: «так и напиши в пояснениях и пусть бот ей
+ * отправит тоже эти пояснения». Сообщение уходит в чат с Семёном (туда, где
+ * человек работает), Telegram — запасным путём. Молчание тут не ошибка:
+ * у автора может не быть номера менеджера, и отметку «выполнено» это ломать
+ * не должно.
+ */
+async function tellAuthor(row: any): Promise<void> {
+    try {
+        let managerId = row.author_manager_id ? Number(row.author_manager_id) : null;
+
+        // Доработки, написанные до 22.10.2026, номера менеджера не хранят —
+        // добираем его по почте или логину автора.
+        if (!managerId && row.author_email) {
+            const { data: user } = await supabase
+                .from('users')
+                .select('retail_crm_manager_id')
+                .or(`email.eq.${row.author_email},username.eq.${row.author_email}`)
+                .maybeSingle();
+            managerId = (user as any)?.retail_crm_manager_id ? Number((user as any).retail_crm_manager_id) : null;
+        }
+
+        if (!managerId) return;
+
+        const lines = [
+            `Доработка №${row.id} выполнена.`,
+            '',
+            `Вы писали: ${String(row.text ?? '').trim()}`,
+        ];
+        if (row.done_note) lines.push('', `Пояснение: ${row.done_note}`);
+        if (row.done_build) lines.push('', `Сборка: ${row.done_build}`);
+
+        await sendNotification('improvements.done', lines.join('\n'), { managerId });
+    } catch (err) {
+        console.error('[improvements] ответ автору не ушёл:', err);
+    }
 }

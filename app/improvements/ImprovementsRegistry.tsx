@@ -154,11 +154,23 @@ export default function ImprovementsRegistry() {
     };
 
     const mark = async (id: number, value: boolean) => {
+        /**
+         * Пояснение к отметке спрашиваем здесь же: оно и остаётся в реестре, и
+         * уходит автору сообщением от бота (решение владельца 22.10.2026).
+         * Отмена окошка — отметку не ставим: пустой ответ человеку бесполезен.
+         */
+        let note: string | null = null;
+        if (value) {
+            note = prompt('Что сделано? Это пояснение увидит автор доработки — оно уйдёт ему сообщением.');
+            if (note === null) return;
+            note = note.trim() || null;
+        }
+
         try {
             const res = await fetch('/api/improvements', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, done: value }),
+                body: JSON.stringify({ id, done: value, note }),
             });
             const payload = await res.json();
             if (!res.ok) throw new Error(payload.error || 'Отметка не поставилась');
