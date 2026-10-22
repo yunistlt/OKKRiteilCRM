@@ -117,6 +117,45 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
 
     useEffect(() => { void load(); }, [load]);
 
+    /**
+     * «Загрузить историю»: переписка старше нашего архива (он начинается с
+     * 28.06.2026) лежит только в почтовом ящике. Менеджер поднимает её по
+     * своей сделке — точечно, по адресам клиента (решение владельца
+     * 22.10.2026, доработка №34).
+     */
+    const [historyBusy, setHistoryBusy] = useState(false);
+    const [historyNote, setHistoryNote] = useState<string | null>(null);
+
+    const loadHistory = async () => {
+        setHistoryBusy(true);
+        setHistoryNote(null);
+        try {
+            const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/mail/history`, { method: 'POST' });
+            const data = await res.json().catch(() => null);
+            setHistoryNote(data?.message || data?.error || 'Историю поднять не удалось');
+            if (res.ok) await load();
+        } catch {
+            setHistoryNote('Почтовый ящик не ответил — попробуйте ещё раз');
+        } finally {
+            setHistoryBusy(false);
+        }
+    };
+
+    const historyBlock = (
+        <div className="mb-2 flex items-center gap-3">
+            <button
+                type="button"
+                onClick={() => void loadHistory()}
+                disabled={historyBusy}
+                className="border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                title="Поднять из почтового ящика переписку с этим клиентом, которой ещё нет в заказе"
+            >
+                {historyBusy ? 'Поднимаю историю…' : 'Загрузить историю'}
+            </button>
+            {historyNote && <span className="text-xs text-gray-600">{historyNote}</span>}
+        </div>
+    );
+
     const open = useMemo(
         () => (threads || []).find((thread) => thread.key === openKey) || null,
         [threads, openKey],
@@ -317,6 +356,7 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
     return (
         <>
         {scheduledBlock}
+        {historyBlock}
         <div className="flex gap-0 border border-gray-200" data-ui-audit="order-mail-panel">
             {/* Один разговор — списка нет: он занимал бы четверть экрана ради
                 одной строки (ТЗ §4). Появился второй — список вернулся. */}

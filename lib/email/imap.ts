@@ -266,6 +266,62 @@ export async function fetchEmailsSince(since: Date, folder = 'INBOX'): Promise<P
 }
 
 /**
+ * Read-only выборка всей переписки с конкретными адресами (IMAP SEARCH).
+ *
+ * Нужна кнопке «Загрузить историю» в карточке заказа: архив писем у нас
+ * начинается с 28.06.2026, а переписка по заказу может быть старше — у заказа
+ * 53083 запрос был 21.04.2026 (доработка №34, Евгения Матвеева, 22.10.2026).
+ * Тянем точечно по одному клиенту, а не весь ящик: на весь ящик это 159 тысяч
+ * писем и часы работы.
+ *
+ * Флаг \Seen не трогаем: ящик читается только на чтение.
+ */
+export async function fetchEmailsByAddresses(
+    addresses: string[],
+    opts: { folder?: string; maxMessages?: number } = {},
+): Promise<ParsedIncomingEmail[]> {
+    const { user, pass, host, port } = getImapConfig();
+    if (!user || !pass) throw new Error('IMAP config missing (IMAP_USER/IMAP_PASS or SMTP_USER/SMTP_PASS)');
+
+    const list = Array.from(new Set(addresses.map((a) => String(a ?? '').trim().toLowerCase()).filter(Boolean)));
+    if (!list.length) return [];
+
+    const folder = opts.folder || 'INBOX';
+    const maxMessages = opts.maxMessages ?? 100;
+
+    const client = new ImapFlow({ host, port, secure: true, auth: { user, pass }, logger: false });
+    const out: ParsedIncomingEmail[] = [];
+    await client.connect();
+    const lock = await client.getMailboxLock(folder, { readOnly: true } as any);
+    try {
+        const uidValidity = Number((client.mailbox as any)?.uidValidity ?? 0);
+
+        // Адрес мог стоять и в «От», и в «Кому», и в копии — ищем по всем трём.
+        const uids = new Set<number>();
+        for (const address of list) {
+            for (const criteria of [{ from: address }, { to: address }, { cc: address }]) {
+                const found = await client.search(criteria as any, { uid: true } as any).catch(() => [] as number[]);
+                for (const uid of (found || []) as number[]) uids.add(Number(uid));
+            }
+        }
+        if (!uids.size) return [];
+
+        // Самые свежие вперёд: если переписка длинная, забираем её хвост.
+        const picked = Array.from(uids).sort((a, b) => b - a).slice(0, maxMessages);
+        for await (const msg of client.fetch(picked, { uid: true, source: true } as any, { uid: true } as any)) {
+            const uid = Number((msg as any).uid);
+            if ((msg as any).source) out.push(await parseSource(uid, uidValidity, (msg as any).source as Buffer));
+        }
+    } finally {
+        lock.release();
+        await client.logout().catch(() => {});
+    }
+
+    out.sort((a, b) => a.imapUid - b.imapUid);
+    return out;
+}
+
+/**
  * Забирает новые письма с UID строго больше lastSeenUid (read-only).
  * Если на сервере сменился UIDVALIDITY — указатель невалиден, вызывающий код решает,
  * как поступить (см. email-poll: при смене UIDVALIDITY стартуем от текущего максимума).
