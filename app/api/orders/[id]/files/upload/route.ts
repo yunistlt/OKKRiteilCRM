@@ -77,28 +77,35 @@ async function registerUploaded(orderNumber: string, body: any, actor: string | 
     }
 
     /**
-     * Тот же файл, приложенный к тому же заказу только что, — это не второе
-     * вложение, а второе нажатие: двойной щелчок, повтор по таймауту сети или
-     * два пути отправки, сработавшие разом. Отдаём уже записанный файл
+     * Тот же файл в том же заказе — это не второе вложение, а повтор:
+     * двойной щелчок, повтор по таймауту сети, два пути отправки разом или
+     * файл, который уже лежит в заказе с прошлого раза. Отдаём уже записанный
      * (фикс 89d3a730 от 14.10.2026 — письмо клало вложение дважды).
+     *
+     * Срок давности здесь был 60 секунд, и давний файл упирался в уникальный
+     * индекс `order_files_no_dupes_idx`: Ирина Гордеева видела «Файл сохранён,
+     * но не записан в заказ: duplicate key…» и письмо в бухгалтерию не уходило
+     * (доработка №29, 21.10.2026). Условие теперь ровно то же, что у индекса.
      */
     const size = Number(body?.size ?? 0) || null;
-    const since = new Date(Date.now() - 60_000).toISOString();
-    const { data: justUploaded } = await supabase
-        .from('order_files')
-        .select('id, file_name')
-        .eq('order_number', orderNumber)
-        .eq('file_name', fileName)
-        .eq('size_bytes', size)
-        .is('deleted_at', null)
-        .is('archived_at', null)
-        .gte('created_at', since)
-        .order('id', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    const findExisting = async () => {
+        const { data } = await supabase
+            .from('order_files')
+            .select('id, file_name')
+            .eq('order_number', orderNumber)
+            .eq('file_name', fileName)
+            .eq('size_bytes', size)
+            .is('deleted_at', null)
+            .is('archived_at', null)
+            .order('id', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+        return data;
+    };
 
-    if (justUploaded) {
-        return NextResponse.json({ ok: true, file: justUploaded, already: true });
+    const existing = await findExisting();
+    if (existing) {
+        return NextResponse.json({ ok: true, file: existing, already: true });
     }
 
     const { data, error } = await supabase
@@ -117,6 +124,9 @@ async function registerUploaded(orderNumber: string, body: any, actor: string | 
         .maybeSingle();
 
     if (error) {
+        // Два одновременных прохода: индекс не пустил второй — значит файл уже в заказе.
+        const raced = await findExisting();
+        if (raced) return NextResponse.json({ ok: true, file: raced, already: true });
         return NextResponse.json({ error: `Файл сохранён, но не записан в заказ: ${error.message}` }, { status: 500 });
     }
 
