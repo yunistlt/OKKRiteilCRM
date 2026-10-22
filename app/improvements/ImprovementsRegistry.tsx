@@ -153,7 +153,7 @@ export default function ImprovementsRegistry() {
         }
     };
 
-    const mark = async (id: number, value: boolean) => {
+    const mark = async (id: number, value: boolean, draftNote?: string | null) => {
         /**
          * Пояснение к отметке спрашиваем здесь же: оно и остаётся в реестре, и
          * уходит автору сообщением от бота (решение владельца 22.10.2026).
@@ -161,7 +161,10 @@ export default function ImprovementsRegistry() {
          */
         let note: string | null = null;
         if (value) {
-            note = prompt('Что сделано? Это пояснение увидит автор доработки — оно уйдёт ему сообщением.');
+            note = prompt(
+                'Что сделано? Это пояснение увидит автор доработки — оно уйдёт ему сообщением.',
+                draftNote ?? '',
+            );
             if (note === null) return;
             note = note.trim() || null;
         }
@@ -252,7 +255,7 @@ export default function ImprovementsRegistry() {
             {canClose && (
                 <button
                     type="button"
-                    onClick={(event) => { event.stopPropagation(); void mark(item.id, !closed); }}
+                    onClick={(event) => { event.stopPropagation(); void mark(item.id, !closed, item.doneNote); }}
                     className={closed
                         ? 'shrink-0 border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-100'
                         : 'shrink-0 border border-green-700 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-700 hover:text-white'}
@@ -476,7 +479,7 @@ export default function ImprovementsRegistry() {
                             <div className="flex justify-end border-t border-gray-200 px-4 py-3">
                                 <button
                                     type="button"
-                                    onClick={() => void mark(card.id, !card.doneAt)}
+                                    onClick={() => void mark(card.id, !card.doneAt, card.doneNote)}
                                     className={card.doneAt
                                         ? 'border border-gray-300 px-4 py-1.5 text-sm font-semibold text-gray-600 hover:bg-gray-100'
                                         : 'border border-green-700 px-4 py-1.5 text-sm font-semibold text-green-700 hover:bg-green-700 hover:text-white'}
