@@ -26,6 +26,22 @@ import { itemDiscountPerUnit, itemPriceWithDiscount, orderTotals } from './disco
 import { customFieldValueName, itemLabel, managerValue, moneyValue, statusName, statusValue, writeOwnHistory, type HistoryEntry } from './history-write';
 import { OWN_ID_BASE, OWN_SITE, nextOwnOrderNumber, ownItemIds } from './own-order-insert';
 
+/**
+ * Крайние пробелы в текстовых доп. полях режем при сохранении.
+ *
+ * Зачем: фильтр по полю карточки ищет точное совпадение (по GIN-индексу), и
+ * « Первоуральск» с ведущим пробелом в поле «Город доставки» не находился —
+ * заказ 900300 выпадал из списка (доработка №33, Евгения Матвеева, 22.10.2026).
+ */
+export function trimCustomFieldValues(fields: Record<string, unknown>): Record<string, unknown> {
+    const cleaned: Record<string, unknown> = {};
+    for (const [code, value] of Object.entries(fields)) {
+        cleaned[code] = typeof value === 'string' ? value.trim() : value;
+    }
+    return cleaned;
+}
+
+
 export { nextOwnOrderNumber };
 
 /** Статус по умолчанию — «Новая». */
@@ -238,7 +254,7 @@ export async function editOwnOrder(
     if (edit.statusCode) payload.status = edit.statusCode;
     if (edit.managerId) payload.managerId = edit.managerId;
     if (edit.customFields && Object.keys(edit.customFields).length) {
-        payload.customFields = { ...(payload.customFields || {}), ...edit.customFields };
+        payload.customFields = { ...(payload.customFields || {}), ...trimCustomFieldValues(edit.customFields) };
     }
     for (const [key, value] of Object.entries(edit.contact || {})) {
         if (value !== undefined) payload[key] = value;
