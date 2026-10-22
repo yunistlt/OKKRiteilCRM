@@ -3,6 +3,8 @@
  * Реквизиты собираются слоем own-crm — в RetailCRM они лежат на заказе.
  */
 import { NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { relatedClients } from '@/lib/own-crm/clients';
 import { loadClientRequisites } from '@/lib/own-crm/client-requisites';
@@ -86,7 +88,8 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 
     const [statusesRes, managersRes] = await Promise.all([
         supabase.from('retailcrm_dictionaries').select('item_code, item_name').eq('entity_type', 'status'),
-        supabase.from('managers').select('id, first_name, last_name'),
+        // ЗАКОН: работаем только с активными — уволенного в выбор не предлагаем.
+        supabase.from('managers').select('id, first_name, last_name, active'),
     ]);
 
     const statusNames = new Map((statusesRes.data || []).map((s: any) => [s.item_code, s.item_name]));
@@ -103,8 +106,28 @@ export async function GET(_request: Request, { params }: { params: { id: string 
         clientContacts(id).catch(() => []),
     ]);
 
+    /**
+     * Кто ведёт клиента. Раньше в карточке этого не было видно и поменять было
+     * нельзя: задачи «напомнить о себе» уходили прежнему владельцу, хотя
+     * заказы давно ведёт другой (доработки №32 и №37, 22.10.2026).
+     */
+    const managerId = (client as any).manager_id === null || (client as any).manager_id === undefined
+        ? null
+        : Number((client as any).manager_id);
+
+    const managerOptions = ((managersRes.data || []) as any[])
+        .filter((m) => m.active !== false)
+        .map((m) => ({ id: Number(m.id), name: [m.last_name, m.first_name].filter(Boolean).join(' ') || `Менеджер ${m.id}` }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+
     return NextResponse.json({
         client,
+        manager: {
+            id: managerId,
+            name: managerId !== null ? (managerNames.get(managerId) || null) : null,
+            options: managerOptions,
+            canChange: true,
+        },
         requisites,
         relation,
         related,
@@ -121,4 +144,56 @@ export async function GET(_request: Request, { params }: { params: { id: string 
             managerName: managerNames.get(Number(o.manager_id)) || null,
         })),
     });
+}
+
+
+/**
+ * Сменить менеджера, за которым закреплён клиент.
+ *
+ * Зачем: клиент может годами числиться за тем, кто вёл первый заказ, а
+ * работает с ним давно другой. От владельца карточки зависят задачи «напомнить
+ * о себе» в плане дня, поэтому неверный владелец — это чужая работа в чужом
+ * плане (доработки №32 и №37, 22.10.2026).
+ *
+ * Премии это не двигает: зарплата считается по менеджеру НА МОМЕНТ продажи
+ * (закон проекта), а не по текущему владельцу карточки.
+ */
+export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+    const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
+    if (!hasAnyRole(session, ['admin', 'okk', 'rop', 'manager'])) {
+        return NextResponse.json({ error: 'Менять менеджера клиента может отдел продаж' }, { status: 403 });
+    }
+
+    const id = String(params.id);
+    const body = await request.json().catch(() => ({}));
+    const raw = (body as any)?.managerId;
+    const managerId = raw === null || raw === '' ? null : Number(raw);
+
+    if (managerId !== null && !Number.isFinite(managerId)) {
+        return NextResponse.json({ error: 'Не указан менеджер' }, { status: 400 });
+    }
+
+    if (managerId !== null) {
+        const { data: manager } = await supabase
+            .from('managers')
+            .select('id, active, first_name, last_name')
+            .eq('id', managerId)
+            .maybeSingle();
+
+        if (!manager) return NextResponse.json({ error: 'Такого менеджера нет' }, { status: 400 });
+        // ЗАКОН: неактивных не назначаем — клиент не должен уйти уволенному.
+        if ((manager as any).active === false) {
+            return NextResponse.json({ error: 'Этот менеджер больше не работает — выберите действующего' }, { status: 400 });
+        }
+    }
+
+    const { error } = await supabase
+        .from('clients')
+        .update({ manager_id: managerId, updated_at: new Date().toISOString() })
+        .eq('id', id);
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    return NextResponse.json({ ok: true, managerId });
 }
