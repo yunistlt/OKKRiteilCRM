@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import ViewSettingsModal from './ViewSettingsModal';
 import { EMPTY_FILTER, isFilterEmpty, type OrdersFilter } from '@/lib/orders-filter';
 import { FILTER_FIELDS, DEFAULT_FILTER_FIELDS, normalizeSelection } from '@/lib/orders-view';
+import { fetchViewRegistry } from '@/lib/orders-view-registry';
 import RelativeDateInput from './RelativeDateInput';
 import ClearFiltersButton from '@/components/ui/ClearFiltersButton';
 
@@ -44,6 +45,8 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply, 
     const [presets, setPresets] = useState<Preset[]>([]);
     const [fields, setFields] = useState<string[]>(DEFAULT_FILTER_FIELDS);
     const [fieldsOpen, setFieldsOpen] = useState(false);
+    /** Реестр полей доехал. Пока нет — выбор полей не сохраняем, чтобы не урезать его. */
+    const [registryLoaded, setRegistryLoaded] = useState(false);
     /**
      * Реестр полей фильтра приходит с сервера: к постоянным добавлены поля
      * карточки заказа (решение владельца 05.10.2026).
@@ -86,21 +89,25 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply, 
         // Сначала реестр, потом выбор: сохранённое поле карточки иначе
         // выкинулось бы как неизвестное.
         (async () => {
-            try {
-                const res = await fetch('/api/orders/view-fields');
-                const data = await res.json();
-                if (Array.isArray(data.filters) && data.filters.length) {
-                    registryRef.current = data.filters;
-                    setRegistry(data.filters);
-                }
-            } catch {
-                // Реестр не пришёл — остаются постоянные поля.
+            const list = await fetchViewRegistry<typeof FILTER_FIELDS[number]>('filters');
+            if (list) {
+                registryRef.current = list;
+                setRegistry(list);
+                setRegistryLoaded(true);
             }
 
             try {
                 const res = await fetch('/api/settings/view?viewKey=orders.filters');
                 const data = await res.json();
-                setFields(normalizeSelection(data.settings?.items, registryRef.current, DEFAULT_FILTER_FIELDS));
+                const saved = data.settings?.items;
+                /**
+                 * Реестр не пришёл — выбор НЕ урезаем: показываем то, что
+                 * знаем, а сохранённые ключи держим целиком, иначе поля
+                 * карточки исчезли бы (доработка №38, 22.10.2026).
+                 */
+                setFields(list
+                    ? normalizeSelection(saved, list, DEFAULT_FILTER_FIELDS)
+                    : (Array.isArray(saved) && saved.length ? saved as string[] : DEFAULT_FILTER_FIELDS));
             } catch {
                 // Выбор не пришёл — остаются поля по умолчанию.
             }
@@ -117,6 +124,11 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply, 
     };
 
     const saveFields = async (next: string[]) => {
+        // Реестр не загрузился — сохранять нельзя: запишем урезанный набор.
+        if (!registryLoaded) {
+            setFieldsOpen(false);
+            return;
+        }
         setFields(next);
         setFieldsOpen(false);
         await fetch('/api/settings/view', {

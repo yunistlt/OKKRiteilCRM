@@ -6,6 +6,7 @@ import OrdersStatusSidebar, { type StatusGroup } from '@/components/orders/Order
 import ViewSettingsModal from '@/components/orders/ViewSettingsModal';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
 import { EMPTY_FILTER, filterToSearchParams, type OrdersFilter } from '@/lib/orders-filter';
+import { fetchViewRegistry } from '@/lib/orders-view-registry';
 import { ORDER_COLUMNS, DEFAULT_COLUMNS, normalizeSelection } from '@/lib/orders-view';
 import StatusIcon from '@/components/orders/StatusIcon';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
@@ -158,6 +159,8 @@ export default function OrdersClient() {
 
     const [registry, setRegistry] = useState<typeof ORDER_COLUMNS>(ORDER_COLUMNS);
     const registryRef = useRef<typeof ORDER_COLUMNS>(ORDER_COLUMNS);
+    /** Реестр колонок доехал: пока нет — выбор не сохраняем, чтобы его не урезать. */
+    const registryLoaded = useRef(false);
 
     /**
      * Порядок строк и ширина колонок — настройки человека, а не экрана: лежат
@@ -247,21 +250,21 @@ export default function OrdersClient() {
         // Сначала реестр, потом выбор: иначе сохранённые поля карточки
         // выкинулись бы как «неизвестные».
         (async () => {
-            try {
-                const res = await fetch('/api/orders/view-fields');
-                const data = await res.json();
-                if (Array.isArray(data.columns) && data.columns.length) {
-                    registryRef.current = data.columns;
-                    setRegistry(data.columns);
-                }
-            } catch {
-                // Реестр не пришёл — остаются постоянные колонки.
+            const list = await fetchViewRegistry<typeof ORDER_COLUMNS[number]>('columns');
+            if (list) {
+                registryRef.current = list;
+                setRegistry(list);
+                registryLoaded.current = true;
             }
 
             try {
                 const res = await fetch('/api/settings/view?viewKey=orders.columns');
                 const data = await res.json();
-                setColumns(normalizeSelection(data.settings?.items, registryRef.current, DEFAULT_COLUMNS));
+                const saved = data.settings?.items;
+                // Реестр не пришёл — выбранные колонки не урезаем (доработка №38).
+                setColumns(list
+                    ? normalizeSelection(saved, list, DEFAULT_COLUMNS)
+                    : (Array.isArray(saved) && saved.length ? saved as string[] : DEFAULT_COLUMNS));
             } catch {
                 // Выбор не пришёл — остаются колонки по умолчанию.
             }
@@ -283,6 +286,7 @@ export default function OrdersClient() {
     }, []);
 
     const saveColumns = async (next: string[]) => {
+        if (!registryLoaded.current) return;
         setColumns(next);
         setColumnsOpen(false);
         await fetch('/api/settings/view', {
