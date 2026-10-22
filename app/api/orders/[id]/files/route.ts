@@ -60,8 +60,28 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         downloadable: true,
     }));
 
+    /**
+     * Вложение письма, уже сохранённое у нас, вторым разом не показываем.
+     *
+     * Вложения забирает крон (`lib/email/attachments.ts`) и кладёт в
+     * `order_files`, а список рисовал ещё и строку из самого письма — один
+     * файл выходил дважды, «приложил …» и «от …» (доработка №27,
+     * Евгения Матвеева, 22.10.2026). Ключ — имя плюс размер: так же, как
+     * проверяет сам крон перед записью.
+     */
+    const storedKeys = new Set(
+        manualFiles.map((file) => `${String(file.filename).trim().toLowerCase()}|${file.size ?? ''}`)
+    );
+    const alreadyStored = (att: any) => {
+        const name = String(att?.filename ?? '').trim().toLowerCase();
+        const size = Number(att?.size) || null;
+        return storedKeys.has(`${name}|${size ?? ''}`) || storedKeys.has(`${name}|`);
+    };
+
     const files = ((data as any[]) ?? []).flatMap((letter) =>
-        (Array.isArray(letter.attachments_meta) ? letter.attachments_meta : []).map((att: any) => ({
+        (Array.isArray(letter.attachments_meta) ? letter.attachments_meta : [])
+            .filter((att: any) => !alreadyStored(att))
+            .map((att: any) => ({
             emailId: letter.id,
             filename: att?.filename || 'Без имени',
             size: Number(att?.size) || null,
