@@ -9,6 +9,7 @@ import { supabase } from '@/utils/supabase';
 import { relatedClients } from '@/lib/own-crm/clients';
 import { loadClientRequisites } from '@/lib/own-crm/client-requisites';
 import { clientCalls, clientEmails, clientPhone, clientContacts } from '@/lib/own-crm/client-activity';
+import { loadClientHistory, writeClientHistory } from '@/lib/own-crm/client-history';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,11 +100,12 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 
     // Звонки, письма и телефон — отдельным шагом: они не мешают открыть
     // карточку, если какой-то источник подведёт.
-    const [calls, emails, phone, contacts] = await Promise.all([
+    const [calls, emails, phone, contacts, history] = await Promise.all([
         clientCalls(id).catch(() => []),
         clientEmails([(client as any).email, (client as any).contact_email]).catch(() => []),
         clientPhone(id).catch(() => null),
         clientContacts(id).catch(() => []),
+        loadClientHistory(id).catch(() => []),
     ]);
 
     /**
@@ -129,6 +131,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
             canChange: true,
         },
         requisites,
+        history,
         relation,
         related,
         calls,
@@ -188,12 +191,36 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         }
     }
 
+    // Кто был до правки — нужен для истории карточки.
+    const { data: before } = await supabase
+        .from('clients')
+        .select('manager_id')
+        .eq('id', id)
+        .maybeSingle();
+
     const { error } = await supabase
         .from('clients')
         .update({ manager_id: managerId, updated_at: new Date().toISOString() })
         .eq('id', id);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    const { data: managers } = await supabase.from('managers').select('id, first_name, last_name');
+    const names = new Map(((managers || []) as any[]).map((m) => [
+        Number(m.id),
+        [m.last_name, m.first_name].filter(Boolean).join(' ') || `Менеджер ${m.id}`,
+    ]));
+    const label = (value: number | null) => (value === null ? 'не закреплён' : names.get(value) || `Менеджер ${value}`);
+
+    await writeClientHistory(id, [{
+        field: 'Менеджер клиента',
+        oldValue: label((before as any)?.manager_id == null ? null : Number((before as any).manager_id)),
+        newValue: label(managerId),
+    }], {
+        name: [session.user.last_name, session.user.first_name].filter(Boolean).join(' ')
+            || session.user.username || session.user.email || null,
+        role: session.user.role ?? null,
+    });
 
     return NextResponse.json({ ok: true, managerId });
 }

@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
+import { writeClientHistory } from '@/lib/own-crm/client-history';
 import { mergeClients } from '@/lib/own-crm/merge-clients';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +28,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     try {
         const actor = session.user.email || session.user.username || null;
         const result = await mergeClients(parsed.data.into, id, actor);
+
+        // Объединение — тоже действие в карточке: в истории главной видно,
+        // откуда приехали заказы (решение владельца 22.10.2026).
+        await writeClientHistory(result.mainId, [{
+            field: 'Объединение карточек',
+            oldValue: `карточка №${id}`,
+            newValue: `заказов перенесено ${result.movedOrders}, контактных лиц ${result.movedContacts}`,
+        }], { name: actor, role: session.user.role ?? null });
         return NextResponse.json({
             ok: true,
             ...result,

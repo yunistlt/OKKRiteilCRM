@@ -42,7 +42,14 @@ type Ringing = {
 };
 
 /** Как часто спрашиваем о звонках. Звонок звонит 20–30 секунд. */
-const POLL_MS = 2_000;
+const POLL_MS = 4_000;
+/**
+ * В скрытой вкладке окна звонка всё равно не видно, поэтому там опрашиваем
+ * редко. У менеджера CRM открыта в нескольких вкладках сразу, и опрос каждые
+ * две секунды из каждой давал 2 900 запросов в минуту на отдел — на этом
+ * 22.10.2026 лёг прокси.
+ */
+const HIDDEN_POLL_MS = 30_000;
 
 export default function RingingCallAlert() {
     const [calls, setCalls] = useState<Ringing[]>([]);
@@ -93,7 +100,7 @@ export default function RingingCallAlert() {
             } catch {
                 // Связь моргнула — попробуем на следующем заходе.
             }
-            if (!cancelled) timer = setTimeout(() => void check(), POLL_MS);
+            if (!cancelled) timer = setTimeout(() => void check(), document.hidden ? HIDDEN_POLL_MS : POLL_MS);
         };
 
         void check();

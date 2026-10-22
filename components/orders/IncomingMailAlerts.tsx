@@ -157,7 +157,8 @@ export default function IncomingMailAlerts() {
 
     useEffect(() => {
         void check();
-        const timer = setInterval(() => void check(), POLL_MS);
+        // Скрытую вкладку не опрашиваем: оповещение всё равно некому показать.
+        const timer = setInterval(() => { if (!document.hidden) void check(); }, POLL_MS);
         return () => clearInterval(timer);
     }, [check]);
 
