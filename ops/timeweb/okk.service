@@ -1,0 +1,24 @@
+# Боевое приложение ОКК на своём сервере (переезд с Vercel 23.10.2026).
+# Порт 3000; снаружи его не видно, запросы приводит nginx.
+[Unit]
+Description=OKK CRM — боевое приложение
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/okk/current
+EnvironmentFile=/etc/okk.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+# На сервере 4 ГБ, и рядом живут nginx, тестовый стенд и сторож. Если
+# приложение начнёт съедать всё — пусть упадёт и перезапустится, а не утянет
+# за собой боевой прокси.
+MemoryMax=2G
+# Журнал смотрим через journalctl -u okk
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=okk
+
+[Install]
+WantedBy=multi-user.target

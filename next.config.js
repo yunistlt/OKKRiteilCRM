@@ -16,6 +16,10 @@ function buildSha() {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    // Переезд на свой сервер (Timeweb, 23.10.2026): сборка едет на VPS одним
+    // каталогом вместе с нужными модулями, без npm install на сервере — на
+    // 4 ГБ собирать рядом с работающим приложением нечем.
+    output: 'standalone',
     env: {
         NEXT_PUBLIC_BUILD_SHA: buildSha(),
         NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
