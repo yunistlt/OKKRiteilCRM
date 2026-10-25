@@ -82,3 +82,58 @@ export async function statusNamesByCode(codes: string[]): Promise<Map<string, st
     }
     return names;
 }
+
+/**
+ * Все названия статусов разом — для экранов, где заказов много и коды заранее
+ * неизвестны. Ключи — оба кода статуса (свой и старый), так что подпишется и
+ * старый заказ.
+ *
+ * Имя статуса живёт в одном месте — на доске «Статусы и переходы»
+ * (`crm_statuses`). Раньше его читали ещё из двух таблиц, оставшихся от
+ * импорта, и статус, заведённый на доске, показывался кодом: «dubl-zayavki»
+ * вместо «Дубль заявки» (25.10.2026). Сторож — `tests/status-names-single-source.test.ts`.
+ */
+export async function loadStatusNames(): Promise<Map<string, string>> {
+    const { data } = await supabase.from('crm_statuses').select('code, external_code, name');
+    return byStatusCode((data ?? []) as any[], (row) => String(row.name ?? ''));
+}
+
+export type StatusDirectoryRow = {
+    code: string;
+    name: string;
+    active: boolean;
+    isWorking: boolean;
+    color: string | null;
+    groupId: string | null;
+    ordering: number;
+    /** Старый код: по нему лежат статусы заказов, созданных до отвязки. */
+    externalCode: string | null;
+};
+
+/**
+ * Справочник статусов для выпадающих списков и настроек: состав и порядок —
+ * с доски (ЗАКОН «порядок статусов — с доски»).
+ *
+ * По умолчанию отдаёт только действующие статусы (ЗАКОН «только активные
+ * сущности»); историю просят явно, когда надо подписать старый заказ.
+ */
+export async function loadStatusDirectory(opts: { withInactive?: boolean } = {}): Promise<StatusDirectoryRow[]> {
+    const { data } = await supabase
+        .from('crm_statuses')
+        .select('code, external_code, name, active, is_working, color, group_id, ordering')
+        .order('ordering', { ascending: true });
+
+    return ((data ?? []) as any[])
+        .filter((row) => (opts.withInactive ? true : row.active === true))
+        .map((row) => ({
+            code: String(statusCodeOf(row) ?? ''),
+            name: String(row.name ?? ''),
+            active: row.active === true,
+            isWorking: row.is_working === true,
+            color: row.color ?? null,
+            groupId: row.group_id ? String(row.group_id) : null,
+            ordering: Number(row.ordering ?? 999),
+            externalCode: row.external_code ? String(row.external_code) : null,
+        }))
+        .filter((row) => row.code && row.name);
+}

@@ -11,6 +11,7 @@
  * (см. lib/email.ts buildOrderThreadSubject / sendOrderEmail).
  */
 import { supabase } from '@/utils/supabase';
+import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 import { loadOrderItems, type OwnOrderItem } from '@/lib/own-crm/orders';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { recordAiUsage } from '@/lib/ai-usage';
@@ -35,15 +36,14 @@ export interface PostponedCandidate {
     reasonText: string | null;   // комментарий менеджера (сырой) — источник причины
 }
 
-/** Коды статусов семейства «Отложено» — тянем из справочника RetailCRM, не хардкодим. */
+/** Коды статусов семейства «Отложено» — с доски «Статусы и переходы», не хардкодим. */
 export async function getPostponedStatusCodes(): Promise<string[]> {
-    const { data } = await supabase
-        .from('retailcrm_dictionaries')
-        .select('item_code, item_name')
-        .eq('entity_type', 'status')
-        .ilike('item_name', '%отлож%');
-    const codes = (data || []).map((r: any) => r.item_code).filter(Boolean);
-    return codes.length ? codes : ['otlozeno'];
+    const statuses = await loadStatusDirectory({ withInactive: true });
+    const codes = statuses
+        .filter((row) => /отлож/i.test(row.name))
+        // Заказ может лежать и под старым кодом — берём оба.
+        .flatMap((row) => [row.code, row.externalCode].filter(Boolean) as string[]);
+    return codes.length ? Array.from(new Set(codes)) : ['otlozeno'];
 }
 
 /**

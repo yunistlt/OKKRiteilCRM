@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { runRuleEngine } from '@/lib/rule-engine';
 import { getSession } from '@/lib/auth';
+import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 import { hasAnyRole } from '@/lib/rbac';
 import crypto from 'crypto';
 
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
                 }, error: null
             }) :
                 supabase.from('okk_rules').select('*').eq('code', ruleId).single(),
-            supabase.from('statuses').select('code, name')
+            loadStatusDirectory({ withInactive: true }).then((rows) => ({ data: rows.map((row) => ({ code: row.code, name: row.name })), error: null }))
         ]);
 
         const rule = ruleRes.data;

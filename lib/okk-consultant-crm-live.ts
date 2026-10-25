@@ -1,5 +1,6 @@
 import { getCrmConfig } from '@/lib/retailcrm/leads';
 import { supabase } from '@/utils/supabase';
+import { loadStatusDirectory, statusNamesByCode } from '@/lib/own-crm/status-code';
 
 // Живая RetailCRM как второй источник Семёна.
 //
@@ -50,8 +51,7 @@ async function crmFetch(path: string): Promise<any> {
  */
 async function statusNames(codes: string[]): Promise<Map<string, string>> {
     if (codes.length === 0) return new Map();
-    const { data } = await supabase.from('statuses').select('code, name').in('code', codes);
-    return new Map(((data ?? []) as any[]).map((r) => [r.code, r.name]));
+    return statusNamesByCode(codes);
 }
 
 /**
@@ -65,8 +65,7 @@ export async function resolveStatusCode(input: string): Promise<string | null> {
     const raw = input.trim();
     if (!raw) return null;
 
-    const { data } = await supabase.from('statuses').select('code, name').eq('is_active', true);
-    const rows = ((data ?? []) as any[]).map((r) => ({ code: String(r.code), name: String(r.name ?? '') }));
+    const rows = (await loadStatusDirectory()).map((r) => ({ code: r.code, name: r.name }));
 
     const lower = raw.toLowerCase();
     const exactCode = rows.find((r) => r.code.toLowerCase() === lower);

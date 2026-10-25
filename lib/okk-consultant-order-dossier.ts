@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 import { getCrmConfig } from '@/lib/retailcrm/leads';
 
 // Досье по одному заказу: всё, что о нём известно.
@@ -44,7 +45,7 @@ export async function orderDossier(orderNumber: string): Promise<OrderDossier | 
 
     const [{ data: historyRows }, { data: statusNames }, { data: callRows }] = await Promise.all([
         supabase.rpc('sales_order_full_history', { p_order_id: orderId }),
-        supabase.from('statuses').select('code, name'),
+        loadStatusDirectory({ withInactive: true }),
         supabase.rpc('sales_client_calls_by_order', { p_order_id: orderId }),
     ]);
 

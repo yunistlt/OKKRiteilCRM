@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 
 /**
  * Что на самом деле случилось с задачами дня.
@@ -191,14 +192,11 @@ export async function computeTaskResults(date: string): Promise<{ rows: number; 
         .gte('occurred_at', dayFrom)
         .lte('occurred_at', dayTo);
 
-    const { data: dict } = await supabase
-        .from('retailcrm_dictionaries')
-        .select('item_code, item_name')
-        .eq('entity_type', 'status');
+    const statuses = await loadStatusDirectory({ withInactive: true });
     const cancelCodes = new Set(
-        ((dict ?? []) as any[])
-            .filter((d) => /отмен|купили в другом/i.test(String(d.item_name ?? '')))
-            .map((d) => String(d.item_code)),
+        statuses
+            .filter((row) => /отмен|купили в другом/i.test(row.name))
+            .flatMap((row) => [row.code, row.externalCode].filter(Boolean) as string[]),
     );
 
     const movementByOrder = new Map<number, { type: string; at: string; code: string }>();

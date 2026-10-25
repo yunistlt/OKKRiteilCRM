@@ -1,6 +1,7 @@
 
 // @ts-nocheck
 import { NextResponse } from 'next/server';
+import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 import { getOpenAIClient } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
 
     // 1. Fetch CRM Metadata to ground the AI
     const [statusesRes, managersRes] = await Promise.all([
-      supabase.from('statuses').select('code, name').eq('is_working', true).eq('is_active', true),
+      loadStatusDirectory().then((rows) => ({ data: rows.filter((row) => row.isWorking).map((row) => ({ code: row.code, name: row.name })) })),
       supabase.from('managers').select('first_name, last_name')
     ]);
 

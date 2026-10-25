@@ -1,5 +1,6 @@
 // ОТВЕТСТВЕННЫЙ: МАКСИМ (Аудитор) — Движок правил: автоматическая проверка всех условий и триггеров.
 import { supabase } from '@/utils/supabase';
+import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 import { toLegacyEventRow, STATUS_FIELD, parseEventValue } from '@/lib/order-events';
 import { analyzeTranscript, analyzeText } from './semantic';
 import { evaluateChecklist } from './quality-control';
@@ -60,7 +61,9 @@ async function fetchManagerGroupCodes(ids: any[]): Promise<Map<number, string[]>
 export async function runRuleEngine(startDate: string, endDate: string, targetRuleId?: string, dryRun = false, adHocRule?: any, trace?: string[], targetOrderId?: number | string, executionContext?: RuleExecutionContext) {
     if (trace) trace.push(`[RuleEngine V2] Range: ${startDate} to ${endDate}`);
 
-    const statusesPromise = supabase.from('statuses').select('code, name');
+    // Названия статусов — с доски «Статусы и переходы».
+    const statusesPromise = loadStatusDirectory({ withInactive: true })
+        .then((rows) => ({ data: rows.map((row) => ({ code: row.code, name: row.name })) }));
 
     // If adHocRule is provided, we use it instead of fetching from DB
     let rules: any[] = [];

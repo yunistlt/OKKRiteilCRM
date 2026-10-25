@@ -10,6 +10,7 @@
  */
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,13 +21,14 @@ export async function GET(req: Request) {
         // По умолчанию — только рабочие активные статусы (выпадающие списки правил и т.п.).
         const all = searchParams.get('scope') === 'all';
 
-        let query = supabase.from('statuses').select('code, name');
-        if (!all) {
-            query = query.eq('is_working', true).eq('is_active', true);
-        }
-        const { data, error } = await query.order('name');
+        // Состав и названия статусов — с доски «Статусы и переходы»:
+        // один справочник статусов на весь проект.
+        const rows = await loadStatusDirectory({ withInactive: all });
+        const data = rows
+            .filter((row) => (all ? true : row.isWorking))
+            .map((row) => ({ code: row.code, name: row.name }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 
-        if (error) throw error;
         return NextResponse.json(data);
     } catch (e: any) {
         console.error('[Statuses API] Error:', e);
