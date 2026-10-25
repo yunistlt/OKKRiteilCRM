@@ -78,5 +78,11 @@ export async function getPlannedOrderIds(now: Date = new Date()): Promise<number
     const planDate = localToday(new Date(now.getTime() + 6 * 3600 * 1000));
     const preview = await runMorning(planDate, { dryRun: true });
 
-    return preview.orderIds || [];
+    /**
+     * Нули отбрасываем: в плане есть задачи «отношения с клиентом», у них
+     * заказа нет вовсе и `order_id` равен нулю. Такая задача уходила в очередь
+     * и падала с «Missing or invalid order_id», а потом ложилась в мёртвые —
+     * по пять штук за неделю, каждую ночь одно и то же (разбор 25.10.2026).
+     */
+    return (preview.orderIds || []).filter((id) => Number(id) > 0);
 }

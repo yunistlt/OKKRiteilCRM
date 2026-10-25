@@ -2,6 +2,7 @@ import { supabase } from '@/utils/supabase';
 import { fetchTelphin, getTelphinToken } from '@/lib/telphin';
 import { safeEnqueueCallTranscriptionJob, safeEnqueueSystemJob } from '@/lib/system-jobs';
 import { telphinCallToRaw } from '@/lib/sync/telphin-map';
+import { resolveTranscriptionStatus } from '@/lib/telphin-call-outcome';
 
 // Helper to format date for Telphin: YYYY-MM-DD HH:mm:ss
 function formatTelphinDate(date: Date) {
@@ -219,6 +220,44 @@ async function runTelphinCallHistorySync(options: TelphinSyncOptions): Promise<S
             if (rawError) {
                 console.error(`[TelphinSync:${options.source}] Upsert Error:`, rawError);
                 throw rawError;
+            }
+
+            /**
+             * Честный статус расшифровки — сразу при записи звонка.
+             *
+             * У колонки статуса значение по умолчанию `pending`, а этот синк —
+             * главный путь попадания звонков в базу — правило «расшифровать
+             * нечего» не применял. Поэтому недозвоны и короткие соединения
+             * копились в очереди: на 25.10.2026 там висело 910 звонков, и ни у
+             * одного не было записи. Разбор очереди каждый раз перебирал их
+             * заново, а счётчик «ждут расшифровки» ничего не значил.
+             *
+             * Трогаем только те строки, где работа ещё не начиналась
+             * (`pending`, пусто) — у расшифрованных статус не перезаписываем.
+             */
+            const byStatus = new Map<string, string[]>();
+            for (const rawCall of rawCalls) {
+                const honest = resolveTranscriptionStatus({
+                    rawPayload: rawCall.raw_payload,
+                    recordingUrl: rawCall.recording_url,
+                    currentStatus: null,
+                });
+                if (!honest) continue;
+                const list = byStatus.get(honest) ?? [];
+                list.push(rawCall.telphin_call_id);
+                byStatus.set(honest, list);
+            }
+
+            for (const [status, ids] of Array.from(byStatus.entries())) {
+                const { error: statusError } = await supabase
+                    .from('raw_telphin_calls')
+                    .update({ transcription_status: status })
+                    .in('telphin_call_id', ids)
+                    .is('transcript', null)
+                    .or('transcription_status.is.null,transcription_status.eq.pending');
+                if (statusError) {
+                    console.warn(`[TelphinSync:${options.source}] статус «${status}» не проставился:`, statusError.message);
+                }
             }
 
             for (const rawCall of rawCalls) {

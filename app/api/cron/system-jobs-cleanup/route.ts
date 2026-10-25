@@ -123,6 +123,25 @@ async function deleteBatch(): Promise<number> {
         ids = ids.concat(((старые ?? []) as any[]).map((r) => r.id));
     }
 
+    /**
+     * Мёртвые задачи тоже не вечные.
+     *
+     * Уборщик чистил только выполненные, а `dead_letter` копились без срока: на
+     * 25.10.2026 их было 2 171, самые старые — с мая, причины давно отпали
+     * (кончилась квота OpenAI, приём из RetailCRM отключён решением 05.10).
+     * Разбирать свежие нужно, хранить годами — нет. Держим столько же, сколько
+     * выполненные, и удаляем так же малыми порциями: диск у базы слабый.
+     */
+    if (ids.length < BATCH) {
+        const { data: мёртвыеСтарые } = await supabase
+            .from('system_jobs')
+            .select('id')
+            .eq('status', 'dead_letter')
+            .lt('queued_at', granica)
+            .limit(BATCH - ids.length);
+        ids = ids.concat(((мёртвыеСтарые ?? []) as any[]).map((r) => r.id));
+    }
+
     if (!ids.length) return 0;
 
     const { error } = await supabase.from('system_jobs').delete().in('id', ids);
