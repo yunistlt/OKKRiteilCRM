@@ -13,7 +13,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ orders: {} });
         }
 
-        const [ordersRes, managersRes, statusesRes] = await Promise.all([
+        const [ordersRes, managersRes] = await Promise.all([
             supabase
                 .from('orders')
                 .select('order_id, status, totalsumm, raw_payload, manager_id')
@@ -21,9 +21,6 @@ export async function POST(request: Request) {
             supabase
                 .from('managers')
                 .select('id, first_name, last_name'),
-            supabase
-                .from('crm_statuses')
-                .select('code, name, color')
         ]);
 
         const ordersList = ordersRes.data || [];
