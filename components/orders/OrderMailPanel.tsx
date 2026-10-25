@@ -34,6 +34,8 @@ type Message = {
     attachments: Attachment[];
     emailId: string | null;
     read: boolean;
+    /** Ушло клиенту, но копии в «Отправленных» ящика нет. */
+    sentCopyMissing?: boolean;
 };
 
 type Thread = {
@@ -512,6 +514,16 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                                         начальник клиента. */}
                                     {message.cc?.length > 0 && (
                                         <p className="text-[10px] text-gray-500">Копия: {message.cc.join(', ')}</p>
+                                    )}
+
+                                    {/* Письмо клиент получил, но в самой почте его
+                                        не видно: копия в «Отправленные» ещё не легла.
+                                        Молча это держать нельзя — человек решит, что
+                                        письмо не ушло, и отправит второе. */}
+                                    {message.sentCopyMissing && (
+                                        <p className="mt-1 border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-900">
+                                            Клиенту отправлено, но в почтовом ящике этого письма пока не видно — копия ещё едет.
+                                        </p>
                                     )}
 
                                     {/* Номера заказов и адреса в письме — ссылками:

@@ -246,7 +246,7 @@ export async function sendOrderEmail(input: SendOrderEmailInput): Promise<SendOr
         return { sent: true, appendedToSent: false, appendQueued: true, subject, messageId };
     }
 
-    const appended = await appendToSentFolder(raw);
+    const appended = await appendToSentFolder(raw, messageId);
     if (!appended.appended) {
         console.warn('[email] sendOrderEmail: письмо отправлено, но НЕ дозаписано в Sent:', appended.error);
     }
@@ -295,7 +295,8 @@ async function queueSentAppend(raw: Buffer, messageId: string, subject: string):
             priority: 40,
             // Одно письмо — одна дозапись, сколько бы раз задача ни повторилась.
             idempotencyKey: `email_sent_append:${key}`,
-            maxAttempts: 5,
+            // Сбой ящика бывает и семичасовым: лестница повторов терпит сутки.
+            maxAttempts: 10,
         });
 
         if (!job) {

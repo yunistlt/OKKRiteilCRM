@@ -16,7 +16,7 @@
  * только если такой же там ещё не лежит.
  */
 import { supabase } from '@/utils/supabase';
-import { fetchEmailContentByUid } from '@/lib/email/imap';
+import { fetchEmailContentByUid, openImapSession } from '@/lib/email/imap';
 import { safeStorageSegment } from '@/lib/storage-path';
 import { findOrderByOurReply } from '@/lib/order-mail/link';
 
@@ -137,96 +137,108 @@ export async function storePendingAttachments(limit = 10): Promise<SaveResult> {
         .order('received_at', { ascending: false })
         .limit(limit);
 
-    for (const letter of (letters ?? []) as any[]) {
-        const uid = Number(letter.imap_uid);
-        if (!Number.isFinite(uid)) {
-            // Без номера в ящике файл не достать: помечаем разобранным, чтобы
-            // проход не упирался в него вечно.
-            await supabase.from('incoming_emails')
-                .update({ attachments_stored_at: new Date().toISOString() })
-                .eq('id', letter.id);
-            result.skipped += 1;
-            continue;
-        }
+    /**
+     * Одно соединение на весь проход: раньше на каждое письмо открывалось
+     * своё, и ящик видел от нас десятки входов в час (см. `openImapSession`).
+     */
+    const session = await openImapSession();
 
-        let content: Awaited<ReturnType<typeof fetchEmailContentByUid>> = null;
-        try {
-            content = await fetchEmailContentByUid(uid, letter.folder || 'INBOX');
-        } catch (error) {
-            // Ящик недоступен — попробуем в следующий раз, отметку не ставим.
-            console.warn('[email-attachments] письмо не прочиталось:', letter.id, error);
-            continue;
-        }
-
-        if (!content) {
-            // Письма в ящике уже нет: его удалили или перенесли. Файлы потеряны,
-            // и делать вид, что они есть, не нужно.
-            await supabase.from('incoming_emails')
-                .update({ attachments_stored_at: new Date().toISOString() })
-                .eq('id', letter.id);
-            result.skipped += 1;
-            continue;
-        }
-
-        const orderNumber = await orderOfLetter(letter);
-        const meta = metaList(letter.attachments_meta);
-        const saved: StoredAttachment[] = [];
-
-        for (const attachment of content.attachments) {
-            const fileName = String(attachment.filename ?? '').trim() || 'Без имени';
-            const bytes = attachment.content;
-
-            if (!bytes?.length || bytes.length > MAX_BYTES) {
-                saved.push({ filename: fileName, contentType: attachment.contentType ?? null, size: bytes?.length ?? null });
+    try {
+        for (const letter of (letters ?? []) as any[]) {
+            const uid = Number(letter.imap_uid);
+            if (!Number.isFinite(uid)) {
+                // Без номера в ящике файл не достать: помечаем разобранным, чтобы
+                // проход не упирался в него вечно.
+                await supabase.from('incoming_emails')
+                    .update({ attachments_stored_at: new Date().toISOString() })
+                    .eq('id', letter.id);
                 result.skipped += 1;
                 continue;
             }
 
-            const path = storagePath(letter.id, fileName);
-            const upload = await supabase.storage.from(BUCKET).upload(path, new Uint8Array(bytes), {
-                contentType: attachment.contentType || 'application/octet-stream',
-                upsert: true,
-            });
-
-            if (upload.error) {
-                console.warn('[email-attachments] файл не сохранился:', fileName, upload.error.message);
+            let content: Awaited<ReturnType<typeof fetchEmailContentByUid>> = null;
+            try {
+                content = await fetchEmailContentByUid(uid, letter.folder || 'INBOX', session ?? undefined);
+            } catch (error) {
+                // Ящик недоступен — попробуем в следующий раз, отметку не ставим.
+                console.warn('[email-attachments] письмо не прочиталось:', letter.id, error);
                 continue;
             }
 
-            saved.push({
-                filename: fileName,
-                contentType: attachment.contentType ?? null,
-                size: bytes.length,
-                storagePath: path,
-            });
-            result.files += 1;
+            if (!content) {
+                // Письма в ящике уже нет: его удалили или перенесли. Файлы потеряны,
+                // и делать вид, что они есть, не нужно.
+                await supabase.from('incoming_emails')
+                    .update({ attachments_stored_at: new Date().toISOString() })
+                    .eq('id', letter.id);
+                result.skipped += 1;
+                continue;
+            }
 
-            if (orderNumber) {
-                await attachToOrder({
-                    orderNumber,
-                    fileName,
+            const orderNumber = await orderOfLetter(letter);
+            const meta = metaList(letter.attachments_meta);
+            const saved: StoredAttachment[] = [];
+
+            for (const attachment of content.attachments) {
+                const fileName = String(attachment.filename ?? '').trim() || 'Без имени';
+                const bytes = attachment.content;
+
+                if (!bytes?.length || bytes.length > MAX_BYTES) {
+                    saved.push({ filename: fileName, contentType: attachment.contentType ?? null, size: bytes?.length ?? null });
+                    result.skipped += 1;
+                    continue;
+                }
+
+                const path = storagePath(letter.id, fileName);
+                const upload = await supabase.storage.from(BUCKET).upload(path, new Uint8Array(bytes), {
+                    contentType: attachment.contentType || 'application/octet-stream',
+                    upsert: true,
+                });
+
+                if (upload.error) {
+                    console.warn('[email-attachments] файл не сохранился:', fileName, upload.error.message);
+                    continue;
+                }
+
+                saved.push({
+                    filename: fileName,
                     contentType: attachment.contentType ?? null,
                     size: bytes.length,
-                    path,
-                    fromName: letter.from_name || letter.from_email || null,
+                    storagePath: path,
                 });
+                result.files += 1;
+
+                if (orderNumber) {
+                    await attachToOrder({
+                        orderNumber,
+                        fileName,
+                        contentType: attachment.contentType ?? null,
+                        size: bytes.length,
+                        path,
+                        fromName: letter.from_name || letter.from_email || null,
+                    });
+                }
             }
+
+            /**
+             * Опись переписываем сохранённой: в ней те же файлы, но уже с путём в
+             * хранилище. Если какое-то вложение забрать не вышло, старая опись
+             * остаётся — человек видит, что файл был.
+             */
+            await supabase
+                .from('incoming_emails')
+                .update({
+                    attachments_meta: saved.length ? saved : meta,
+                    attachments_stored_at: new Date().toISOString(),
+                })
+                .eq('id', letter.id);
+
+            result.letters += 1;
         }
-
-        /**
-         * Опись переписываем сохранённой: в ней те же файлы, но уже с путём в
-         * хранилище. Если какое-то вложение забрать не вышло, старая опись
-         * остаётся — человек видит, что файл был.
-         */
-        await supabase
-            .from('incoming_emails')
-            .update({
-                attachments_meta: saved.length ? saved : meta,
-                attachments_stored_at: new Date().toISOString(),
-            })
-            .eq('id', letter.id);
-
-        result.letters += 1;
+    } finally {
+        // Соединение закрываем всегда: брошенная сессия у Яндекса живёт
+        // минутами и считается занятой.
+        await session?.close();
     }
 
     return result;

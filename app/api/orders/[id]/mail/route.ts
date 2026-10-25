@@ -93,6 +93,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
                     attachments: message.attachments,
                     emailId: message.direction === 'in' ? message.sourceId : null,
                     read: message.read,
+                    // Письмо у клиента есть, а в почтовом ящике его не видно.
+                    sentCopyMissing: message.sentCopyMissing ?? false,
                 };
             }),
         })),

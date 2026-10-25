@@ -19,15 +19,17 @@ import {
 } from '@/lib/system-jobs';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
-import { appendToSentFolder } from '@/lib/email/imap';
+import { appendCopiesToSent } from '@/lib/email/imap';
 import { SENT_QUEUE_BUCKET } from '@/lib/email';
 import { sendNotification } from '@/lib/notify/send';
+import { sentCopyRetryDelay } from '@/lib/email/sent-copy-retry';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 const WORKER_KEY = 'system_jobs.email_sent_append';
-const MAX_CONCURRENCY = 2;
+/** Письма одной пачки уезжают в ящик по ОДНОМУ соединению — берём больше. */
+const BATCH = 10;
 
 export async function GET(req: NextRequest) {
     try {
@@ -42,9 +44,9 @@ export async function GET(req: NextRequest) {
         const claimed = await claimSystemJobs({
             workerId: `email-sent-append:${Date.now()}`,
             jobTypes: ['email_sent_append'],
-            limit: MAX_CONCURRENCY,
+            limit: BATCH,
             lockSeconds: 180,
-            maxProcessing: MAX_CONCURRENCY,
+            maxProcessing: BATCH,
             concurrencyKey: WORKER_KEY,
         });
 
@@ -56,6 +58,14 @@ export async function GET(req: NextRequest) {
 
         let appended = 0;
         const results: Array<Record<string, unknown>> = [];
+
+        /**
+         * Сначала достаём тела писем из хранилища, потом одним соединением
+         * кладём их в «Отправленные». Соединение с ящиком — самая дорогая
+         * часть: вход, список папок, TLS. На письмо их больше не тратим.
+         */
+        const ready: Array<{ id: string; raw: Buffer; messageId?: string | null }> = [];
+        const jobById = new Map<string, (typeof claimed)[number]>();
 
         for (const job of claimed) {
             const payload = (job.payload || {}) as { path?: string; messageId?: string; subject?: string };
@@ -75,13 +85,30 @@ export async function GET(req: NextRequest) {
                 continue;
             }
 
-            const raw = Buffer.from(new Uint8Array(await stored.data.arrayBuffer()));
-            const result = await appendToSentFolder(raw);
+            jobById.set(String(job.id), job);
+            ready.push({
+                id: String(job.id),
+                raw: Buffer.from(new Uint8Array(await stored.data.arrayBuffer())),
+                messageId: payload.messageId ?? null,
+            });
+        }
+
+        const outcomes = await appendCopiesToSent(ready);
+
+        for (const item of ready) {
+            const job = jobById.get(item.id)!;
+            const payload = (job.payload || {}) as { path?: string; messageId?: string };
+            const result = outcomes.get(item.id) ?? { appended: false, error: 'нет ответа' };
 
             if (!result.appended) {
-                // Пусть попробует ещё раз: ящик бывает недоступен минутами.
-                await failSystemJob(job.id, `Ящик не принял копию: ${result.error ?? 'неизвестно'}`, 120);
-                results.push({ job: job.id, status: 'ящик не принял', error: result.error });
+                /**
+                 * Пусть попробует ещё раз, и не раз: ящик бывает недоступен
+                 * минутами, а бывает — часами. Повтор безопасен, потому что
+                 * перед записью мы ищем письмо по Message-ID.
+                 */
+                const delay = sentCopyRetryDelay(Number((job as any).attempts ?? 1));
+                await failSystemJob(job.id, `Ящик не принял копию: ${result.error ?? 'неизвестно'}`, delay);
+                results.push({ job: job.id, status: 'ящик не принял', error: result.error, снова_через_мин: Math.round(delay / 60) });
                 continue;
             }
 
@@ -100,10 +127,14 @@ export async function GET(req: NextRequest) {
             }
 
             // Легло — файл в хранилище больше не нужен.
-            await supabase.storage.from(SENT_QUEUE_BUCKET).remove([path]).catch(() => undefined);
-            await completeSystemJob(job.id, { folder: result.folder, messageId: payload.messageId });
+            await supabase.storage.from(SENT_QUEUE_BUCKET).remove([String(payload.path)]).catch(() => undefined);
+            await completeSystemJob(job.id, { folder: result.folder, messageId: payload.messageId, already: result.already ?? false });
             appended += 1;
-            results.push({ job: job.id, status: 'в «Отправленных»', folder: result.folder });
+            results.push({
+                job: job.id,
+                status: result.already ? 'уже была в «Отправленных»' : 'в «Отправленных»',
+                folder: result.folder,
+            });
         }
 
         await warnAboutLostCopies();
@@ -150,6 +181,18 @@ async function warnAboutLostCopies(): Promise<void> {
     const lastAt = new Date(String((state as any)?.value ?? 0)).getTime();
     if (Number.isFinite(lastAt) && Date.now() - lastAt < 3_600_000) return;
 
+    /**
+     * Сдались или ещё пробуем — разные новости. С лестницей повторов копия
+     * может лежать в очереди часами и это нормально; тревожно, когда задача
+     * ушла в мёртвые: по этому письму мы уже ничего не делаем.
+     */
+    const { count: deadCount } = await supabase
+        .from('system_jobs')
+        .select('id', { count: 'exact', head: true })
+        .eq('job_type', 'email_sent_append')
+        .eq('status', 'dead_letter')
+        .gt('created_at', new Date(Date.now() - 24 * 3_600_000).toISOString());
+
     const lines = lost.slice(0, 5).map((row) =>
         `№${row.order_number} → ${row.to_email} (${new Date(row.created_at).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })})`);
 
@@ -157,6 +200,9 @@ async function warnAboutLostCopies(): Promise<void> {
         'mail.sent_copy_missing',
         `Письма ушли клиенту, но копии нет в «Отправленных»: ${lost.length} шт за сутки.\n`
         + lines.join('\n')
+        + (deadCount
+            ? `\nИз них ${deadCount} — уже без повторов (ящик отказал все попытки). Нужны руки.`
+            : '\nПовторы продолжаются: копия ляжет сама, как только ящик её примет.')
         + '\nВ почтовом ящике этих писем не видно — проверьте доступ к ящику.',
     ).catch(() => undefined);
 
