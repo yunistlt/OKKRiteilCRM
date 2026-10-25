@@ -170,18 +170,14 @@ export async function GET(req: Request) {
 
     const [
         { data: managers },
-        { data: statusDict },
         { data: statusColors },
-        { data: groupDict },
         { data: cfDict },
         { data: ownGroups },
     ] = await Promise.all([
         managerIds.length
             ? supabase.from('managers').select('id, first_name, last_name').in('id', managerIds)
             : Promise.resolve({ data: [] as any[] }),
-        supabase.from('retailcrm_dictionaries').select('item_code, item_name, group_code, ordering').eq('entity_type', 'status'),
         supabase.from('statuses').select('code, color, group_name'),
-        supabase.from('retailcrm_dictionaries').select('item_code, item_name').eq('entity_type', 'statusGroup'),
         supabase.from('retailcrm_dictionaries').select('dictionary_code, item_code, item_name').eq('entity_type', 'customField').in('dictionary_code', ['typ_castomer', 'sfera_deiatelnosti']),
         // Порядок групп — наш, с доски «Статусы и переходы»: его утверждал
         // человек, а не RetailCRM. Связь по external_code.
@@ -191,24 +187,20 @@ export async function GET(req: Request) {
     const managerNames = new Map<number, string>(
         ((managers || []) as any[]).map((m) => [Number(m.id), [m.last_name, m.first_name].filter(Boolean).join(' ')])
     );
-    const statusNames = new Map<string, string>(
-        ((statusDict || []) as any[]).map((s) => [s.item_code, s.item_name])
-    );
     /**
-     * Названия статусов нашей доски.
+     * Названия статусов — с доски «Статусы и переходы», и только оттуда.
      *
-     * В справочнике RetailCRM их нет и не будет: она архив на чтение, а новые
-     * статусы заводятся у нас (`dubl-zayavki` — 23.10.2026). Без этого в
-     * колонке статусов вместо названия стоял код — закон «интерфейс только на
-     * человеческом языке». Имя из RetailCRM остаётся главным там, где оно есть
-     * (закон «имена из RetailCRM»), наше — для своих статусов.
+     * Имя статуса лежало в двух таблицах сразу, и список читал не ту: статус,
+     * заведённый на доске, показывался кодом — «dubl-zayavki» вместо «Дубль
+     * заявки» (25.10.2026). Старые имена перенесены на доску миграцией
+     * `20261025_statuses_single_source.sql`, второго справочника имён больше
+     * нет.
      */
+    const statusNames = new Map<string, string>();
     for (const own of ((ownStatuses || []) as any[])) {
         const name = String(own.name ?? '').trim();
         if (!name) continue;
-        for (const key of statusKeysOf(own)) {
-            if (!statusNames.has(key)) statusNames.set(key, name);
-        }
+        for (const key of statusKeysOf(own)) statusNames.set(key, name);
     }
     const cfNames = new Map<string, string>(
         ((cfDict || []) as any[]).map((d) => [`${d.dictionary_code}:${d.item_code}`, d.item_name])
@@ -241,16 +233,7 @@ export async function GET(req: Request) {
         counts.set(row.status, Number(row.orders_count ?? 0));
     }
 
-    const groupNames = new Map<string, string>(((groupDict || []) as any[]).map((g) => [g.item_code, g.item_name]));
 
-    // Наш порядок: группы и статусы идут так, как их выстроили на доске
-    // «Статусы и переходы». Раньше колонка сортировалась по числу заказов, и
-    // сверху оказывался «Отменен» — работа начинается не с него.
-    const groupOrderByCode = new Map<string, number>(
-        ((ownGroups || []) as any[])
-            .filter((g) => g.external_code)
-            .map((g) => [String(g.external_code), Number(g.ordering ?? 999)]),
-    );
     const statusOrderByCode = byStatusCode((ownStatuses || []) as any[], (s) => Number(s.ordering ?? 999));
     // ЗАКОН: состав и порядок левой колонки берём с доски «Статусы и переходы»
     // (`crm_status_groups` / `crm_statuses`), а не из групп RetailCRM. Статус,
@@ -303,29 +286,27 @@ export async function GET(req: Request) {
         );
     }
 
-    // Статус, которого на доске нет, но заказы в нём есть: показываем по группе
-    // RetailCRM последним, чтобы заказы не пропали из колонки.
-    for (const st of ((statusDict || []) as any[])) {
-        const code = String(st.item_code);
-        if (shownCodes.has(code)) continue;
-        const count = counts.get(code) ?? 0;
+    /**
+     * Статус без группы на доске, но заказы в нём есть: показываем последним,
+     * «Без группы», — иначе заказы пропадут из колонки. Такие статусы остались
+     * от старых заказов: отменённые, «старые», «битрикс».
+     */
+    for (const own of ((ownStatuses || []) as any[])) {
+        const code = statusCodeOf(own);
+        if (!code || shownCodes.has(code)) continue;
+        const count = statusKeysOf(own).reduce((sum, key) => sum + (counts.get(key) ?? 0), 0);
         if (!count) continue;
 
-        const key = st.group_code ? `rc:${st.group_code}` : '__none__';
         pushStatus(
-            key,
-            {
-                groupName: st.group_code ? (groupNames.get(st.group_code) || 'Прочее') : 'Без группы',
-                groupCode: st.group_code ? String(st.group_code) : null,
-                ordering: st.group_code ? (groupOrderByCode.get(String(st.group_code)) ?? 9999) : 9999,
-            },
+            '__none__',
+            { groupName: 'Без группы', groupCode: null, ordering: 9999 },
             {
                 code,
-                label: st.item_name || code,
+                label: statusNames.get(code) || code,
                 count,
                 color: statusColorMap.get(code) || null,
                 icon: statusIconMap.get(code) || null,
-                ordering: Number(st.ordering ?? 9999),
+                ordering: Number(own.ordering ?? 9999),
             },
         );
     }
