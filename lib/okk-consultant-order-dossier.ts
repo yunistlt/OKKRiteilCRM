@@ -43,13 +43,13 @@ export async function orderDossier(orderNumber: string): Promise<OrderDossier | 
 
     const orderId = Number(o.id);
 
-    const [{ data: historyRows }, { data: statusNames }, { data: callRows }] = await Promise.all([
+    const [{ data: historyRows }, statusRows, { data: callRows }] = await Promise.all([
         supabase.rpc('sales_order_full_history', { p_order_id: orderId }),
         loadStatusDirectory({ withInactive: true }),
         supabase.rpc('sales_client_calls_by_order', { p_order_id: orderId }),
     ]);
 
-    const nameByCode = new Map(((statusNames ?? []) as any[]).map((r) => [r.code, r.name]));
+    const nameByCode = new Map(statusRows.map((row) => [row.code, row.name]));
 
     const history = ((historyRows ?? []) as any[]).map((r) => ({
         date: String(r.occurred_at).slice(0, 16).replace('T', ' '),

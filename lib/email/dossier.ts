@@ -76,7 +76,7 @@ async function statusNames(codes: string[]): Promise<Map<string, string>> {
     if (!uniq.length) return map;
     try {
         // Имя статуса — с доски «Статусы и переходы», одно на весь проект.
-        for (const [code, name] of await statusNamesByCode(uniq)) map.set(code, name || code);
+        (await statusNamesByCode(uniq)).forEach((name, code) => map.set(code, name || code));
     } catch {
         /* справочник недоступен — покажем код как есть */
     }
