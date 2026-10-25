@@ -99,6 +99,25 @@ export async function GET(req: Request) {
 
             if (error) throw new Error(error.message);
             saved = rows.length;
+
+            /**
+             * Увидели своё письмо в «Отправленных» — снимаем с него отметку
+             * «копии нет».
+             *
+             * Отметку ставит воркер дозаписи, но копия попадает в ящик и
+             * помимо него: письмом из веб-почты, повтором, дозаписью задним
+             * числом. 25.10.2026 в журнале шесть писем числились без копии,
+             * хотя лежали в ящике, — и в карточке заказа висело пугающее
+             * «в почтовом ящике не видно».
+             */
+            const ourIds = rows.map((row) => row.message_id).filter(Boolean) as string[];
+            if (ourIds.length) {
+                await supabase
+                    .from('order_email_sends')
+                    .update({ appended_to_sent: true })
+                    .in('message_id', ourIds)
+                    .eq('appended_to_sent', false);
+            }
         }
 
         await supabase.from('email_ingest_state').upsert(
