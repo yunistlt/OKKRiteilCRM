@@ -133,12 +133,31 @@ export interface EmailContentForForward {
  * Read-only (BODY.PEEK, \Seen не трогаем). Бинарь вложений мы не храним в БД, поэтому при
  * пересылке берём его прямо из ящика по UID. Возвращает null, если письмо не найдено.
  */
-export async function fetchEmailContentByUid(uid: number, folder = 'INBOX'): Promise<EmailContentForForward | null> {
+export async function fetchEmailContentByUid(
+    uid: number,
+    folder = 'INBOX',
+    session?: ImapSession,
+): Promise<EmailContentForForward | null> {
+    if (session) return fetchEmailContentOn(session.client, uid, folder);
+
     const { user, pass, host, port } = getImapConfig();
     if (!user || !pass) throw new Error('IMAP config missing (IMAP_USER/IMAP_PASS or SMTP_USER/SMTP_PASS)');
 
     const client = new ImapFlow({ host, port, secure: true, auth: { user, pass }, logger: false });
     await client.connect();
+    try {
+        return await fetchEmailContentOn(client, uid, folder);
+    } finally {
+        await client.logout().catch(() => {});
+    }
+}
+
+/** То же письмо, но на уже открытом соединении (см. `openImapSession`). */
+async function fetchEmailContentOn(
+    client: ImapFlow,
+    uid: number,
+    folder: string,
+): Promise<EmailContentForForward | null> {
     const lock = await client.getMailboxLock(folder, { readOnly: true } as any);
     try {
         let source: Buffer | null = null;
@@ -166,8 +185,38 @@ export async function fetchEmailContentByUid(uid: number, folder = 'INBOX'): Pro
         };
     } finally {
         lock.release();
-        await client.logout().catch(() => {});
     }
+}
+
+/** Открытое соединение с ящиком, которое переиспользуют несколько чтений. */
+export interface ImapSession {
+    client: ImapFlow;
+    close: () => Promise<void>;
+}
+
+/**
+ * Одно соединение на весь проход.
+ *
+ * Вход в ящик — самая дорогая часть работы (TLS, пароль, список папок), и
+ * Яндекс считает именно сессии. Разбор вложений открывал своё соединение на
+ * каждое письмо: до шестидесяти входов в час при десяти письмах за проход.
+ * 12.10.2026 ящик начал отбиваться от такого напора ошибкой `Command failed`,
+ * и копии писем перестали ложиться в «Отправленные».
+ *
+ * Возвращает null, если ящик не настроен: вызывающий код работает как раньше.
+ */
+export async function openImapSession(): Promise<ImapSession | null> {
+    const { user, pass, host, port } = getImapConfig();
+    if (!user || !pass) return null;
+
+    const client = new ImapFlow({ host, port, secure: true, auth: { user, pass }, logger: false });
+    await client.connect();
+    return {
+        client,
+        close: async () => {
+            await client.logout().catch(() => {});
+        },
+    };
 }
 
 /**
@@ -210,30 +259,109 @@ async function resolveSentFolder(client: ImapFlow): Promise<string | null> {
     }
 }
 
+/** Что стало с копией одного письма. */
+export interface SentCopyOutcome {
+    appended: boolean;
+    /** Копия уже лежала в «Отправленных» — второй раз не кладём. */
+    already?: boolean;
+    folder?: string;
+    error?: string;
+}
+
 /**
- * Дозаписывает копию готового RFC822-письма в папку «Отправленные» ящика (rop@zmktlt.ru),
- * помечая её \Seen. Прямая SMTP-отправка не кладёт копию в Sent сама — без этой дозаписи
- * исходящее не видно ни в веб-почте, ни в RetailCRM (CRM импортирует письма из ящика).
+ * Лежит ли письмо с таким Message-ID в папке.
  *
- * Деградирует мягко: при отсутствии конфигурации/папки/ошибке возвращает { appended:false },
- * не бросает — отправку письма это не должно ломать.
+ * Без этой проверки повтор дозаписи рискует положить второе такое же письмо:
+ * сбой бывает и после того, как ящик письмо принял (обрыв связи на ответе).
+ * С ней повтор безопасен — а значит, повторять можно долго и дозаписывать
+ * копии задним числом.
  */
-export async function appendToSentFolder(raw: Buffer): Promise<{ appended: boolean; folder?: string; error?: string }> {
+async function messageAlreadyInFolder(client: ImapFlow, messageId: string): Promise<boolean> {
+    const id = messageId.replace(/^<|>$/g, '').trim();
+    if (!id) return false;
+    try {
+        const found = await client.search({ header: { 'message-id': id } } as any, { uid: true } as any);
+        return Array.isArray(found) && found.length > 0;
+    } catch {
+        // Ящик не умеет искать по заголовку — не выдумываем за него: пусть
+        // лучше будет лишняя попытка записи, чем потерянная копия.
+        return false;
+    }
+}
+
+/**
+ * Дозаписывает копии готовых RFC822-писем в папку «Отправленные» ящика
+ * (rop@zmktlt.ru), помечая их \Seen. Прямая SMTP-отправка не кладёт копию в
+ * Sent сама — без этой дозаписи исходящее не видно ни в веб-почте, ни в
+ * почтовом клиенте на телефоне.
+ *
+ * ОДНО соединение на всю пачку. Раньше на каждое письмо открывалось своё
+ * (вход, список папок, заливка, выход) — 12.10.2026 Яндекс начал отвечать на
+ * заливку `Command failed`, и 57 писем остались без копии. Ящик параллельно
+ * дёргают приём почты, вложения и чтение «Отправленных»; лишние сессии —
+ * наша собственная работа против себя.
+ *
+ * Деградирует мягко: при отсутствии конфигурации/папки/ошибке возвращает
+ * `appended:false` с причиной, не бросает — отправку письма это ломать не должно.
+ */
+export async function appendCopiesToSent(
+    items: Array<{ id: string; raw: Buffer; messageId?: string | null }>,
+): Promise<Map<string, SentCopyOutcome>> {
+    const out = new Map<string, SentCopyOutcome>();
+    if (!items.length) return out;
+
     const { user, pass, host, port } = getImapConfig();
-    if (!user || !pass) return { appended: false, error: 'imap_not_configured' };
+    if (!user || !pass) {
+        for (const item of items) out.set(item.id, { appended: false, error: 'imap_not_configured' });
+        return out;
+    }
 
     const client = new ImapFlow({ host, port, secure: true, auth: { user, pass }, logger: false });
     try {
         await client.connect();
         const folder = await resolveSentFolder(client);
-        if (!folder) return { appended: false, error: 'sent_folder_not_found' };
-        await client.append(folder, raw, ['\\Seen']);
-        return { appended: true, folder };
+        if (!folder) {
+            for (const item of items) out.set(item.id, { appended: false, error: 'sent_folder_not_found' });
+            return out;
+        }
+
+        // Папку открываем один раз: поиск по Message-ID идёт в открытой папке.
+        const lock = await client.getMailboxLock(folder, { readOnly: false } as any);
+        try {
+            for (const item of items) {
+                try {
+                    if (item.messageId && (await messageAlreadyInFolder(client, item.messageId))) {
+                        out.set(item.id, { appended: true, already: true, folder });
+                        continue;
+                    }
+                    await client.append(folder, item.raw, ['\\Seen']);
+                    out.set(item.id, { appended: true, folder });
+                } catch (e: any) {
+                    out.set(item.id, { appended: false, folder, error: e?.message || 'append_failed' });
+                }
+            }
+        } finally {
+            lock.release();
+        }
+        return out;
     } catch (e: any) {
-        return { appended: false, error: e?.message || 'append_failed' };
+        // Не вошли в ящик — без копии остаётся вся пачка, причина одна на всех.
+        for (const item of items) {
+            if (!out.has(item.id)) out.set(item.id, { appended: false, error: e?.message || 'append_failed' });
+        }
+        return out;
     } finally {
         await client.logout().catch(() => {});
     }
+}
+
+/**
+ * Одно письмо тем же кодом: запасной путь отправки, когда очередь дозаписи
+ * недоступна (`lib/email.ts`).
+ */
+export async function appendToSentFolder(raw: Buffer, messageId?: string | null): Promise<SentCopyOutcome> {
+    const results = await appendCopiesToSent([{ id: 'one', raw, messageId }]);
+    return results.get('one') ?? { appended: false, error: 'append_failed' };
 }
 
 /**

@@ -91,7 +91,7 @@ export async function loadOrderThreads(params: {
             .limit(limit),
         supabase
             .from('order_email_sends')
-            .select('id, message_id, subject, to_email, cc_emails, created_at, body_text, body_html')
+            .select('id, message_id, subject, to_email, cc_emails, created_at, body_text, body_html, appended_to_sent')
             .eq('order_number', number)
             .order('created_at', { ascending: false })
             .limit(limit),
@@ -166,6 +166,9 @@ export async function loadOrderThreads(params: {
             sourceId: String(row.id),
             // Своё письмо человек видел, когда отправлял.
             read: true,
+            // Первые минуты копия честно едет в ящик фоном — о них не говорим.
+            sentCopyMissing: row.appended_to_sent === false
+                && Date.now() - new Date(row.created_at ?? 0).getTime() > 15 * 60_000,
         });
     }
 
