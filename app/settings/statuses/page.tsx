@@ -4,10 +4,10 @@ import StatusList, { StatusItem } from './StatusList';
 export const dynamic = 'force-dynamic';
 
 export default async function StatusesPage() {
-    // 1. Get Base Statuses (Sync Data)
+    // 1. Справочник статусов — один на весь проект: crm_statuses.
     const { data: statuses, error: statusError } = await supabase
-        .from('statuses')
-        .select('*')
+        .from('crm_statuses')
+        .select('code, name, ordering, color, active, is_working, norm_days, ai_description')
         .order('ordering', { ascending: true });
 
     if (statusError) {

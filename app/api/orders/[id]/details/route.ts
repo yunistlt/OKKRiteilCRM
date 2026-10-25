@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
-import { findStatus, statusKeysOf } from '@/lib/own-crm/status-code';
+import { findStatus, statusKeysOf, loadStatusPalette } from '@/lib/own-crm/status-code';
 import { supabase } from '@/utils/supabase';
 import { formatEventValue, MAIL_FEED_FIELD_PATTERNS } from '@/lib/order-events';
 import { buildFieldLabelResolver } from '@/lib/order-field-labels';
@@ -222,22 +222,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             .eq('retailcrm_order_id', order.order_id)
             .maybeSingle();
 
-        // Цвет статуса — тот же источник, что у списка заказов: цвета уже
-        // назначены людьми, выдумывать свои нельзя.
-        const { data: statusRow } = await supabase
-            .from('statuses')
-            .select('color, name, group_name')
-            .eq('code', order.status)
-            .maybeSingle();
+        // Имя, цвет и этап статуса — одна функция на проект: цвета назначены
+        // людьми на экране статусов, выдумывать свои нельзя.
+        const statusRow = (await loadStatusPalette()).get(String(order.status)) ?? null;
 
         // Return structured data
         return NextResponse.json({
             // Палитра статусов — для плашек в истории, как в RetailCRM.
             statusPalette,
-            statusColor: groupColor.get(String(findStatus(((ownStatusRows as any[]) ?? []), order.status)?.group_id)) || (statusRow as any)?.color || null,
-            // Своего статуса в справочнике RetailCRM нет — берём наше название.
-            statusName: (statusRow as any)?.name || findStatus(((ownStatusRows as any[]) ?? []), order.status)?.name || null,
-            statusGroup: (statusRow as any)?.group_name || null,
+            statusColor: groupColor.get(String(findStatus(((ownStatusRows as any[]) ?? []), order.status)?.group_id)) || statusRow?.color || null,
+            statusName: statusRow?.name || findStatus(((ownStatusRows as any[]) ?? []), order.status)?.name || null,
+            statusGroup: statusRow?.groupName || null,
             order: {
                 ...order,
                 manager_name: order.managers ? `${order.managers.first_name || ''} ${order.managers.last_name || ''}`.trim() : 'Не определен'

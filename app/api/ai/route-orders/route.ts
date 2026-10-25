@@ -122,10 +122,10 @@ export async function POST(request: Request) {
         const allowedCodes = (routeSettings || []).map((s: any) => s.code);
 
         const { data: allowedStatuses } = await supabase
-            .from('statuses')
-            .select('code, name, group_name, ai_description')
+            .from('crm_statuses')
+            .select('code, name, ai_description')
             .in('code', allowedCodes)
-            .eq('is_active', true);
+            .eq('active', true);
 
         const allowedStatusMap = new Map<string, string>(
             allowedStatuses?.map((s: any) => [
