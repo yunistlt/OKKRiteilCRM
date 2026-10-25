@@ -16,12 +16,9 @@ function buildSha() {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    /**
-     * Сборка «standalone»: Next кладёт в `.next/standalone` готовый сервер со
-     * всеми нужными зависимостями. Его можно просто скопировать на наш сервер
-     * и запустить `node server.js` — без `npm install` на машине и без
-     * Vercel. Нужно для переезда на свой сервер (22.10.2026).
-     */
+    // Переезд на свой сервер (Timeweb, 23.10.2026): сборка едет на VPS одним
+    // каталогом вместе с нужными модулями, без npm install на сервере — на
+    // 4 ГБ собирать рядом с работающим приложением нечем.
     output: 'standalone',
     env: {
         NEXT_PUBLIC_BUILD_SHA: buildSha(),

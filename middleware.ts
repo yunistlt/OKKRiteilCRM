@@ -13,6 +13,22 @@ function applyNoStoreHeaders(response: NextResponse) {
     return response;
 }
 
+/**
+ * Адрес, по которому человек к нам пришёл.
+ *
+ * На Vercel `request.url` — настоящий внешний адрес. В своей сборке
+ * (standalone, переезд на Timeweb 23.10.2026) Next подставляет туда
+ * `localhost:3000`, и редирект на вход уводил браузер на localhost, то есть
+ * в никуда. Поэтому адрес берём из заголовков, которые ставит nginx, и только
+ * если их нет — из `request.url`.
+ */
+function publicUrl(request: NextRequest, path: string) {
+    const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+    if (!host) return new URL(path, request.url);
+    const proto = request.headers.get('x-forwarded-proto') ?? 'https';
+    return new URL(path, `${proto}://${host}`);
+}
+
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
@@ -66,7 +82,7 @@ export async function middleware(request: NextRequest) {
             if (pathname.startsWith('/api')) {
                 return applyNoStoreHeaders(NextResponse.json({ error: 'Неавторизован' }, { status: 401 }));
             }
-            return applyNoStoreHeaders(NextResponse.redirect(new URL('/login', request.url)));
+            return applyNoStoreHeaders(NextResponse.redirect(publicUrl(request, '/login')));
         }
 
         /**
@@ -88,7 +104,7 @@ export async function middleware(request: NextRequest) {
          */
         const gateTarget = await gateRedirectTarget(request, session);
         if (gateTarget) {
-            return applyNoStoreHeaders(NextResponse.redirect(new URL(gateTarget, request.url)));
+            return applyNoStoreHeaders(NextResponse.redirect(publicUrl(request, gateTarget)));
         }
 
         if (!(await canAccessPathServer(session.user.role, pathname))) {
@@ -101,10 +117,10 @@ export async function middleware(request: NextRequest) {
             // браузер в бесконечный круг (ERR_TOO_MANY_REDIRECTS). В этом случае
             // возвращаем на вход, а не гоняем по кругу.
             if (fallbackPath === pathname || !(await canAccessPathServer(session.user.role, fallbackPath))) {
-                return applyNoStoreHeaders(NextResponse.redirect(new URL('/login?error=no-access', request.url)));
+                return applyNoStoreHeaders(NextResponse.redirect(publicUrl(request, '/login?error=no-access')));
             }
 
-            return applyNoStoreHeaders(NextResponse.redirect(new URL(fallbackPath, request.url)));
+            return applyNoStoreHeaders(NextResponse.redirect(publicUrl(request, fallbackPath)));
         }
 
         return applyNoStoreHeaders(NextResponse.next());
@@ -117,7 +133,7 @@ export async function middleware(request: NextRequest) {
             // Не отправляем вошедшего туда, откуда его развернёт проверка прав,
             // иначе /login и домашняя страница начнут перекидывать друг на друга.
             if (await canAccessPathServer(session.user.role, fallbackPath)) {
-                return applyNoStoreHeaders(NextResponse.redirect(new URL(fallbackPath, request.url)));
+                return applyNoStoreHeaders(NextResponse.redirect(publicUrl(request, fallbackPath)));
             }
 
             return applyNoStoreHeaders(NextResponse.next());
