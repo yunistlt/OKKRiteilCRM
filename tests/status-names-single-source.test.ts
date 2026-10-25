@@ -22,6 +22,15 @@ const ЕЩЁ_НЕ_РАЗОБРАНО = [
     // Синхронизация справочников: пишет в таблицы, а не показывает людям.
     'app/api/sync/statuses/route.ts',
     'app/debug-db/page.tsx',
+    // Оплаты и баллы ОКК: там не показ имени, а логика по этапу
+    // (какие статусы считать производством, какие — закрытием). Разбирается
+    // отдельно: ошибка в этих файлах стоит денег.
+    'lib/payments/production.ts',
+    'lib/payments/service.ts',
+    'lib/okk-evaluator.ts',
+    'app/api/ai/route-orders/route.ts',
+    'app/api/orders/[id]/details/route.ts',
+    'app/api/orders/list/route.ts',
 ];
 
 function readersOfStatusNames(): string[] {
