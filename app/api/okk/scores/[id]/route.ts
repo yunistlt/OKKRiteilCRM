@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { loadStatusPalette } from '@/lib/own-crm/status-code';
 import { createSupabaseUserClient } from '@/utils/supabase-user';
 import { canAccessTargetManager, getEffectiveCapabilityForRole } from '@/lib/access-control-server';
 import { getSession } from '@/lib/auth';
@@ -86,11 +87,8 @@ export async function GET(
         let statusLabel = scoreRow?.status_label || orderRow?.status || null;
         let statusColor = scoreRow?.status_color || '#E5E7EB';
         if (orderRow?.status) {
-            const { data: statusData } = await readClient
-                .from('statuses')
-                .select('name, color')
-                .eq('code', orderRow.status)
-                .maybeSingle();
+            // Имя и цвет статуса — одна функция на проект (доска «Статусы и переходы»).
+            const statusData = (await loadStatusPalette()).get(String(orderRow.status)) ?? null;
 
             if (statusData) {
                 statusLabel = statusData.name || statusLabel;

@@ -105,6 +105,8 @@ export type StatusDirectoryRow = {
     isWorking: boolean;
     color: string | null;
     groupId: string | null;
+    /** Название этапа: им статусы сгруппированы на доске. */
+    groupName: string | null;
     ordering: number;
     /** Старый код: по нему лежат статусы заказов, созданных до отвязки. */
     externalCode: string | null;
@@ -118,10 +120,19 @@ export type StatusDirectoryRow = {
  * сущности»); историю просят явно, когда надо подписать старый заказ.
  */
 export async function loadStatusDirectory(opts: { withInactive?: boolean } = {}): Promise<StatusDirectoryRow[]> {
-    const { data } = await supabase
-        .from('crm_statuses')
-        .select('code, external_code, name, active, is_working, color, group_id, ordering')
-        .order('ordering', { ascending: true });
+    const [{ data }, { data: groups }] = await Promise.all([
+        supabase
+            .from('crm_statuses')
+            .select('code, external_code, name, active, is_working, color, group_id, ordering')
+            .order('ordering', { ascending: true }),
+        supabase.from('crm_status_groups').select('id, name, color'),
+    ]);
+
+    // ЗАКОН: цвет у этапа, а не у статуса. У самих статусов колонка цвета
+    // пустая — красит группа, как на доске.
+    const groupById = new Map<string, { name: string; color: string | null }>(
+        ((groups ?? []) as any[]).map((g) => [String(g.id), { name: String(g.name ?? ''), color: g.color ?? null }]),
+    );
 
     return ((data ?? []) as any[])
         .filter((row) => (opts.withInactive ? true : row.active === true))
@@ -130,10 +141,33 @@ export async function loadStatusDirectory(opts: { withInactive?: boolean } = {})
             name: String(row.name ?? ''),
             active: row.active === true,
             isWorking: row.is_working === true,
-            color: row.color ?? null,
+            color: row.color ?? (row.group_id ? groupById.get(String(row.group_id))?.color ?? null : null),
             groupId: row.group_id ? String(row.group_id) : null,
+            groupName: row.group_id ? groupById.get(String(row.group_id))?.name ?? null : null,
             ordering: Number(row.ordering ?? 999),
             externalCode: row.external_code ? String(row.external_code) : null,
         }))
         .filter((row) => row.code && row.name);
+}
+
+/** Как показать статус человеку: название, цвет этапа и сам этап. */
+export type StatusLook = { name: string; color: string | null; groupName: string | null };
+
+/**
+ * Как показать любой статус — одна функция на весь проект.
+ *
+ * Ключи — оба кода статуса, поэтому подписывается и старый заказ, лежащий под
+ * кодом времён RetailCRM. Цвет берётся у этапа: у самих статусов колонка цвета
+ * пустая, красит доска (ЗАКОН «порядок и цвет статусов — с доски»).
+ */
+export async function loadStatusPalette(): Promise<Map<string, StatusLook>> {
+    const rows = await loadStatusDirectory({ withInactive: true });
+    const palette = new Map<string, StatusLook>();
+    for (const row of rows) {
+        const look: StatusLook = { name: row.name, color: row.color, groupName: row.groupName };
+        for (const code of [row.code, row.externalCode].filter(Boolean) as string[]) {
+            palette.set(code, look);
+        }
+    }
+    return palette;
 }

@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { loadStatusPalette } from '@/lib/own-crm/status-code';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,11 +25,10 @@ export async function GET() {
         if (error) throw error;
 
         // 2. Fetch Status Dictionaries for mapping
-        const { data: statusesData } = await supabase
-            .from('statuses')
-            .select('code, name, color');
-
-        const statusMap = new Map(statusesData?.map(s => [s.code, s]) || []);
+        // Как показать статус — одна функция на проект: имя с доски, цвет этапа.
+        const statusMap = new Map(
+            Array.from(await loadStatusPalette(), ([code, look]) => [code, { code, name: look.name, color: look.color }]),
+        );
 
         // 3. Map to UI format
         const violations = (rawViolations || []).map(v => {

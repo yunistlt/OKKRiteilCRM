@@ -2,6 +2,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,13 +53,11 @@ export async function GET(request: Request) {
 
         const workingCodes = (workingSettings || []).map(s => s.code);
 
-        const { data: statusesData } = await supabase
-            .from('statuses')
-            .select('code, name, group_name')
-            .in('code', workingCodes)
-            .order('ordering');
-
-        const activeStatuses = statusesData || [];
+        // Рабочие статусы с именами — с доски «Статусы и переходы».
+        const board = await loadStatusDirectory({ withInactive: true });
+        const activeStatuses = board
+            .filter((row) => workingCodes.includes(row.code) || workingCodes.includes(String(row.externalCode ?? '')))
+            .map((row) => ({ code: row.code, name: row.name, group_name: row.groupName }));
 
         // --- 3. EARLY EXIT: NO FILTERS ---
         if (!hasFilters) {

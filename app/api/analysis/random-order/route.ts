@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
+import { loadStatusPalette } from '@/lib/own-crm/status-code';
 
 /**
  * Звонки по заказам — через общую связь call_order_link.
@@ -139,14 +140,9 @@ export async function GET() {
         ? `${manager.first_name || ''} ${manager.last_name || ''}`.trim()
         : 'Не назначен';
 
-    // Get human-readable status name
-    const { data: statusSetting } = await supabase
-        .from('statuses')
-        .select('name, code')
-        .eq('code', order.status)
-        .single();
-
-    const statusName = statusSetting?.name || order.status;
+    // Имя статуса — одна функция на проект: доска «Статусы и переходы».
+    // Ищем по обоим кодам: старые заказы лежат под кодом времён RetailCRM.
+    const statusName = (await loadStatusPalette()).get(String(order.status))?.name || order.status;
 
     // Extract custom fields mapping
     const payload = order.raw_payload as any || {};

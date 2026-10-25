@@ -4,6 +4,7 @@ import { analyzeOrderWithAI } from '@/lib/prioritization';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
+import { loadStatusPalette } from '@/lib/own-crm/status-code';
 import { resolveRetailCRMLabel } from '@/lib/retailcrm/mapping';
 
 /**
@@ -112,12 +113,9 @@ export async function POST(req: Request) {
         ? `${manager.first_name || ''} ${manager.last_name || ''}`.trim()
         : 'Не назначен';
 
-    // Get human-readable status name from statuses table
-    const { data: statusSetting } = await supabase
-        .from('statuses')
-        .select('name, code, color')
-        .eq('code', order.status)
-        .single();
+    // Имя статуса — одна функция на проект: доска «Статусы и переходы».
+    // Ищем по обоим кодам: старые заказы лежат под кодом времён RetailCRM.
+    const statusSetting = (await loadStatusPalette()).get(String(order.status)) ?? null;
 
     const statusName = statusSetting?.name || order.status; // Fallback to code if not found
     const statusColor = statusSetting?.color || '#808080';

@@ -1,19 +1,21 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
     try {
-        const { data, error } = await supabase
-            .from('statuses')
-            .select('code, name, group_name, color, ordering')
-            .eq('is_active', true)
-            .order('ordering', { ascending: true });
+        // Справочник статусов — с доски «Статусы и переходы», одна функция на проект.
+        const rows = (await loadStatusDirectory()).map((row) => ({
+            code: row.code,
+            name: row.name,
+            group_name: row.groupName,
+            color: row.color,
+            ordering: row.ordering,
+        }));
 
-        if (error) throw error;
-
-        return NextResponse.json(data);
+        return NextResponse.json(rows);
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }

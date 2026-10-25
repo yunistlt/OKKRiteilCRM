@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 import { getConfigForPeriod } from '@/lib/salary/config';
 import type { SalaryToolContext } from '@/lib/salary/consultant-tools';
 
@@ -39,11 +40,12 @@ type ResolvedStatus = { code: string; name: string; group_name: string | null };
 async function resolveStatuses(query: string): Promise<ResolvedStatus[]> {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    const { data } = await supabase
-        .from('statuses')
-        .select('code, name, group_name')
-        .eq('is_active', true);
-    const rows = (data as ResolvedStatus[]) || [];
+    // Поиск статуса по словам человека — по доске «Статусы и переходы».
+    const rows: ResolvedStatus[] = (await loadStatusDirectory()).map((row) => ({
+        code: row.code,
+        name: row.name,
+        group_name: row.groupName ?? '',
+    }));
     return rows.filter((s) =>
         (s.name || '').toLowerCase().includes(q)
         || (s.group_name || '').toLowerCase().includes(q)
