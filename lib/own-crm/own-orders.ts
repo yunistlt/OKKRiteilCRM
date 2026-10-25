@@ -23,8 +23,24 @@ import { supabase } from '@/utils/supabase';
 import { orderTotal, validateNewOrder, type NewOrder, type NewOrderItem, type CreatedOrder } from './create-order';
 import { loadClientRequisites, toOrderContragent } from './client-requisites';
 import { itemDiscountPerUnit, itemPriceWithDiscount, orderTotals } from './discount';
-import { customFieldValueName, itemLabel, managerName, moneyValue, statusName, statusValue, writeOwnHistory, type HistoryEntry } from './history-write';
+import { customFieldValueName, itemLabel, managerValue, moneyValue, statusName, statusValue, writeOwnHistory, type HistoryEntry } from './history-write';
 import { OWN_ID_BASE, OWN_SITE, nextOwnOrderNumber, ownItemIds } from './own-order-insert';
+
+/**
+ * Крайние пробелы в текстовых доп. полях режем при сохранении.
+ *
+ * Зачем: фильтр по полю карточки ищет точное совпадение (по GIN-индексу), и
+ * « Первоуральск» с ведущим пробелом в поле «Город доставки» не находился —
+ * заказ 900300 выпадал из списка (доработка №33, Евгения Матвеева, 22.10.2026).
+ */
+export function trimCustomFieldValues(fields: Record<string, unknown>): Record<string, unknown> {
+    const cleaned: Record<string, unknown> = {};
+    for (const [code, value] of Object.entries(fields)) {
+        cleaned[code] = typeof value === 'string' ? value.trim() : value;
+    }
+    return cleaned;
+}
+
 
 export { nextOwnOrderNumber };
 
@@ -138,7 +154,7 @@ export async function createOwnOrder(order: NewOrder): Promise<CreatedOrder> {
         id,
         [
             { field: 'status', newValue: await statusValue(order.statusCode || DEFAULT_STATUS) },
-            ...(order.managerId ? [{ field: 'manager', newValue: await managerName(order.managerId) }] : []),
+            ...(order.managerId ? [{ field: 'manager', newValue: managerValue(order.managerId) }] : []),
             ...(order.customerComment ? [{ field: 'customer_comment', newValue: order.customerComment }] : []),
             ...(order.managerComment ? [{ field: 'manager_comment', newValue: order.managerComment }] : []),
             ...order.items.map((item) => ({
@@ -238,7 +254,7 @@ export async function editOwnOrder(
     if (edit.statusCode) payload.status = edit.statusCode;
     if (edit.managerId) payload.managerId = edit.managerId;
     if (edit.customFields && Object.keys(edit.customFields).length) {
-        payload.customFields = { ...(payload.customFields || {}), ...edit.customFields };
+        payload.customFields = { ...(payload.customFields || {}), ...trimCustomFieldValues(edit.customFields) };
     }
     for (const [key, value] of Object.entries(edit.contact || {})) {
         if (value !== undefined) payload[key] = value;
@@ -371,8 +387,8 @@ export async function editOwnOrder(
     if (edit.managerId && Number(edit.managerId) !== Number(before.managerId)) {
         history.push({
             field: 'manager',
-            oldValue: before.managerId ? await managerName(before.managerId) : null,
-            newValue: await managerName(edit.managerId),
+            oldValue: managerValue(before.managerId) || null,
+            newValue: managerValue(edit.managerId),
         });
     }
     if (edit.customerId && Number(edit.customerId) !== Number(before.customer?.id ?? 0)) {
@@ -427,6 +443,55 @@ export async function editOwnOrder(
     }
 
     await writeOwnHistory(rowId, history, Number(edit.managerId ?? before.managerId) || null);
+
+    // Взял менеджер заказ ничейного клиента — клиент закрепляется за ним.
+    await attachClientToManager(
+        Number(edit.customerId ?? before.customer?.id ?? 0),
+        Number(edit.managerId ?? before.managerId ?? 0),
+    );
+}
+
+/**
+ * Закрепить клиента за менеджером, если клиент ничей.
+ *
+ * Зачем. Карточка клиента заводится вместе с заявкой, а хозяина у неё не было:
+ * заказ с менеджером, клиент ни за кем (16.10.2026 так накопилось 55 карточек,
+ * свежие — за те же дни). Раздача заказов идёт по владельцу клиента, поэтому
+ * без хозяина заказ некому передать, и клиент выпадает из работы.
+ *
+ * Чужого клиента не перехватываем: если им уже занимается работающий человек,
+ * ничего не меняем — постоянный клиент не должен уйти к другому из-за того, что
+ * кто-то тронул один его заказ.
+ */
+async function attachClientToManager(clientId: number, managerId: number): Promise<void> {
+    if (!Number.isFinite(clientId) || clientId <= 0) return;
+    if (!Number.isFinite(managerId) || managerId <= 0) return;
+
+    const { data: client } = await supabase
+        .from('clients')
+        .select('manager_id')
+        .eq('id', clientId)
+        .maybeSingle();
+    if (!client) return;
+
+    const current = Number((client as any).manager_id);
+    if (current === managerId) return;
+
+    if (current > 0) {
+        // Хозяин есть — трогаем, только если он больше не работает.
+        const { data: owner } = await supabase
+            .from('managers')
+            .select('active')
+            .eq('id', current)
+            .maybeSingle();
+        if ((owner as any)?.active === true) return;
+    }
+
+    const { error } = await supabase
+        .from('clients')
+        .update({ manager_id: String(managerId), updated_at: new Date().toISOString() })
+        .eq('id', clientId);
+    if (error) console.error('[own-orders] клиент не закрепился за менеджером:', error);
 }
 
 /** Наш это заказ или приехал из RetailCRM. */

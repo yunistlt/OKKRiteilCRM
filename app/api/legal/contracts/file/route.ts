@@ -27,13 +27,53 @@ export async function GET(req: Request) {
 
     const { data } = await supabase
         .from('order_contracts')
-        .select('id, order_number, order_id, title, body_text, version, pdf_path')
+        .select('id, order_number, order_id, kind, title, body_text, version, pdf_path, docx_path')
         .eq('id', Number(id))
         .is('deleted_at', null)
         .maybeSingle();
 
     const contract = data as any;
     if (!contract) return NextResponse.json({ error: 'Договор не найден' }, { status: 404 });
+
+    /**
+     * Форму договора прислал клиент — отдаём ровно его файл, как есть.
+     * Собирать его из текста нельзя: получится наш документ с чужими словами,
+     * а юристу нужен подлинник (просьба Ирины Гордеевой 16.10.2026). Файл может
+     * быть и .docx — тогда он лежит в `docx_path`.
+     */
+    if (contract.kind === 'klient') {
+        const clientPath = (contract.pdf_path || contract.docx_path) as string | null;
+        if (!clientPath) {
+            return NextResponse.json({ error: 'Файл договора клиента не приложен' }, { status: 404 });
+        }
+
+        const file = await supabase.storage.from('okk-assets').download(clientPath);
+        if (file.error || !file.data) {
+            return NextResponse.json({ error: 'Файл договора не читается' }, { status: 502 });
+        }
+
+        const bytes = Buffer.from(await file.data.arrayBuffer());
+        // Имя и тип — по самому файлу: имя клиентского файла хранится в «Файлах»
+        // заказа, здесь берём расширение из пути, чтобы браузер не ошибся.
+        const ext = (clientPath.split('.').pop() || '').toLowerCase();
+        const types: Record<string, string> = {
+            pdf: 'application/pdf',
+            docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            doc: 'application/msword',
+            txt: 'text/plain; charset=utf-8',
+            png: 'image/png',
+            jpg: 'image/jpeg',
+            jpeg: 'image/jpeg',
+        };
+        const clientName = `Договор клиента №${contract.order_number}.${ext || 'pdf'}`;
+        return new NextResponse(bytes, {
+            headers: {
+                'Content-Type': types[ext] || 'application/octet-stream',
+                'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(clientName)}`,
+                'Cache-Control': 'private, no-store',
+            },
+        });
+    }
 
     let path = contract.pdf_path as string | null;
     if (!path) {

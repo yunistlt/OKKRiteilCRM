@@ -11,6 +11,7 @@ import {
 } from '@/lib/system-jobs';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
+import { getOrdersWithRecentEvents, getPlannedOrderIds } from '@/lib/nightly-review-targets';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -18,6 +19,11 @@ export const maxDuration = 300;
 const WORKER_KEY = 'system_jobs.nightly_reconciliation';
 const MANAGER_BATCH_SIZE = 10;
 const PRIORITY_BATCH_SIZE = 100;
+/**
+ * Заказы плана дня идут впереди прочих: утром по ним выдадут совет, и оценка
+ * должна быть свежей именно к утру. Обычные события — приоритет 30.
+ */
+const PLAN_PRIORITY = 12;
 
 type NightlyScope = 'all' | 'aggregates' | 'priorities';
 
@@ -135,35 +141,6 @@ async function getControlledManagerIds() {
   return (data || []).map((row: any) => Number(row.id)).filter((managerId: number) => Number.isFinite(managerId));
 }
 
-async function getWorkingOrderIds(offset: number, limit: number) {
-  const { data: workingSettings, error: workingError } = await supabase
-    .from('status_settings')
-    .select('code')
-    .eq('is_working', true);
-
-  if (workingError) {
-    throw workingError;
-  }
-
-  const workingCodes = (workingSettings || []).map((row: any) => row.code).filter(Boolean);
-  if (!workingCodes.length) {
-    return [] as number[];
-  }
-
-  const { data: orders, error } = await supabase
-    .from('orders')
-    .select('id')
-    .in('status', workingCodes)
-    .order('updated_at', { ascending: true })
-    .range(offset, offset + limit - 1);
-
-  if (error) {
-    throw error;
-  }
-
-  return (orders || []).map((row: any) => Number(row.id)).filter((orderId: number) => Number.isFinite(orderId));
-}
-
 export async function GET(req: NextRequest) {
   try {
     ensureAuthorized(req);
@@ -258,8 +235,38 @@ export async function GET(req: NextRequest) {
       const priorityBatchSize = shouldSeedPriorities
         ? Math.min(PRIORITY_BATCH_SIZE, remainingPriorityLimit)
         : 0;
+      // Заказы завтрашнего плана — один раз за ночь, на первом заходе: план
+      // считается вхолостую, и гонять этот расчёт в каждой пачке незачем.
+      let plannedSeeded = 0;
+      if (shouldSeedPriorities && priorityOffset === 0) {
+        try {
+          for (const orderId of await getPlannedOrderIds()) {
+            await enqueueOrderRefreshJob({
+              jobType: 'order_score_refresh',
+              orderId,
+              source: 'nightly_plan_preview',
+              priority: PLAN_PRIORITY,
+              windowSeconds: 1,
+              payload: { reconciliation: true, seeded_by: WORKER_KEY, plan_preview: true },
+              parentJobId: job.id,
+            });
+            plannedSeeded += 1;
+          }
+        } catch (planError: any) {
+          // Не сорвать сверку из-за плана: события всё равно надо пересчитать, а
+          // без свежей оценки совет утром будет вчерашним — это терпимо, провал
+          // всей ночной работы — нет.
+          console.error(JSON.stringify({
+            level: 'error',
+            worker: WORKER_KEY,
+            step: 'plan_preview',
+            message: planError?.message || 'Не удалось посчитать план вхолостую',
+          }));
+        }
+      }
+
       const priorityBatch = priorityBatchSize > 0
-        ? await getWorkingOrderIds(priorityOffset, priorityBatchSize)
+        ? await getOrdersWithRecentEvents(priorityOffset, priorityBatchSize)
         : [];
       for (const orderId of priorityBatch) {
         await enqueueOrderRefreshJob({
@@ -312,6 +319,7 @@ export async function GET(req: NextRequest) {
           status: 'chunked',
           manager_jobs_seeded: managerBatch.length,
           priority_jobs_seeded: priorityBatch.length,
+          plan_jobs_seeded: plannedSeeded,
           scope: jobScope,
           next_manager_offset: nextManagerOffset,
           next_priority_offset: nextPriorityOffset,
@@ -331,6 +339,7 @@ export async function GET(req: NextRequest) {
         status: 'completed',
         manager_jobs_seeded: managerBatch.length,
         priority_jobs_seeded: priorityBatch.length,
+        plan_jobs_seeded: plannedSeeded,
         scope: jobScope,
         next_manager_offset: 0,
         next_priority_offset: 0,

@@ -10,6 +10,7 @@
  * POST — записать выбранный заказ (способ `manual`).
  */
 import { NextResponse } from 'next/server';
+import { statusNamesByCode } from '@/lib/own-crm/status-code';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
@@ -46,11 +47,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     // Названия статусов — человеку, а не коды.
     const codes = Array.from(new Set(candidates.map((c) => c.status).filter(Boolean) as string[]));
-    const names = new Map<string, string>();
-    if (codes.length) {
-        const { data } = await supabase.from('crm_statuses').select('external_code, name').in('external_code', codes);
-        for (const row of ((data ?? []) as any[])) names.set(String(row.external_code), String(row.name));
-    }
+    const names = await statusNamesByCode(codes);
 
     return NextResponse.json({
         callId: call.telphin_call_id,

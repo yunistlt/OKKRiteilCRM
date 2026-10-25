@@ -16,6 +16,7 @@
  * `20261002_client_requisites_in_clients.sql`).
  */
 import { supabase } from '@/utils/supabase';
+import { writeClientHistory } from '@/lib/own-crm/client-history';
 
 export type Requisites = {
     contragentType: string | null;
@@ -314,6 +315,45 @@ function innLockedMessage(was: string, paidOrders: string[]): string {
         + 'Остальные реквизиты сохранены.';
 }
 
+
+/** Человеческие названия полей реквизитов — для истории карточки. */
+const REQUISITE_LABELS: Record<string, string> = {
+    contragent_type: 'Тип контрагента',
+    legalName: 'Юридическое название',
+    full_name: 'Полное наименование',
+    signer_name: 'Подписант договора',
+    signer_title: 'Должность подписанта',
+    signer_basis: 'Основание подписи',
+    inn: 'ИНН',
+    kpp: 'КПП',
+    OGRN: 'ОГРН',
+    OGRNIP: 'ОГРНИП',
+    legalAddress: 'Юридический адрес',
+    bank: 'Банк',
+    bankAccount: 'Расчётный счёт',
+    BIK: 'БИК',
+    corrAccount: 'Корреспондентский счёт',
+    bankAddress: 'Адрес банка',
+    company_name: 'Название клиента',
+};
+
+/** Что изменилось в реквизитах — записью в историю карточки (решение владельца 22.10.2026). */
+async function logRequisiteChanges(
+    id: number,
+    row: Record<string, unknown>,
+    before: Record<string, any> | null,
+    actor?: string | null,
+): Promise<void> {
+    const entries = Object.entries(row)
+        .filter(([column]) => REQUISITE_LABELS[column])
+        .map(([column, value]) => ({
+            field: REQUISITE_LABELS[column],
+            oldValue: before?.[column] ?? null,
+            newValue: (value as string) ?? null,
+        }));
+    await writeClientHistory(id, entries, { name: text(actor) });
+}
+
 export async function saveClientRequisites(
     clientId: number | string,
     requisites: Partial<Requisites>,
@@ -384,8 +424,16 @@ export async function saveClientRequisites(
         return;
     }
 
+    // Что было до правки — для истории карточки.
+    const { data: before } = await supabase
+        .from('clients')
+        .select(Object.keys(row).filter((column) => REQUISITE_LABELS[column]).map((c) => `"${c}"`).join(', ') || 'id')
+        .eq('id', id)
+        .maybeSingle();
+
     const { error } = await supabase.from('clients').update(row).eq('id', id);
     if (!error) {
+        await logRequisiteChanges(id, row, (before as any) ?? null, actor);
         if (lockedBy && lockedInn) throw new InnLockedError(innLockedMessage(lockedInn, lockedBy), lockedBy);
         return;
     }
@@ -412,6 +460,7 @@ export async function saveClientRequisites(
         const retry = Object.keys(row).length > 2
             ? await supabase.from('clients').update(row).eq('id', id)
             : { error: null };
+        if (!retry.error) await logRequisiteChanges(id, row, (before as any) ?? null, actor);
 
         const where = other
             ? `он уже стоит в карточке №${(other as any).id} — ${(other as any).company_name || 'без названия'}`

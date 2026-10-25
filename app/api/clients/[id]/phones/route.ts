@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
+import { writeClientHistory } from '@/lib/own-crm/client-history';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // Пустые строки не храним: менеджер добавил поле и передумал.
     const phones = Array.from(new Set(parsed.data.phones.map((p) => p.trim()).filter(Boolean)));
 
+    const { data: before } = await supabase
+        .from('clients')
+        .select('phones')
+        .eq('id', Number(id))
+        .maybeSingle();
+
     const { error } = await supabase
         .from('clients')
         .update({ phones, updated_at: new Date().toISOString() })
@@ -39,6 +46,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         console.error('[client-phones] не сохранились:', error);
         return NextResponse.json({ error: 'Телефоны не сохранились' }, { status: 500 });
     }
+
+    await writeClientHistory(id, [{
+        field: 'Телефоны',
+        oldValue: (((before as any)?.phones ?? []) as string[]).join(', ') || 'нет',
+        newValue: phones.join(', ') || 'нет',
+    }], {
+        name: [session.user.last_name, session.user.first_name].filter(Boolean).join(' ')
+            || session.user.username || session.user.email || null,
+        role: session.user.role ?? null,
+    });
 
     return NextResponse.json({ ok: true, phones });
 }

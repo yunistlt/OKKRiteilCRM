@@ -2,6 +2,7 @@ import { supabase } from '@/utils/supabase';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { AiAgent, recordAiUsage } from '@/lib/ai-usage';
 import { runDayChecks, renderChecks, type DayChecks } from '@/lib/sales-rop/day-checks';
+import { byStatusCode } from '@/lib/own-crm/status-code';
 
 // ============================================================================
 // Разбор вчерашнего дня менеджера: документ, который он читает до начала работы.
@@ -129,9 +130,8 @@ async function knownAboutOrders(orderNumbers: string[]) {
 
     const { data: statuses } = await supabase
         .from('crm_statuses')
-        .select('external_code, name')
-        .not('external_code', 'is', null);
-    const statusName = new Map(((statuses ?? []) as any[]).map((s) => [s.external_code, s.name]));
+        .select('code, external_code, name');
+    const statusName = byStatusCode((statuses ?? []) as any[], (s) => String(s.name ?? ''));
 
     const out = new Map<string, any>();
     for (const o of ((orders ?? []) as any[])) {

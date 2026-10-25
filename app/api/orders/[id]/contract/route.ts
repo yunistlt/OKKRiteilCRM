@@ -18,7 +18,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const { data, error } = await supabase
         .from('order_contracts')
-        .select('id, title, status, version, terms_text, created_by, reviewed_by, review_comment, created_at, updated_at')
+        .select('id, kind, title, status, version, terms_text, created_by, reviewed_by, review_comment, created_at, updated_at')
         .eq('order_number', orderNumber)
         .is('deleted_at', null)
         .order('created_at', { ascending: false });

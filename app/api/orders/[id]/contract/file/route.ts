@@ -23,7 +23,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const { data } = await supabase
         .from('order_contracts')
-        .select('id, order_number, order_id, title, body_text, version, pdf_path')
+        .select('id, order_number, order_id, kind, title, body_text, version, pdf_path')
         .eq('id', Number(contractId))
         .is('deleted_at', null)
         .maybeSingle();
@@ -32,6 +32,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     // Договор чужого заказа по ссылке не отдаём.
     if (!contract || String(contract.order_number) !== decodeURIComponent(String(orderNumber))) {
         return NextResponse.json({ error: 'Договор не найден' }, { status: 404 });
+    }
+
+    /**
+     * Форма договора от клиента — не наш договор: собирать её по нашему шаблону
+     * нельзя, а сам файл менеджер открывает во вкладке «Файлы» заказа.
+     */
+    if (contract.kind === 'klient') {
+        return NextResponse.json(
+            { error: 'Это договор на форме клиента — его файл лежит во вкладке «Файлы» заказа.' },
+            { status: 400 },
+        );
     }
 
     let path = contract.pdf_path as string | null;

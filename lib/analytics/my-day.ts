@@ -12,6 +12,7 @@
  */
 import { supabase } from '@/utils/supabase';
 import { CUSTOM_FIELD_CODES } from '@/lib/orders-filter';
+import { byStatusCode } from '@/lib/own-crm/status-code';
 
 /** Сколько минут даётся на ответ новому лиду, прежде чем он станет горящим. */
 const LEAD_SLA_MINUTES = 30;
@@ -157,15 +158,14 @@ async function loadFunnel(managerId: number, today: Date) {
             .is('crm_deleted_at', null)
             .gte('created_at', monthStart)
             .limit(5000),
-        supabase.from('crm_statuses').select('external_code, group_id'),
+        supabase.from('crm_statuses').select('code, external_code, group_id'),
         supabase.from('crm_status_groups').select('id, name, color, ordering'),
     ]);
 
     const groupById = new Map(((groups ?? []) as any[]).map((g) => [String(g.id), g]));
-    const groupOfStatus = new Map(
-        ((statuses ?? []) as any[])
-            .filter((s) => s.external_code && s.group_id)
-            .map((s) => [String(s.external_code), String(s.group_id)]),
+    const groupOfStatus = byStatusCode(
+        ((statuses ?? []) as any[]).filter((s) => s.group_id),
+        (s) => String(s.group_id),
     );
 
     const totals = new Map<string, { count: number; amount: number }>();

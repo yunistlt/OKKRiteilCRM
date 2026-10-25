@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { byStatusCode, statusCodeOf, statusKeysOf } from '@/lib/own-crm/status-code';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { parseOrdersFilter, applyOrdersFilter, applyOverdueFilter, filterToCountParams } from '@/lib/orders-filter';
@@ -29,6 +30,34 @@ export async function GET(req: Request) {
      */
     if (filter.customer) {
         filter.customerIds = await clientIdsByText(filter.customer);
+    }
+
+    /**
+     * Поиск по товару: слова ищет база и сразу расставляет по совпадению.
+     *
+     * Правило владельца 20.10.2026: «поиск по прямому вхождению знаков, без
+     * учёта регистра и знаков препинания, сверху — с максимальным вхождением в
+     * условия поиска». Повод — жалоба Ирины Гордеевой: «поиск не ищет по
+     * обозначению, что стеллаж именно на 12 пар нужен, а он есть у нас».
+     * Раньше слова искались строго подряд, и «12 пар стеллаж» не находило
+     * «Сушильный стеллаж … На 12 пар обуви».
+     *
+     * Номера приходят уже в порядке совпадения — по нему и показываем строки,
+     * пока человек не выбрал свой порядок сам.
+     */
+    let searchRank: Map<number, number> | null = null;
+    if (filter.itemName.trim()) {
+        const { data: ranked, error: rankError } = await supabase.rpc('orders_search_ranked', {
+            q: filter.itemName.trim(),
+            max_rows: 300,
+        });
+        if (rankError) {
+            console.error('[orders/list] поиск не отработал:', rankError);
+        } else {
+            const rows = (ranked || []) as Array<{ order_id: number; rank: number }>;
+            searchRank = new Map(rows.map((row) => [Number(row.order_id), Number(row.rank)]));
+            filter.searchIds = rows.map((row) => Number(row.order_id));
+        }
     }
 
     /**
@@ -69,6 +98,12 @@ export async function GET(req: Request) {
     };
     const sortKey = SORTABLE[String(searchParams.get('sort') ?? '')] ?? 'created_at';
     const sortAsc = searchParams.get('dir') === 'asc';
+    /**
+     * При поиске строки идут по совпадению — самое полное сверху, как просил
+     * владелец. Выбрал человек свой порядок (нажал на заголовок колонки) —
+     * слушаемся его.
+     */
+    const byRelevance = Boolean(searchRank) && !searchParams.get('sort');
 
     // Менеджер видит заказы всех менеджеров (решение владельца 02.10.2026): без общего
     // списка не распознать ни дубли, ни постоянных клиентов — это двойная работа.
@@ -78,14 +113,12 @@ export async function GET(req: Request) {
     // Оттуда же берём порядок показа — он утверждён на доске «Статусы и переходы».
     const { data: ownStatuses } = await supabase
         .from('crm_statuses')
-        .select('external_code, name, norm_days, ordering, group_id, active')
-        .not('external_code', 'is', null);
-    const normByStatus = new Map<string, number | null>(
-        ((ownStatuses || []) as any[]).map((s) => [s.external_code, s.norm_days])
-    );
+        .select('code, external_code, name, norm_days, ordering, group_id, active');
+    const normByStatus = byStatusCode((ownStatuses || []) as any[], (s) => s.norm_days as number | null);
+    // Норматив проверяем по всем кодам статуса: старые заказы лежат с кодом RetailCRM.
     const norms = ((ownStatuses || []) as any[])
         .filter((s) => typeof s.norm_days === 'number' && s.norm_days >= 0)
-        .map((s) => ({ status: s.external_code as string, normDays: s.norm_days as number }));
+        .flatMap((s) => statusKeysOf(s).map((status) => ({ status, normDays: s.norm_days as number })));
 
     const base = () => {
         // Удалённые в CRM заказы в рабочем списке не показываем.
@@ -97,10 +130,18 @@ export async function GET(req: Request) {
     const from = (page - 1) * pageSize;
 
     const [listResult, statusResult, totalsResult] = await Promise.all([
-        base()
-            .select('order_id, number, status, created_at, status_since, manager_id, totalsumm, raw_payload', { count: 'exact' })
-            .order(sortKey, { ascending: sortAsc, nullsFirst: false })
-            .range(from, from + pageSize - 1),
+        byRelevance
+            // По совпадению порядок задаёт поиск, а не колонка таблицы: берём
+            // всё найденное и режем страницу уже в этом порядке.
+            // Триста строк: по поиску дальше никто не листает, а порядок по
+            // совпадению ставит нужное в начало. Меньше строк — быстрее ответ,
+            // у базы слабый диск.
+            ? base().select('order_id, number, status, created_at, status_since, manager_id, totalsumm, raw_payload', { count: 'exact' })
+                .range(0, 299)
+            : base()
+                .select('order_id, number, status, created_at, status_since, manager_id, totalsumm, raw_payload', { count: 'exact' })
+                .order(sortKey, { ascending: sortAsc, nullsFirst: false })
+                .range(from, from + pageSize - 1),
         // Количества по статусам считает база: выборкой их посчитать нельзя —
         // Supabase отдаёт максимум 1000 строк, и на 30 тысячах заказов целые
         // этапы пропадали из колонки. Фильтр по самому статусу не применяем,
@@ -117,7 +158,14 @@ export async function GET(req: Request) {
         error: 'read_failed', details: listResult.error.message }, { status: 500 });
     }
 
-    const rows = listResult.data || [];
+    const found = (listResult.data || []) as any[];
+    // При поиске страницу режем сами: порядок задан совпадением.
+    const rows = byRelevance && searchRank
+        ? [...found]
+            .sort((a, b) => (searchRank!.get(Number(b.order_id)) ?? 0) - (searchRank!.get(Number(a.order_id)) ?? 0)
+                || Number(b.order_id) - Number(a.order_id))
+            .slice(from, from + pageSize)
+        : found;
     const managerIds = Array.from(new Set(rows.map((r: any) => r.manager_id).filter(Boolean)));
 
     const [
@@ -158,16 +206,16 @@ export async function GET(req: Request) {
     const groupIconById = new Map<string, string | null>(
         ((ownGroups || []) as any[]).map((g) => [String(g.id), g.icon || null]),
     );
-    const statusIconMap = new Map<string, string | null>(
-        ((ownStatuses || []) as any[])
-            .filter((s) => s.external_code && s.group_id)
-            .map((s) => [String(s.external_code), groupIconById.get(String(s.group_id)) ?? null]),
+    const statusIconMap = byStatusCode(
+        ((ownStatuses || []) as any[]).filter((s) => s.group_id),
+        (s) => groupIconById.get(String(s.group_id)) ?? null,
     );
     const statusColorMap = new Map<string, string | null>([
         ...((statusColors || []) as any[]).map((s) => [s.code, s.color || null] as [string, string | null]),
-        ...((ownStatuses || []) as any[])
-            .filter((s) => s.external_code && s.group_id && groupColorById.get(String(s.group_id)))
-            .map((s) => [String(s.external_code), groupColorById.get(String(s.group_id))!] as [string, string | null]),
+        ...Array.from(byStatusCode(
+            ((ownStatuses || []) as any[]).filter((s) => s.group_id && groupColorById.get(String(s.group_id))),
+            (s) => groupColorById.get(String(s.group_id))!,
+        ).entries()),
     ]);
 
     // Дерево статусов с количествами для левой колонки.
@@ -187,11 +235,7 @@ export async function GET(req: Request) {
             .filter((g) => g.external_code)
             .map((g) => [String(g.external_code), Number(g.ordering ?? 999)]),
     );
-    const statusOrderByCode = new Map<string, number>(
-        ((ownStatuses || []) as any[])
-            .filter((s) => s.external_code)
-            .map((s) => [String(s.external_code), Number(s.ordering ?? 999)]),
-    );
+    const statusOrderByCode = byStatusCode((ownStatuses || []) as any[], (s) => Number(s.ordering ?? 999));
     // ЗАКОН: состав и порядок левой колонки берём с доски «Статусы и переходы»
     // (`crm_status_groups` / `crm_statuses`), а не из групп RetailCRM. Статус,
     // переставленный человеком в другую группу, должен ехать туда же и здесь.
@@ -201,10 +245,9 @@ export async function GET(req: Request) {
             { name: String(g.name || 'Без названия'), ordering: Number(g.ordering ?? 999), code: g.external_code ? String(g.external_code) : null },
         ]),
     );
-    const ownGroupIdByStatus = new Map<string, string>(
-        ((ownStatuses || []) as any[])
-            .filter((s) => s.external_code && s.group_id)
-            .map((s) => [String(s.external_code), String(s.group_id)]),
+    const ownGroupIdByStatus = byStatusCode(
+        ((ownStatuses || []) as any[]).filter((s) => s.group_id),
+        (s) => String(s.group_id),
     );
 
     type TreeStatus = { code: string; label: string; count: number; color: string | null; icon: string | null; ordering: number };
@@ -221,11 +264,12 @@ export async function GET(req: Request) {
     const shownCodes = new Set<string>();
     for (const own of ((ownStatuses || []) as any[])) {
         if (own.active === false) continue;
-        const code = String(own.external_code);
+        const code = statusCodeOf(own);
+        if (!code) continue;
         const group = own.group_id ? ownGroupById.get(String(own.group_id)) : undefined;
         if (!group) continue; // статус без группы на доске — показывать его негде
 
-        shownCodes.add(code);
+        for (const key of statusKeysOf(own)) shownCodes.add(key);
         pushStatus(
             String(own.group_id),
             { groupName: group.name, groupCode: group.code, ordering: group.ordering },
@@ -234,7 +278,8 @@ export async function GET(req: Request) {
                 // Название — из справочника RetailCRM (закон «имена из RetailCRM»),
                 // своё имя с доски — только если в справочнике его нет.
                 label: statusNames.get(code) || String(own.name || code),
-                count: counts.get(code) ?? 0,
+                // Заказы могут лежать и под старым кодом RetailCRM — считаем по обоим.
+                count: statusKeysOf(own).reduce((sum, key) => sum + (counts.get(key) ?? 0), 0),
                 color: statusColorMap.get(code) || null,
                 icon: statusIconMap.get(code) || null,
                 ordering: Number(own.ordering ?? 999),

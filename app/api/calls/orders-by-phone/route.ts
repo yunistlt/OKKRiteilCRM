@@ -16,6 +16,7 @@
  * в `lib/call-binding.ts` (ЗАКОН «один источник правды»).
  */
 import { NextResponse } from 'next/server';
+import { statusNamesByCode } from '@/lib/own-crm/status-code';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { ordersByPhone } from '@/lib/call-binding';
@@ -35,11 +36,7 @@ export async function GET(request: Request) {
 
     // Статус человеку — названием, а не кодом (ЗАКОН «только человеческий язык»).
     const codes = Array.from(new Set(orders.map((order) => order.status).filter(Boolean) as string[]));
-    const names = new Map<string, string>();
-    if (codes.length) {
-        const { data } = await supabase.from('crm_statuses').select('external_code, name').in('external_code', codes);
-        for (const row of ((data ?? []) as any[])) names.set(String(row.external_code), String(row.name));
-    }
+    const names = await statusNamesByCode(codes);
 
     return NextResponse.json({
         phone,

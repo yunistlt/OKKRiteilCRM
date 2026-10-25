@@ -1,5 +1,7 @@
 'use client';
 
+import { uploadOrderFile } from '@/lib/orders/upload-order-file';
+
 import { useCallback, useEffect, useState } from 'react';
 import { openPickerOnClick } from '@/components/ui/openPickerOnClick';
 import OrderMailPanel from '@/components/orders/OrderMailPanel';
@@ -292,11 +294,7 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
         setBusy(true);
         setNote(null);
         try {
-            const body = new FormData();
-            body.append('file', file);
-            const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files/upload`, { method: 'POST', body });
-            const payload = await res.json();
-            if (!res.ok) throw new Error(payload.error || 'Не удалось приложить файл');
+            await uploadOrderFile(orderNumber, file);
             setNote(`Приложен: ${file.name}`);
             load();
         } catch (e: any) {

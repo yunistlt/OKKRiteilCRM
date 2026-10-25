@@ -31,6 +31,56 @@ async function mergePdfs(parts: Buffer[]): Promise<Buffer> {
     return Buffer.from(await merged.save());
 }
 
+/**
+ * Положить готовый PDF в файлы заказа.
+ *
+ * В пути — отпечаток содержимого: пересобрали после правки состава, получили
+ * другой документ — он ложится рядом, а не затирает прежний (решение владельца
+ * 14.10.2026: файлы не должны перетираться). Тот же документ, собранный
+ * повторно, остаётся одним файлом.
+ */
+async function keepInOrderFiles(params: {
+    orderNumber: string;
+    pdf: Buffer;
+    fileName: string;
+    note: string;
+    pathPrefix: string;
+    author?: string | null;
+}): Promise<{ ok: true; path: string } | { ok: false; reason: string }> {
+    const stamp = createHash('sha256').update(params.pdf).digest('hex').slice(0, 8);
+    const path = `order-files/${safeStorageSegment(params.orderNumber, 40)}/contracts/${params.pathPrefix}-${stamp}.pdf`;
+
+    const upload = await supabase.storage.from(BUCKET).upload(path, new Uint8Array(params.pdf), {
+        contentType: 'application/pdf',
+        upsert: true,
+    });
+    if (upload.error) return { ok: false, reason: upload.error.message };
+
+    // Одна запись на ЭТОТ файл: тот же второй раз не заводим.
+    const { data: existing } = await supabase
+        .from('order_files')
+        .select('id')
+        .eq('order_number', params.orderNumber)
+        .eq('storage_path', path)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+    if (!existing) {
+        await supabase.from('order_files').insert({
+            order_number: params.orderNumber,
+            file_name: params.fileName,
+            content_type: 'application/pdf',
+            size_bytes: params.pdf.length,
+            storage_bucket: BUCKET,
+            storage_path: path,
+            note: params.note,
+            uploaded_by: params.author ?? null,
+        });
+    }
+
+    return { ok: true, path };
+}
+
 /** Данные спецификации из того же источника, что счёт и договор. */
 export function specificationFrom(data: OrderDocumentData, date: Date = new Date()): SpecificationData {
     const items = data.items.map((item) => ({
@@ -149,39 +199,37 @@ export async function buildContractKit(params: {
          * (решение владельца 14.10.2026: файлы не должны перетираться). Тот же
          * самый комплект, собранный повторно, остаётся одним файлом.
          */
-        const stamp = createHash('sha256').update(merged).digest('hex').slice(0, 8);
         const fileName = `Счёт, договор и спецификация №${params.orderNumber}.pdf`;
-        const path = `order-files/${safeStorageSegment(params.orderNumber, 40)}/contracts/kit-${params.contractId}-${stamp}.pdf`;
-
-        const upload = await supabase.storage.from(BUCKET).upload(path, new Uint8Array(merged), {
-            contentType: 'application/pdf',
-            upsert: true,
+        const kept = await keepInOrderFiles({
+            orderNumber: params.orderNumber,
+            pdf: merged,
+            fileName,
+            note: 'Счёт, договор и спецификация',
+            pathPrefix: `kit-${params.contractId}`,
+            author: params.author,
         });
-        if (upload.error) return { ok: false, reason: upload.error.message };
+        if (!kept.ok) return { ok: false, reason: kept.reason };
 
-        // Одна запись на ЭТОТ комплект: тот же файл второй раз не заводим.
-        const { data: existing } = await supabase
-            .from('order_files')
-            .select('id')
-            .eq('order_number', params.orderNumber)
-            .eq('storage_path', path)
-            .is('deleted_at', null)
-            .maybeSingle();
+        /**
+         * Спецификация ещё и отдельным файлом.
+         *
+         * Просьба Ирины Гордеевой 20.10.2026: «можно сделать отдельно файл
+         * спецификации? это нужно, чтобы сразу отправить клиенту спецификацию
+         * без счёта и договора в одном файле». Собирается она здесь же и из
+         * тех же данных — второй раз ничего не считаем, просто кладём рядом.
+         * Комплект остаётся как был: кому нужен один PDF на подпись, берёт
+         * его.
+         */
+        await keepInOrderFiles({
+            orderNumber: params.orderNumber,
+            pdf: specification,
+            fileName: `Спецификация №${params.orderNumber}.pdf`,
+            note: 'Спецификация к договору — отдельным файлом',
+            pathPrefix: `specification-${params.contractId}`,
+            author: params.author,
+        });
 
-        if (!existing) {
-            await supabase.from('order_files').insert({
-                order_number: params.orderNumber,
-                file_name: fileName,
-                content_type: 'application/pdf',
-                size_bytes: merged.length,
-                storage_bucket: BUCKET,
-                storage_path: path,
-                note: 'Счёт, договор и спецификация',
-                uploaded_by: params.author ?? null,
-            });
-        }
-
-        return { ok: true, path, fileName, pages };
+        return { ok: true, path: kept.path, fileName, pages };
     } catch (e: any) {
         console.error('[contract-kit] комплект не собрался:', e?.message || e);
         return { ok: false, reason: String(e?.message || e) };

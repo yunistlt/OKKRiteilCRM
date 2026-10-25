@@ -112,9 +112,23 @@ export function catalogQueryParts(query: string): { models: string[]; words: str
         .map((part) => part.replace(/[.,;]+$/, ''))
         .filter((part) => part.length >= 4);
 
+    /**
+     * Слова от трёх знаков — и ОТДЕЛЬНО числа, даже двузначные.
+     *
+     * Жалоба Ирины Гордеевой 20.10.2026: «поиск не ищет по обозначению, что
+     * стеллаж именно на 12 пар нужен, а он есть у нас». На запрос «сушильный
+     * стеллаж вираж эконом на 12 пар» выдавались стеллажи на 10 пар: «12»
+     * короче трёх знаков, и поиск выбрасывал его целиком — искал «стеллаж
+     * вираж эконом пар». Количество пар — это и есть обозначение изделия,
+     * терять его нельзя.
+     *
+     * Предлоги («на», «из», «от») отсеиваются по-прежнему: они не цифры и
+     * короче трёх знаков.
+     */
     const words = text
         .split(/[^a-zа-яё0-9]+/i)
-        .filter((word) => word.length >= 3 && !models.some((model) => model.includes(word)));
+        .filter((word) => (word.length >= 3 || /^\d+$/.test(word))
+            && !models.some((model) => model.includes(word)));
 
     return { models: Array.from(new Set(models)).slice(0, 4), words: Array.from(new Set(words)).slice(0, 6) };
 }

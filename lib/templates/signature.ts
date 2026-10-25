@@ -42,6 +42,23 @@ const catalogLineText = `${CATALOG_LABEL}: ${CATALOG_URL}`;
 
 export type Signature = { text: string; html: string };
 
+/**
+ * Подпись того, КТО ПИШЕТ письмо, а не того, за кем закреплён заказ.
+ *
+ * Логист отвечает по заказу менеджера продаж — под письмом должен стоять
+ * логист. Раньше подпись бралась по менеджеру заказа, и клиент звонил по
+ * вопросам логистики менеджеру ОП (жалоба Евгении Матвеевой 19.10.2026).
+ *
+ * Если человек в справочнике менеджеров не числится (роль без карточки),
+ * подписываемся менеджером заказа — лучше так, чем письмо без подписи.
+ */
+export async function senderSignature(
+    sessionManagerId: number | null | undefined,
+    orderManagerId: number | null | undefined,
+): Promise<Signature | null> {
+    return (await managerSignature(sessionManagerId)) ?? (await managerSignature(orderManagerId));
+}
+
 export async function managerSignature(managerId: number | null | undefined): Promise<Signature | null> {
     if (managerId == null) return null;
 
@@ -59,10 +76,18 @@ export async function managerSignature(managerId: number | null | undefined): Pr
     // набрать после ответа автоответчика.
     const phone = extension ? `${COMPANY_PHONE}, добавочный ${extension}` : COMPANY_PHONE;
 
+    /**
+     * Должности в подписи нет (решение владельца 20.10.2026).
+     *
+     * Раньше под каждым письмом стояло «Менеджер отдела продаж» — у всех, кто
+     * бы его ни писал. Письмо логиста уходило за подписью менеджера ОП, и
+     * клиенты потом звонили по вопросам логистики менеджерам продаж (жалоба
+     * Евгении Матвеевой 19.10.2026). Должности в справочнике нет, выдумывать
+     * её нельзя — строку убрали.
+     */
     const lines = [
         'С уважением,',
         name,
-        'Менеджер отдела продаж',
         COMPANY_NAME,
         phone,
         COMPANY_EMAIL,

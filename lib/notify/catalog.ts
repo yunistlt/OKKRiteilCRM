@@ -252,6 +252,29 @@ export const NOTIFY_TYPES: NotifyTypeDef[] = [
     target: 'group_sales',
   },
   {
+    code: 'improvements.done',
+    name: 'Доработка выполнена — автору',
+    description:
+      'Владелец отметил доработку выполненной: автору уходит его просьба и пояснение, '
+      + 'что именно сделано. Решение владельца 22.10.2026 — человек должен узнать ответ, '
+      + 'а не находить его в реестре случайно.',
+    group: 'quality',
+    bot: 'payments',
+    target: 'manager_dm',
+    targetFixed: true,
+  },
+  {
+    code: 'improvements.clarify',
+    name: 'Доработка: вопрос автору',
+    description:
+      'Из записи непонятно, что делать: автора просят расписать задание подробнее '
+      + 'и приложить скриншоты. Запись при этом остаётся в работе.',
+    group: 'quality',
+    bot: 'payments',
+    target: 'manager_dm',
+    targetFixed: true,
+  },
+  {
     code: 'calls.missed_incoming',
     name: 'Пропущенный входящий звонок',
     description: 'Клиент позвонил и не дозвонился — надо перезвонить.',

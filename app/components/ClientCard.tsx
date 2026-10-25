@@ -86,6 +86,14 @@ type CallRow = {
     hasRecording: boolean;
 };
 
+type HistoryRow = {
+    at: string;
+    field: string;
+    oldValue: string | null;
+    newValue: string | null;
+    actorName: string | null;
+};
+
 type EmailRow = {
     at: string;
     from: string | null;
@@ -162,10 +170,25 @@ export default function ClientCard({ clientId }: { clientId: string }) {
     const [duplicate, setDuplicate] = useState<{ clientId: string; clientName: string | null } | null>(null);
     const [merging, setMerging] = useState(false);
     const [relation, setRelation] = useState<Relation | null>(null);
+    /**
+     * Кто ведёт клиента. От этого зависят задачи «напомнить о себе» в плане
+     * дня, поэтому владелец карточки должен быть виден и меняться здесь же
+     * (доработки №32 и №37, 22.10.2026).
+     */
+    const [manager, setManager] = useState<{
+        id: number | null;
+        name: string | null;
+        options: Array<{ id: number; name: string }>;
+        canChange: boolean;
+    } | null>(null);
+    const [managerSaving, setManagerSaving] = useState(false);
+    const [managerError, setManagerError] = useState<string | null>(null);
     const [related, setRelated] = useState<Related[]>([]);
     const [orders, setOrders] = useState<OrderRow[]>([]);
     const [calls, setCalls] = useState<CallRow[]>([]);
     const [emails, setEmails] = useState<EmailRow[]>([]);
+    /** История карточки: кто и что менял — как в карточке заказа (решение владельца 22.10.2026). */
+    const [history, setHistory] = useState<HistoryRow[]>([]);
     const [phone, setPhone] = useState<string | null>(null);
     /**
      * Телефоны компании. Их несколько: приёмная, снабжение, мобильный
@@ -411,6 +434,25 @@ export default function ClientCard({ clientId }: { clientId: string }) {
         }
     };
 
+    const saveManager = async (managerId: number | null) => {
+        setManagerSaving(true);
+        setManagerError(null);
+        try {
+            const res = await fetch(`/api/clients/${clientId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ managerId }),
+            });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(payload.error || 'Менеджер не сохранился');
+            await load();
+        } catch (err: any) {
+            setManagerError(err.message);
+        } finally {
+            setManagerSaving(false);
+        }
+    };
+
     const load = useCallback(async () => {
         setLoading(true);
         try {
@@ -425,10 +467,12 @@ export default function ClientCard({ clientId }: { clientId: string }) {
             setClient(payload.client);
             setRequisites(payload.requisites);
             setRelation(payload.relation || null);
+            setManager(payload.manager || null);
             setRelated(payload.related || []);
             setOrders(payload.orders || []);
             setCalls(payload.calls || []);
             setEmails(payload.emails || []);
+            setHistory(payload.history || []);
             setPhone(payload.phone || null);
             setPhones(Array.isArray(payload.client?.phones) ? payload.client.phones.filter(Boolean) : []);
             setContacts(payload.contacts || []);
@@ -842,6 +886,35 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                 </div>
 
                 <div className="bg-white text-xs">
+                    {/* Кто ведёт клиента. Стоит первым: от владельца карточки
+                        зависят задачи «напомнить о себе» в плане дня, и раньше
+                        его не было видно вовсе (доработки №32 и №37). */}
+                    <div className="border-b border-gray-200 bg-gray-100 px-4 py-2 font-bold uppercase tracking-wide text-gray-700">
+                        Менеджер клиента
+                    </div>
+                    <div className="border-b border-gray-200 px-4 py-3">
+                        {manager?.canChange ? (
+                            <select
+                                value={manager.id ?? ''}
+                                disabled={managerSaving}
+                                onChange={(e) => void saveManager(e.target.value === '' ? null : Number(e.target.value))}
+                                className="w-full border border-gray-300 px-2 py-1 text-xs focus:border-blue-600 focus:outline-none disabled:opacity-50"
+                            >
+                                <option value="">Не закреплён</option>
+                                {manager.options.map((option) => (
+                                    <option key={option.id} value={option.id}>{option.name}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <div className="font-semibold text-gray-900">{manager?.name || 'Не закреплён'}</div>
+                        )}
+                        <div className="mt-1 text-[11px] text-gray-500">
+                            Задачи «напомнить о себе» по этому клиенту уходят ему. На премии прошлых
+                            заказов смена не влияет: зарплата считается по менеджеру на момент продажи.
+                        </div>
+                        {managerError && <div className="mt-1 text-[11px] text-red-600">{managerError}</div>}
+                    </div>
+
                     <div className="border-b border-gray-200 bg-gray-100 px-4 py-2 font-bold uppercase tracking-wide text-gray-700">
                         О компании
                     </div>
@@ -959,6 +1032,29 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                             <div className="text-[11px] text-gray-500">
                                 {new Date(mail.at).toLocaleDateString('ru-RU')} · {mail.outcome}
                                 {mail.orderNumber ? <> · заказ №<OrderNumberLink number={mail.orderNumber} /></> : ''}
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* История карточки — как в карточке заказа: кто передал
+                        клиента, кто правил реквизиты и телефоны. */}
+                    <div className="border-y border-gray-200 bg-gray-100 px-4 py-2 font-bold uppercase tracking-wide text-gray-700">
+                        История карточки
+                    </div>
+                    {history.length === 0 && (
+                        <div className="px-4 py-3 text-gray-500">
+                            Изменений по карточке пока не записано. Записываются правки, сделанные в ОКК: менеджер клиента, реквизиты, телефоны, объединение карточек.
+                        </div>
+                    )}
+                    {history.map((row, index) => (
+                        <div key={`${row.at}-${index}`} className="border-b border-gray-100 px-4 py-3">
+                            <div className="text-gray-900">{row.field}</div>
+                            <div className="text-[11px] text-gray-500">
+                                {row.oldValue || 'пусто'} → <span className="text-gray-900">{row.newValue || 'пусто'}</span>
+                            </div>
+                            <div className="text-[11px] text-gray-500">
+                                {new Date(row.at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                {row.actorName ? ` · ${row.actorName}` : ''}
                             </div>
                         </div>
                     ))}

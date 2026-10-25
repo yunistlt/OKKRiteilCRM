@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { managerSignature } from '@/lib/templates/signature';
+import { senderSignature } from '@/lib/templates/signature';
 import { supabase } from '@/utils/supabase';
 import { stripOrderThreadTag } from '@/lib/email';
 import { isNoReplySender } from '@/lib/email/classify';
@@ -101,7 +101,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         const orderEmail = isNoReplySender(orderEmailRaw) ? null : orderEmailRaw;
 
         // Подпись — из общего места: она одинакова в ответе, шаблоне и рассылке.
-        const sig = await managerSignature((order as any)?.manager_id ?? null);
+        const sig = await senderSignature(session.user?.retail_crm_manager_id ?? null, (order as any)?.manager_id ?? null);
         const signature = sig?.text ?? null;
 
         /**

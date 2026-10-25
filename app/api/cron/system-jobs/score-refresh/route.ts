@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   claimSystemJobs,
   completeSystemJob,
-  enqueueManagerAggregateRefreshJob,
   failSystemJob,
   isSystemJobsPipelineRuntimeEnabled,
 } from '@/lib/system-jobs';
@@ -14,7 +13,25 @@ import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-st
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 const WORKER_KEY = 'system_jobs.score_refresh';
-const MAX_SCORE_CONCURRENCY = 2;
+/**
+ * Сколько работ берёт один заход. Оценка заказа идёт около 25 секунд; шесть штук
+ * тройками — это две волны, около минуты, при лимите захода в пять минут.
+ */
+const MAX_SCORE_CONCURRENCY = 6;
+/**
+ * Сколько оценок разрешено считать одновременно.
+ *
+ * Было 2 — ровно столько же, сколько берёт один заход, поэтому следующий заход
+ * крона всегда получал пустой ответ и ждал, пока освободится предыдущий. Выходило
+ * две работы в минуту, и очередь из 1 159 работ не рассасывалась неделями.
+ *
+ * Шесть — это три захода внахлёст. Держать такой темп стало безопасно после
+ * 17.10.2026: главный пожиратель диска в оценке («звонки заказа» через
+ * call_order_link, 1 878 мс на запрос) ускорен до 10 мс.
+ */
+const MAX_SCORE_PARALLEL = 6;
+/** Сколько оценок считаем одновременно внутри одного захода. */
+const PARALLEL_EVALUATIONS = 3;
 
 function ensureAuthorized(req: NextRequest) {
   if (!isCronHeaderAuthorized(req)) {
@@ -43,7 +60,7 @@ export async function GET(req: NextRequest) {
       jobTypes: ['order_score_refresh'],
       limit: MAX_SCORE_CONCURRENCY,
       lockSeconds: 240,
-      maxProcessing: MAX_SCORE_CONCURRENCY,
+      maxProcessing: MAX_SCORE_PARALLEL,
       concurrencyKey: 'system_jobs.order_score_refresh',
     });
 
@@ -53,7 +70,13 @@ export async function GET(req: NextRequest) {
 
     const results: Array<Record<string, any>> = [];
 
-    for (const job of claimed) {
+    /**
+     * Одна оценка заказа — это почти минута ожидания чужих ответов: запросы к
+     * базе и к модели. Пока ждём один заказ, можно считать соседние, поэтому
+     * работы идут тройками, а не гуськом. Больше трёх не берём: за ними стоит
+     * один и тот же диск базы, а он у нас узкое место.
+     */
+    const processJob = async (job: any) => {
       const payload = (job.payload || {}) as { order_id?: number | string };
       const rawOrderId = payload.order_id;
       const orderId = rawOrderId ? Number(rawOrderId) : NaN;
@@ -61,7 +84,7 @@ export async function GET(req: NextRequest) {
       if (!Number.isFinite(orderId) || orderId <= 0) {
         await failSystemJob(job.id, 'Missing or invalid order_id', 300);
         results.push({ job_id: job.id, status: 'failed_validation' });
-        continue;
+        return;
       }
 
       try {
@@ -70,18 +93,18 @@ export async function GET(req: NextRequest) {
         const priorityResult = await refreshStoredPriorityForOrder(orderId, true);
         const managerId = priorityResult.managerId ? Number(priorityResult.managerId) : null;
 
-        if (managerId) {
-          await enqueueManagerAggregateRefreshJob({
-            managerId,
-            source: 'score_refresh_worker',
-            payload: {
-              order_id: orderId,
-              priority_status: priorityResult.status,
-            },
-            priority: 45,
-            parentJobId: job.id,
-          });
-        }
+        // Показатели менеджера здесь НЕ заказываем.
+        //
+        // Раньше после каждого пересчёта балла сюда ставилась просьба обновить
+        // показатели его менеджера. Но пересчёт показателей берёт ВСЕ данные за
+        // 35 дней и считает человека целиком — одной просьбы хватило бы на всех.
+        // А выходило по одной на каждый заказ: 1 293 задания за неделю на трёх
+        // человек, и 687 из них висели в очереди мёртвым грузом (разбор
+        // 16.10.2026). Защита от дублей работает в окне в минуту и такие пачки
+        // не схлопывает: ночная сверка идёт сорок минут.
+        //
+        // С 16.10.2026 показатели считаются по расписанию раз в три часа, для
+        // всех сразу — цепочка стала лишней.
 
         await completeSystemJob(job.id, {
           order_id: orderId,
@@ -109,6 +132,10 @@ export async function GET(req: NextRequest) {
           error: error.message,
         });
       }
+    };
+
+    for (let i = 0; i < claimed.length; i += PARALLEL_EVALUATIONS) {
+      await Promise.all(claimed.slice(i, i + PARALLEL_EVALUATIONS).map(processJob));
     }
 
     await recordWorkerSuccess(WORKER_KEY, { processed: results.length });

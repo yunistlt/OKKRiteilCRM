@@ -15,7 +15,7 @@
  */
 import { supabase } from '@/utils/supabase';
 import { addClientPhones, findOrCreateOwnClient } from './own-client';
-import { itemLabel, managerName, moneyValue, statusName, statusValue, writeOwnHistory } from './history-write';
+import { itemLabel, managerValue, moneyValue, statusName, statusValue, writeOwnHistory } from './history-write';
 
 /**
  * С какого номера идут наши строки заказов. `orders.id` у приехавших — это
@@ -32,7 +32,11 @@ export const OWN_NUMBER_BASE = 900_000;
  * Раньше здесь стоял собственный код `own-crm`, которого нет в справочнике
  * витрин. В карточке такое значение не переводилось на человеческий язык, и
  * менеджер видел слагом чужое имя вместо своего юрлица; реквизиты, расчётный
- * счёт и НДС из него тоже не выводятся. Юрлицо меняется в карточке заказа.
+ * счёт и НДС из него тоже не выводятся.
+ *
+ * Это значение по умолчанию: юрлицо выбирается в форме нового заказа и
+ * меняется в карточке (просьба Евгении Матвеевой 16.10.2026 — в форме выбора
+ * юрлица не было вовсе, и заказ ПОБТ приходилось переделывать).
  */
 export const OWN_SITE = 'zmktlt-ru';
 
@@ -139,6 +143,9 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         email: orderData.email || null,
         phone: orderData.phone || (orderData.phones || [])[0]?.number || null,
         contactName: [orderData.firstName, orderData.lastName].filter(Boolean).join(' ') || null,
+        // Карточка заводится на того, кто ведёт заказ: клиент не должен
+        // оставаться ничьим (разбор 16.10.2026).
+        managerId: orderData.managerId ?? null,
     };
     const client = await findOrCreateOwnClient(customerHints);
     const itemIds = await ownItemIds((orderData.items || []).length);
@@ -149,7 +156,8 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         ...orderData,
         id,
         number,
-        site: OWN_SITE,
+        // Юрлицо выбрал менеджер в форме заказа; не выбрал — наше по умолчанию.
+        site: orderData.site || OWN_SITE,
         // Клиента карточка читает из `customer.id` — закон проекта.
         ...(client
             ? {
@@ -197,7 +205,7 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         id,
         order_id: id,
         number,
-        site: OWN_SITE,
+        site: orderData.site || OWN_SITE,
         status: orderData.status || 'novyi-1',
         manager_id: orderData.managerId ?? null,
         is_own: true,
@@ -247,7 +255,7 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
             // Здесь годами писалось одно название «Новый» — 12 324 строки, на
             // которых вечерний отчёт падал с «invalid input syntax for type json».
             { field: 'status', newValue: await statusValue(payload.status || 'novyi-1') },
-            ...(managerId ? [{ field: 'manager', newValue: await managerName(managerId) }] : []),
+            ...(managerId ? [{ field: 'manager', newValue: managerValue(managerId) }] : []),
             ...(payload.orderMethod ? [{ field: 'order_method', newValue: String(payload.orderMethod) }] : []),
             ...(payload.customerComment ? [{ field: 'customer_comment', newValue: String(payload.customerComment) }] : []),
             ...(payload.managerComment ? [{ field: 'manager_comment', newValue: String(payload.managerComment) }] : []),
@@ -264,7 +272,7 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         managerId,
     );
 
-    return { success: true, id, number, order: { id, number, site: OWN_SITE }, own: true };
+    return { success: true, id, number, order: { id, number, site: payload.site }, own: true };
 }
 
 /**

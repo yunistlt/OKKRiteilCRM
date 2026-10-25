@@ -40,6 +40,12 @@ export interface OrdersFilter {
      * 06.10.2026: без него не найти дубль заявки по одному и тому же изделию.
      */
     itemName: string;
+    /**
+     * Номера заказов, найденных поиском по словам (`orders_search_ranked`),
+     * в порядке убывания совпадения. Считает их база — здесь только список,
+     * как и у дублей.
+     */
+    searchIds?: number[];
     managers: string[];
     statuses: string[];
     marks: string[];              // vip, bad
@@ -270,7 +276,18 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
      * Знаки препинания не важны: в каталоге одно и то же изделие пишут и через
      * дефис, и через длинное тире, и через пробел.
      */
-    if (filter.itemName) {
+    /**
+     * Поиск по словам: номера заказов уже посчитаны ранжированным поиском
+     * (`orders_search_ranked`), здесь только отбор по ним. Пустой список
+     * означает «не нашлось ничего» — показываем пустую таблицу, а не весь
+     * список.
+     *
+     * Старое условие по тексту осталось для вызовов, которые поиск не
+     * прогоняли (отчёты, служебные выборки).
+     */
+    if (filter.searchIds) {
+        q = filter.searchIds.length ? q.in('order_id', filter.searchIds) : q.eq('order_id', -1);
+    } else if (filter.itemName) {
         const v = itemNamePattern(filter.itemName);
         if (v) q = q.ilike('items_text', `%${v}%`);
     }
@@ -348,6 +365,9 @@ export function filterToCountParams(
         number: filter.number || '',
         customer: filter.customer || '',
         itemName: filter.itemName || '',
+        // Номера, найденные поиском: счётчики считают ровно по тем же
+        // заказам, что показаны в списке.
+        searchIds: filter.searchIds ?? [],
         // Счётчики статусов и «Итого» считают по тем же карточкам, что и список,
         // иначе цифры разойдутся с показанными строками.
         customerIds: filter.customerIds || [],

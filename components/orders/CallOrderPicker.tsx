@@ -110,6 +110,33 @@ export default function CallOrderPicker({
 
     return (
         <div className="mt-2 border border-gray-200">
+            {/* Номер заказа сразу под рукой.
+                Просьба Ирины Гордеевой 20.10.2026: «можно добавить, чтобы
+                вручную писать цифры, а не добавлять из списка? тратим время».
+                Ввод был и раньше, но лежал под списком заказов клиента —
+                номер менеджер слышит в разговоре и печатает быстрее, чем
+                ищет глазами. Поэтому поле первое и с курсором внутри, а
+                список остался ниже. */}
+            <div className="flex items-center gap-1 border-b border-gray-200 p-1.5">
+                <input
+                    autoFocus
+                    inputMode="numeric"
+                    value={manual}
+                    onChange={(e) => setManual(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') void bindByNumber(); }}
+                    placeholder="Номер заказа — введите и Enter"
+                    className="w-full border border-gray-300 px-2 py-1 text-[11px]"
+                />
+                <button
+                    type="button"
+                    disabled={saving || !manual.trim()}
+                    onClick={() => void bindByNumber()}
+                    className="shrink-0 border border-gray-900 bg-gray-900 px-2 py-1 text-[11px] font-semibold text-white disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-500"
+                >
+                    {saving ? '…' : 'Привязать'}
+                </button>
+            </div>
+
             {loading && <p className="px-2 py-1.5 text-[11px] text-gray-500">Ищем заказы этого номера…</p>}
 
             {!loading && orders.length > 0 && (
@@ -130,26 +157,8 @@ export default function CallOrderPicker({
             )}
 
             {!loading && !orders.length && (
-                <p className="px-2 py-1.5 text-[11px] text-gray-500">Заказов по этому номеру не нашли — введите номер.</p>
+                <p className="px-2 py-1.5 text-[11px] text-gray-500">Заказов по этому номеру не нашли.</p>
             )}
-
-            <div className="flex items-center gap-1 border-t border-gray-200 p-1.5">
-                <input
-                    value={manual}
-                    onChange={(e) => setManual(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') void bindByNumber(); }}
-                    placeholder="Номер заказа"
-                    className="w-full border border-gray-300 px-2 py-1 text-[11px]"
-                />
-                <button
-                    type="button"
-                    disabled={saving || !manual.trim()}
-                    onClick={() => void bindByNumber()}
-                    className="shrink-0 border border-gray-900 bg-gray-900 px-2 py-1 text-[11px] font-semibold text-white disabled:border-gray-200 disabled:bg-gray-200 disabled:text-gray-500"
-                >
-                    {saving ? '…' : 'Привязать'}
-                </button>
-            </div>
 
             {error && <p className="px-2 pb-1.5 text-[11px] text-red-700">{error}</p>}
         </div>

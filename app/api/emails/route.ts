@@ -75,7 +75,24 @@ export async function GET(req: Request) {
     if (!session) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(500, Math.max(20, parseInt(searchParams.get('limit') || '200', 10)));
+    /**
+     * Страницы, как во всех реестрах системы (золотой стандарт таблиц §6):
+     * 20/50/100 строк и переход по страницам, а не одна лента в двести писем.
+     */
+    const PAGE_SIZES = [20, 50, 100];
+    const requestedSize = parseInt(searchParams.get('pageSize') || '50', 10);
+    const pageSize = PAGE_SIZES.includes(requestedSize) ? requestedSize : 50;
+    const pageNumber = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
+    /**
+     * Писем два источника — входящие и исходящие лежат в разных таблицах, и
+     * страницу собираем склейкой. Поэтому из каждого берём столько, сколько
+     * может понадобиться на эту страницу, и режем уже после слияния.
+     */
+    const window = Math.min(2000, pageNumber * pageSize + 1);
+    const sortKey = ['date', 'subject', 'party'].includes(searchParams.get('sort') || '')
+        ? (searchParams.get('sort') as 'date' | 'subject' | 'party')
+        : 'date';
+    const ascending = searchParams.get('dir') === 'asc';
     const direction = searchParams.get('direction') || 'all'; // all | in | out
     const type = searchParams.get('type') || '';
     const search = (searchParams.get('search') || '').trim();
@@ -93,27 +110,32 @@ export async function GET(req: Request) {
     const wantIncoming = direction !== 'out';
     const wantOutgoing = direction !== 'in';
 
-    let incomingQuery = supabase
-        .from('incoming_emails')
-        .select('id, subject, from_email, from_name, to_email, body_text, email_type, status, received_at, has_attachments, attachments_meta, created_crm_order_number, assigned_manager_id')
-        .order('received_at', { ascending: false })
-        .limit(limit);
+    /**
+     * Отбор пишем один раз и применяем и к странице, и к подсчёту общего числа
+     * писем: иначе «найдено» разойдётся со списком.
+     */
+    const INCOMING_COLUMNS = 'id, subject, from_email, from_name, to_email, body_text, email_type, status, received_at, has_attachments, attachments_meta, created_crm_order_number, assigned_manager_id';
+    const OUTGOING_COLUMNS = 'id, subject, from_email, to_email, body_text, sent_at, has_attachments, attachments_meta, order_number';
 
-    let outgoingQuery = supabase
-        .from('outgoing_emails')
-        .select('id, subject, from_email, to_email, body_text, sent_at, has_attachments, attachments_meta, order_number')
-        .order('sent_at', { ascending: false })
-        .limit(limit);
+    /** Колонка, по которой упорядочиваем, — своя в каждой таблице. */
+    const INCOMING_SORT: Record<typeof sortKey, string> = { date: 'received_at', subject: 'subject', party: 'from_email' };
+    const OUTGOING_SORT: Record<typeof sortKey, string> = { date: 'sent_at', subject: 'subject', party: 'to_email' };
+
+    type Op = (query: any) => any;
+    const incomingOps: Op[] = [];
+    const outgoingOps: Op[] = [];
+    const applyIncoming = (query: any) => incomingOps.reduce((acc, op) => op(acc), query);
+    const applyOutgoing = (query: any) => outgoingOps.reduce((acc, op) => op(acc), query);
 
     if (from) {
-        incomingQuery = incomingQuery.gte('received_at', `${from}T00:00:00+03:00`);
-        outgoingQuery = outgoingQuery.gte('sent_at', `${from}T00:00:00+03:00`);
+        incomingOps.push((q) => q.gte('received_at', `${from}T00:00:00+03:00`));
+        outgoingOps.push((q) => q.gte('sent_at', `${from}T00:00:00+03:00`));
     }
     if (to) {
-        incomingQuery = incomingQuery.lte('received_at', `${to}T23:59:59+03:00`);
-        outgoingQuery = outgoingQuery.lte('sent_at', `${to}T23:59:59+03:00`);
+        incomingOps.push((q) => q.lte('received_at', `${to}T23:59:59+03:00`));
+        outgoingOps.push((q) => q.lte('sent_at', `${to}T23:59:59+03:00`));
     }
-    if (type) incomingQuery = incomingQuery.eq('email_type', type);
+    if (type) incomingOps.push((q) => q.eq('email_type', type));
 
     /**
      * «Разбор» и «Мои» отбираем ЗАПРОСОМ, а не фильтром по последним двум
@@ -124,15 +146,15 @@ export async function GET(req: Request) {
      * 11.10.2026).
      */
     if (scope === 'unlinked') {
-        incomingQuery = incomingQuery
+        incomingOps.push((q) => q
             .is('created_crm_order_number', null)
-            .not('email_type', 'in', `(${Array.from(NOT_FOR_TRIAGE).join(',')})`);
+            .not('email_type', 'in', `(${Array.from(NOT_FOR_TRIAGE).join(',')})`));
     }
 
     if (scope === 'mine') {
         const managerId = Number(session.user.retail_crm_manager_id) || null;
         if (!managerId) {
-            return NextResponse.json({ emails: [], stats: null, types: Object.entries(TYPE_LABELS).map(([code, label]) => ({ code, label })) });
+            return NextResponse.json({ emails: [], stats: null, total: 0, page: pageNumber, pageSize, hasMore: false, types: Object.entries(TYPE_LABELS).map(([code, label]) => ({ code, label })) });
         }
 
         const { data: myOrders } = await supabase
@@ -144,28 +166,46 @@ export async function GET(req: Request) {
 
         const numbers = ((myOrders ?? []) as any[]).map((row) => String(row.number)).filter(Boolean);
         if (!numbers.length) {
-            return NextResponse.json({ emails: [], stats: null, types: Object.entries(TYPE_LABELS).map(([code, label]) => ({ code, label })) });
+            return NextResponse.json({ emails: [], stats: null, total: 0, page: pageNumber, pageSize, hasMore: false, types: Object.entries(TYPE_LABELS).map(([code, label]) => ({ code, label })) });
         }
 
-        incomingQuery = incomingQuery.in('created_crm_order_number', numbers);
-        outgoingQuery = outgoingQuery.in('order_number', numbers);
+        incomingOps.push((q) => q.in('created_crm_order_number', numbers));
+        outgoingOps.push((q) => q.in('order_number', numbers));
     }
     if (search) {
-        incomingQuery = incomingQuery.or(`subject.ilike.%${search}%,from_email.ilike.%${search}%`);
-        outgoingQuery = outgoingQuery.or(`subject.ilike.%${search}%,to_email.ilike.%${search}%`);
+        incomingOps.push((q) => q.or(`subject.ilike.%${search}%,from_email.ilike.%${search}%`));
+        outgoingOps.push((q) => q.or(`subject.ilike.%${search}%,to_email.ilike.%${search}%`));
     }
 
-    const [incoming, outgoing] = await Promise.all([
-        wantIncoming ? incomingQuery : Promise.resolve({ data: [] as any[], error: null }),
-        /**
-         * Тип письма есть только у входящих — при фильтре по типу исходящие не
-         * показываем. В «Разборе» их нет по смыслу: там входящие без заказа, и
-         * если брать исходящие, они съедают страницу и список выглядит почти
-         * пустым (поймано 11.10.2026).
-         */
-        wantOutgoing && !type && scope !== 'unlinked'
-            ? outgoingQuery
-            : Promise.resolve({ data: [] as any[], error: null }),
+    /**
+     * Тип письма есть только у входящих — при фильтре по типу исходящие не
+     * показываем. В «Разборе» их нет по смыслу: там входящие без заказа, и
+     * если брать исходящие, они съедают страницу и список выглядит почти
+     * пустым (поймано 11.10.2026).
+     */
+    const takeIncoming = wantIncoming;
+    const takeOutgoing = wantOutgoing && !type && scope !== 'unlinked';
+
+    const empty = Promise.resolve({ data: [] as any[], error: null, count: 0 });
+
+    const [incoming, outgoing, incomingCount, outgoingCount] = await Promise.all([
+        takeIncoming
+            ? applyIncoming(supabase.from('incoming_emails').select(INCOMING_COLUMNS))
+                .order(INCOMING_SORT[sortKey], { ascending })
+                .limit(window)
+            : empty,
+        takeOutgoing
+            ? applyOutgoing(supabase.from('outgoing_emails').select(OUTGOING_COLUMNS))
+                .order(OUTGOING_SORT[sortKey], { ascending })
+                .limit(window)
+            : empty,
+        // Сколько писем всего под этим отбором — для счётчика и числа страниц.
+        takeIncoming
+            ? applyIncoming(supabase.from('incoming_emails').select('id', { count: 'exact', head: true }))
+            : empty,
+        takeOutgoing
+            ? applyOutgoing(supabase.from('outgoing_emails').select('id', { count: 'exact', head: true }))
+            : empty,
     ]);
 
     if (incoming.error) console.warn('[emails] входящие не прочитались:', incoming.error.message);
@@ -228,9 +268,19 @@ export async function GET(req: Request) {
             emailId: null,
             assignedManagerId: null,
         })),
-    ].sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
+    ].sort((a, b) => {
+        // Склеенный список упорядочиваем тем же ключом, что и каждую таблицу.
+        const left = sortKey === 'date' ? String(a.date ?? '')
+            : sortKey === 'subject' ? String(a.subject ?? '')
+                : String(a.partyEmail ?? '');
+        const right = sortKey === 'date' ? String(b.date ?? '')
+            : sortKey === 'subject' ? String(b.subject ?? '')
+                : String(b.partyEmail ?? '');
+        const order = sortKey === 'date' ? left.localeCompare(right) : left.localeCompare(right, 'ru');
+        return ascending ? order : -order;
+    });
 
-    const page = rows.slice(0, limit);
+    const pageRows = rows.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
 
     /**
      * Клиент и его менеджер — по адресу собеседника. Без них список писем не
@@ -238,7 +288,7 @@ export async function GET(req: Request) {
      * 05.10.2026: «можно в почте добавить менеджера, название компании и
      * электронную почту клиента»).
      */
-    const addresses = Array.from(new Set(page.map((r) => String(r.partyEmail || '').trim().toLowerCase()).filter(Boolean)));
+    const addresses = Array.from(new Set(pageRows.map((r) => String(r.partyEmail || '').trim().toLowerCase()).filter(Boolean)));
     const clientByEmail = new Map<string, { id: number; name: string; managerId: number | null }>();
 
     if (addresses.length) {
@@ -268,7 +318,7 @@ export async function GET(req: Request) {
      * «Отправленные» общего ящика rop@zmktlt.ru, отправитель там один на всех.
      * Поэтому письмо связывает с человеком заказ, а не адрес.
      */
-    const orderNumbers = Array.from(new Set(page.map((r) => String(r.orderNumber || '').trim()).filter(Boolean)));
+    const orderNumbers = Array.from(new Set(pageRows.map((r) => String(r.orderNumber || '').trim()).filter(Boolean)));
     const managerByOrder = new Map<string, number>();
     if (orderNumbers.length) {
         const { data: orders } = await supabase
@@ -288,7 +338,7 @@ export async function GET(req: Request) {
         row.assignedManagerId ??
         null;
 
-    const managerIds = Array.from(new Set(page.map(managerOf).filter(Boolean))) as number[];
+    const managerIds = Array.from(new Set(pageRows.map(managerOf).filter(Boolean))) as number[];
     const managerNames = new Map<number, string>();
     if (managerIds.length) {
         const { data: managers } = await supabase
@@ -334,7 +384,7 @@ export async function GET(req: Request) {
         };
     }
 
-    const withClients = page.map((row) => {
+    const withClients = pageRows.map((row) => {
         const client = clientByEmail.get(String(row.partyEmail || '').trim().toLowerCase()) || null;
         const managerId = managerOf(row);
         return {
@@ -353,9 +403,27 @@ export async function GET(req: Request) {
         return true;
     });
 
+    /**
+     * Сколько писем всего под этим отбором.
+     *
+     * В «Разборе» честного числа нет: письмо с нашим тегом в теме заказ уже
+     * нашло, и отсеивается оно уже после выборки — такое условие запросом не
+     * выразить. Поэтому там общее число не называем (закон «любое число
+     * раскладывается до исходных данных»), а страницы листаются, пока письма
+     * есть. Сколько писем ждёт разбора — написано над списком отдельно.
+     */
+    const total = scope === 'unlinked'
+        ? null
+        : Number((incomingCount as any)?.count ?? 0) + Number((outgoingCount as any)?.count ?? 0);
+
     return NextResponse.json({
         emails: visible,
         stats,
+        total,
+        page: pageNumber,
+        pageSize,
+        /** Есть ли что показать дальше — для «Вперёд», когда общего числа нет. */
+        hasMore: rows.length > pageNumber * pageSize,
         types: Object.entries(TYPE_LABELS).map(([code, label]) => ({ code, label })),
     });
 }

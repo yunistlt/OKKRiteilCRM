@@ -6,6 +6,7 @@ import OrdersStatusSidebar, { type StatusGroup } from '@/components/orders/Order
 import ViewSettingsModal from '@/components/orders/ViewSettingsModal';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
 import { EMPTY_FILTER, filterToSearchParams, type OrdersFilter } from '@/lib/orders-filter';
+import { fetchViewRegistry } from '@/lib/orders-view-registry';
 import { ORDER_COLUMNS, DEFAULT_COLUMNS, normalizeSelection } from '@/lib/orders-view';
 import StatusIcon from '@/components/orders/StatusIcon';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
@@ -91,6 +92,8 @@ export default function OrdersClient() {
     }, []);
 
     const [filter, setFilter] = useState<OrdersFilter>(EMPTY_FILTER);
+    /** Последнее состояние полей фильтра, включая ещё не применённое. */
+    const draftRef = useRef<OrdersFilter>(EMPTY_FILTER);
     const [orders, setOrders] = useState<OrderRow[]>([]);
     const [statusTree, setStatusTree] = useState<StatusGroup[]>([]);
     const [managers, setManagers] = useState<Array<{ value: string; label: string }>>([]);
@@ -156,6 +159,8 @@ export default function OrdersClient() {
 
     const [registry, setRegistry] = useState<typeof ORDER_COLUMNS>(ORDER_COLUMNS);
     const registryRef = useRef<typeof ORDER_COLUMNS>(ORDER_COLUMNS);
+    /** Реестр колонок доехал: пока нет — выбор не сохраняем, чтобы его не урезать. */
+    const registryLoaded = useRef(false);
 
     /**
      * Порядок строк и ширина колонок — настройки человека, а не экрана: лежат
@@ -245,21 +250,21 @@ export default function OrdersClient() {
         // Сначала реестр, потом выбор: иначе сохранённые поля карточки
         // выкинулись бы как «неизвестные».
         (async () => {
-            try {
-                const res = await fetch('/api/orders/view-fields');
-                const data = await res.json();
-                if (Array.isArray(data.columns) && data.columns.length) {
-                    registryRef.current = data.columns;
-                    setRegistry(data.columns);
-                }
-            } catch {
-                // Реестр не пришёл — остаются постоянные колонки.
+            const list = await fetchViewRegistry<typeof ORDER_COLUMNS[number]>('columns');
+            if (list) {
+                registryRef.current = list;
+                setRegistry(list);
+                registryLoaded.current = true;
             }
 
             try {
                 const res = await fetch('/api/settings/view?viewKey=orders.columns');
                 const data = await res.json();
-                setColumns(normalizeSelection(data.settings?.items, registryRef.current, DEFAULT_COLUMNS));
+                const saved = data.settings?.items;
+                // Реестр не пришёл — выбранные колонки не урезаем (доработка №38).
+                setColumns(list
+                    ? normalizeSelection(saved, list, DEFAULT_COLUMNS)
+                    : (Array.isArray(saved) && saved.length ? saved as string[] : DEFAULT_COLUMNS));
             } catch {
                 // Выбор не пришёл — остаются колонки по умолчанию.
             }
@@ -281,6 +286,7 @@ export default function OrdersClient() {
     }, []);
 
     const saveColumns = async (next: string[]) => {
+        if (!registryLoaded.current) return;
         setColumns(next);
         setColumnsOpen(false);
         await fetch('/api/settings/view', {
@@ -488,7 +494,8 @@ export default function OrdersClient() {
                 value={filter}
                 managers={managers}
                 statuses={statusTree.flatMap((g) => g.statuses.map((s) => ({ value: s.code, label: s.label })))}
-                onApply={(next) => { setFilter(next); setPage(1); }}
+                onApply={(next) => { draftRef.current = next; setFilter(next); setPage(1); }}
+                onDraftChange={(next) => { draftRef.current = next; }}
                 open={filterOpen}
                 onOpenChange={(next) => { setFilterOpen(next); saveLayout({ filterOpen: next }); }}
             />
@@ -497,8 +504,12 @@ export default function OrdersClient() {
                 <div className="hidden md:block">
                     <OrdersStatusSidebar
                         tree={statusTree}
+                        loading={loading}
                         selected={filter.statuses}
-                        onSelect={(statuses) => { setFilter({ ...filter, statuses }); setPage(1); }}
+                        /* Вместе со статусом применяем набранное в панели фильтра:
+                           иначе менеджер и дата, введённые до клика по статусу,
+                           молча не учитывались (доработка №28). */
+                        onSelect={(statuses) => { setFilter({ ...draftRef.current, statuses }); setPage(1); }}
                         collapsed={sidebarCollapsed}
                         onCollapsedChange={(next) => { setSidebarCollapsed(next); saveLayout({ sidebarCollapsed: next }); }}
                     />
@@ -523,7 +534,7 @@ export default function OrdersClient() {
                                 {columns.map((key, index) => (
                                     <th
                                         key={key}
-                                        className="relative px-4 py-3 text-[13px] font-normal"
+                                        className="group relative px-4 py-3 text-[13px] font-normal"
                                         style={widths[key] ? { width: widths[key], minWidth: widths[key] } : undefined}
                                     >
                                         <span className="flex items-center justify-between gap-2">
@@ -561,12 +572,19 @@ export default function OrdersClient() {
                                             )}
                                         </span>
                                         {/* Ширину колонки тянут за правый край, как в
-                                            RetailCRM. Запоминается за человеком. */}
+                                            RetailCRM. Запоминается за человеком.
+                                            Полоса шириной в пиксель была невидимой и
+                                            про неё не знали («можно самим сделать
+                                            регулировку по ширине столбцов?» — доработка
+                                            №30, Лена Парфёнова, 21.10.2026): теперь
+                                            граница видна, а взяться можно за 7 px. */}
                                         <span
                                             onMouseDown={(e) => startResize(e, key)}
-                                            className="absolute right-0 top-0 h-full w-1 cursor-col-resize select-none hover:bg-blue-400"
-                                            title="Потяните, чтобы изменить ширину"
-                                        />
+                                            className="absolute right-0 top-0 flex h-full w-[7px] translate-x-[3px] cursor-col-resize select-none items-stretch justify-center"
+                                            title="Потяните, чтобы изменить ширину столбца"
+                                        >
+                                            <span className="w-px bg-gray-300 transition-colors group-hover:bg-blue-400" />
+                                        </span>
                                     </th>
                                 ))}
                             </tr>

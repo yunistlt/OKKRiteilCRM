@@ -28,6 +28,8 @@ type Improvement = {
     doneBy: string | null;
     /** Что исправлено — человеческим языком, для того, кто написал доработку. */
     doneNote: string | null;
+    clarifyNote?: string | null;
+    clarifyBy?: string | null;
     /** Сборка, в которой правка уехала на прод: её видно под логотипом ОКК. */
     doneBuild: string | null;
 };
@@ -153,12 +155,54 @@ export default function ImprovementsRegistry() {
         }
     };
 
-    const mark = async (id: number, value: boolean) => {
+    /**
+     * Спросить автора, что он имел в виду: запись остаётся в работе, вопрос
+     * виден в реестре и уходит человеку сообщением от бота (решение владельца
+     * 22.10.2026 — «пусть сформулирует подробно с приложенными скриншотами»).
+     */
+    const askAuthor = async (id: number, draft?: string | null) => {
+        const note = prompt(
+            'Что уточнить у автора? Вопрос уйдёт ему сообщением и останется в записи.',
+            draft || 'Из записи непонятно, что нужно сделать. Опишите, пожалуйста, подробнее: что сейчас мешает, что должно получиться, и приложите скриншоты.',
+        );
+        if (note === null || !note.trim()) return;
+
         try {
             const res = await fetch('/api/improvements', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, done: value }),
+                body: JSON.stringify({ id, action: 'clarify', note: note.trim() }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Вопрос не отправился');
+            setCard((current) => (current && current.id === id ? payload.improvement : current));
+            await load();
+        } catch (e: any) {
+            setError(e.message || 'Вопрос не отправился');
+        }
+    };
+
+    const mark = async (id: number, value: boolean, draftNote?: string | null) => {
+        /**
+         * Пояснение к отметке спрашиваем здесь же: оно и остаётся в реестре, и
+         * уходит автору сообщением от бота (решение владельца 22.10.2026).
+         * Отмена окошка — отметку не ставим: пустой ответ человеку бесполезен.
+         */
+        let note: string | null = null;
+        if (value) {
+            note = prompt(
+                'Что сделано? Это пояснение увидит автор доработки — оно уйдёт ему сообщением.',
+                draftNote ?? '',
+            );
+            if (note === null) return;
+            note = note.trim() || null;
+        }
+
+        try {
+            const res = await fetch('/api/improvements', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, done: value, note }),
             });
             const payload = await res.json();
             if (!res.ok) throw new Error(payload.error || 'Отметка не поставилась');
@@ -226,6 +270,12 @@ export default function ImprovementsRegistry() {
                 {/* Что исправлено — прямо в строке: человек, написавший
                     доработку, должен это прочитать, не открывая карточку
                     (задание владельца 15.10.2026). */}
+                {item.clarifyNote && !closed && (
+                    <div className="mt-1 border-l-2 border-amber-400 pl-2 text-[11px] text-amber-800">
+                        Спросили автора: {item.clarifyNote}
+                    </div>
+                )}
+
                 {item.doneNote && (
                     <div className="mt-2 border-l-2 border-green-700 bg-green-50 px-3 py-2 text-xs text-gray-800">
                         <span className="font-semibold text-green-800">Что исправлено: </span>
@@ -237,10 +287,21 @@ export default function ImprovementsRegistry() {
                 )}
             </div>
 
+            {canClose && !closed && (
+                <button
+                    type="button"
+                    onClick={(event) => { event.stopPropagation(); void askAuthor(item.id, item.clarifyNote); }}
+                    className="shrink-0 border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-100"
+                    title="Попросить автора расписать подробнее"
+                >
+                    Спросить автора
+                </button>
+            )}
+
             {canClose && (
                 <button
                     type="button"
-                    onClick={(event) => { event.stopPropagation(); void mark(item.id, !closed); }}
+                    onClick={(event) => { event.stopPropagation(); void mark(item.id, !closed, item.doneNote); }}
                     className={closed
                         ? 'shrink-0 border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-100'
                         : 'shrink-0 border border-green-700 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-700 hover:text-white'}
@@ -464,7 +525,7 @@ export default function ImprovementsRegistry() {
                             <div className="flex justify-end border-t border-gray-200 px-4 py-3">
                                 <button
                                     type="button"
-                                    onClick={() => void mark(card.id, !card.doneAt)}
+                                    onClick={() => void mark(card.id, !card.doneAt, card.doneNote)}
                                     className={card.doneAt
                                         ? 'border border-gray-300 px-4 py-1.5 text-sm font-semibold text-gray-600 hover:bg-gray-100'
                                         : 'border border-green-700 px-4 py-1.5 text-sm font-semibold text-green-700 hover:bg-green-700 hover:text-white'}

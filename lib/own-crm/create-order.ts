@@ -11,6 +11,7 @@ import { itemTotalWithDiscount, orderTotals } from './discount';
 import { assignManagerForNewOrder } from './assign-manager';
 import { clientHintsForOrder } from './lead-client';
 import { insertOwnOrder } from './own-order-insert';
+import { sellerOptions } from './documents';
 
 export type NewOrderItem = {
     /** Название позиции — то, что увидит клиент в счёте. */
@@ -44,6 +45,11 @@ export type NewOrder = {
     statusCode?: string | null;
     customerComment?: string | null;
     managerComment?: string | null;
+    /**
+     * Наше юрлицо-продавец (магазин). От него идут реквизиты, расчётный счёт и
+     * НДС. Не выбрано — заказ заводится на юрлицо по умолчанию.
+     */
+    site?: string | null;
     /** Разовая скидка на заказ, рублями. */
     discountAmount?: number | null;
     /** Разовая скидка на заказ, процентом. */
@@ -151,6 +157,23 @@ export async function createManagerOrder(order: NewOrder): Promise<CreatedOrder>
         })),
         source: { source: 'crm-manager' },
     };
+
+    /**
+     * Юрлицо, выбранное менеджером в форме. Пустое не передаём — иначе затрём
+     * значение по умолчанию пустотой.
+     *
+     * Код сверяем со справочником витрин: от юрлица идут реквизиты, счёт и
+     * НДС, и заказ на несуществующем юрлице молча остался бы без них. Если сам
+     * справочник не ответил (пустой список), берём то, что выбрал человек: не
+     * заводить заказ из-за недоступного справочника хуже.
+     */
+    if (order.site) {
+        const known = await sellerOptions().catch(() => []);
+        if (known.length && !known.some((option) => option.code === order.site)) {
+            throw new Error('Выбранного юрлица нет в справочнике — обновите страницу и выберите заново.');
+        }
+        orderData.site = order.site;
+    }
 
     if (order.phone) orderData.phone = order.phone;
     if (order.email) orderData.email = order.email;

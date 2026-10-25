@@ -101,7 +101,7 @@ var WIDGET_CONFIG = {
         greetingShown: 'okk_lc_greeting_shown'
     },
     maxHistory: 20,
-    pollingInterval: 3000,
+    pollingInterval: 10000,
     autoExpandDelay: ${cfg.auto_expand_delay_ms},
     greetingDelay1: ${cfg.greeting_delay1_ms},
     greetingDelay2: ${cfg.greeting_delay2_ms},
@@ -747,7 +747,19 @@ async function initWidget() {
     hookNativeCallback();
     // Перепроверяем exit-intent при каждом возврате на страницу (bfcache/history navigation)
     window.addEventListener('pageshow', function() { setupExitIntent(); });
-    setInterval(poll, WIDGET_CONFIG.pollingInterval);
+    /*
+       Опрашиваем сервер только когда есть что получать: вкладка на экране и
+       разговор уже начат (или окно чата открыто). Раньше каждая открытая
+       страница сайта дёргала /api/widget/chat каждые 3 секунды — на этом
+       22.10.2026 лёг прокси: 8 600 запросов из 20 000 были отсюда.
+    */
+    setInterval(function() {
+        if (document.hidden) return;
+        var started = localStorage.getItem(WIDGET_CONFIG.storageKeys.hasInteracted) === 'true'
+            || localStorage.getItem(WIDGET_CONFIG.storageKeys.widgetOpen) === 'true';
+        if (!started) return;
+        poll();
+    }, WIDGET_CONFIG.pollingInterval);
 }
 
 var wasInitialized = localStorage.getItem('okk_lc_first_load_done');

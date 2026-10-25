@@ -6,7 +6,44 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 OKKRiteilCRM — a Next.js 14 (App Router) CRM/quality-control platform for a Russian retail business. It ingests data from **RetailCRM** (orders) and **Telphin** (phone calls), transcribes and analyzes calls, scores order/manager quality against configurable rules, and runs a fleet of specialized AI agents (each with a Russian persona/name) on top of that data. Deployed on **Vercel**; data lives in **Supabase (Postgres)**.
 
+> ## ⚠️ ОТ RETAILCRM ОТВЯЗАЛИСЬ — вся работа в нашей базе
+>
+> Решение владельца, в силе с 09.10.2026. **ОКК — единственная система учёта.**
+> Заказы, статусы, правки, оплаты, заявки всех служб и звонки живут только у нас.
+> **RetailCRM — архив на чтение**, и он уже не пополняется: подкачка заказов
+> выключена 05.10.2026, звонки (`retailcrm_calls`) не приходят с 09.10.2026.
+>
+> **Что это значит на практике:**
+> - Пустая или отставшая таблица с префиксом `retailcrm_` — это норма, а не
+>   поломка. Не «чинить» такие синки и не предлагать брать данные оттуда.
+> - Источник звонков — `raw_telphin_calls` + наша привязка `call_order_matches`
+>   (представление `call_order_link`). Ветка через `retailcrm_calls` там осталась
+>   только ради дней до отвязки.
+> - Запись в RetailCRM запрещена и закреплена сторожем
+>   `tests/retailcrm-read-only.test.ts`. Единственная дверь правки заказа —
+>   `editOrder` (`lib/own-crm/edit-order.ts`).
+> - Заметки и документы, написанные до октября 2026, в части «берём из RetailCRM»
+>   устарели — сверяйся с этим абзацем.
+
 **Language policy (hard rule):** All user-facing text, AI-generated reasons, rule names, and explanations MUST be in **Russian**. Internal logic, slugs, filtering, and data comparisons use technical codes only. Never hardcode Russian display strings or status lists in logic — fetch mappings dynamically from the DB. See `.agent/workflows/constraints.md`.
+
+## Нагрузка — проверять до выкатки (ЗАКОН)
+
+Любая правка оценивается на нагрузку ДО выкатки: сколько запросов в минуту она
+добавит («частота × вкладки × люди», для виджета — «× одновременные посетители
+сайта») и какой план у её запросов к базе.
+
+Правила фонового опроса во фронте и виджете:
+
+- интервал не чаще 5 с;
+- скрытую вкладку не опрашиваем (`document.hidden`);
+- не опрашиваем, пока нечего получать (виджет — только при начатом разговоре).
+
+Почему: 22.10.2026 сервис лежал час. Нагрузка копилась неделю — виджет «Елена»
+всегда давал 60–170 тыс. запросов в день, окно входящего звонка (с 07.10)
+добавило ещё 100–220 тыс.; вместе ~1350 запросов в секунду при пяти работающих
+людях. Прокси перед Vercel упёрся в лимиты и отдавал 504, хотя база простаивала.
+После выкатки смотреть коды ответов и топ URL в `access.log` на VPS-прокси.
 
 ## Commands
 
@@ -28,39 +65,13 @@ npm run legal:regression               # legal agents regression
 npm run messenger:api-smoke            # smoke test against deployed messenger API
 ```
 
-**Выкатка (решение владельца 02.10.2026): прод — ветка `main`, Vercel деплоит push в неё.** Правка, сделанная по заданию, не считается сделанной, пока лежит в feat-ветке: люди работают на `main`. Довожу до прода сам — `git push origin <ветка>:main` (перемотка, когда ветка идёт поверх main) — и называю владельцу короткий хеш сборки, он сверяет его под логотипом ОКК. Инцидент 02.10.2026: шесть фиксов пролежали день в `feat/own-crm-core`, менеджер работал на вчерашней сборке и повторно жаловался на уже исправленное.
-
-**ЗАКОН (решение владельца 02.10.2026): ничего не выдумываем от себя.** Делаем ровно то, что сказал владелец. Кнопки, поля, экраны, «удобные» механики, которых не просили, не появляются. Появилась идея — сначала предложение словами («хочу сделать то-то, потому что то-то») и согласование, и только потом код. Инцидент: самодельная кнопка «Подставить в заказ» в реквизитах заказа.
-
-**ЗАКОН (решение владельца 06.10.2026): ОДИН ИСТОЧНИК ПРАВДЫ.** У каждого значения ровно одно место хранения. Нужны те же данные в другом месте — берём их ИЗ источника, а не держим копию. Логи, даты, смены, параметры — храним, это не копии, а история.
-
-Повод — инцидент 06.10.2026, стоивший менеджерам рабочего дня. Статус заказа хранился в двух местах: колонка `orders.status` и копия в `raw_payload.status`. Колонку обновляет наше приложение, копию — перенос из RetailCRM; перенос отключили, и они разъехались у 17 заказов. Я решил, что права копия, проверил догадку на двух заказах из семнадцати и выровнял все — заказы, переданные в производство, вернулись в «Счёт на оплате» (жалобы Евгении Матвеевой и Елены Парфёновой: 54932, 54131, 53666, 54691, 54836).
-
-Отсюда два следствия, оба обязательны:
-1. **Пока у значения два места хранения, выравнивать их автоматически НЕЛЬЗЯ** — любое направление затирает чью-то правду. Сначала убрать второе место, потом синхронизировать.
-2. **Массовая правка боевых данных — только после поштучной сверки.** Показать «было → станет» по КАЖДОЙ строке с обоснованием из независимого источника (история, RetailCRM), и лишь потом выполнять. Семнадцать строк — это не «массово», это семнадцать проверок. Если защита от массовой правки сработала — это повод проверять дальше, а НЕ искать обход и не передавать команду владельцу на выполнение.
-
-**У каждого значения — своё поле.** Снимок (`orders.raw_payload` и подобные) — это ЗАПИСЬ ИСТОРИИ: по нему видно, каким значение было раньше. Источником истины снимок не является и рабочим полем не подменяется. Читать рабочее значение из снимка нельзя — только из его поля.
-
-**Кому вообще можно читать снимок (решение владельца 06.10.2026):** истории заказа — она для того и нужна; и отдельному запросу, который мы осознанно пишем под разбор или аналитику. Больше ничего к снимкам не обращается. Экраны, списки, расчёты, отчёты, API — только поля.
-
-Как к этому пришли: `raw_payload` — снимок заказа целиком из RetailCRM, 43 поля, из них 39 продублированы колонками. Пока работал перенос, писало одно место и закон не нарушался. Перенос отключили, менеджеры работают в ОКК — и писать стали два места: статус заказа из RetailCRM меняется только в колонке, а правка своего заказа идёт в снимок. Отсюда все поломки 06.10.2026: статусы, пустые витрины у 22 116 заказов, НДС белорусских заказов, «перевыполненный» план сентября.
-
-Статус заказа: единственный источник — колонка `orders.status`. `status_since`, `statusUpdatedAt`, `statusComment` — не дубли, а история и параметры, их держим.
-
-**ЗАКОН (решение владельца 04.10.2026): ни одного заказа без активного менеджера.** У каждого заказа есть хозяин из работающих сейчас людей — «ничьих» заказов и заказов на уволенных быть не должно: их никто не ведёт, они не попадают ни в план дня, ни в оценки, ни в зарплату. При раздаче **смотрим, за кем закреплён клиент заказа**: все заказы одного контрагента идут одному менеджеру, а если у клиента уже есть заказы у кого-то из команды — туда же. Иначе постоянный клиент достанется чужому менеджеру, а в зарплате будет считаться новым. Распределение — клиентами, не отдельными заказами; выравнивание по числу заказов делается между клиентами.
-
-**ЗАКОН (решение владельца 02.10.2026): номер заказа — всегда ссылка в карточку заказа.** Везде, где номер показан человеку (списки звонков и писем, планы дня, отчёты, модалки, уведомления, юридические документы), он кликабельный и ведёт на `/orders?order=<НОМЕР>`. Только через `components/ui/OrderNumberLink.tsx` — свой `<a>` под это не писать. Подробности в `golds/GOLD_UI_TABLES.md` §8.
-
-**ЗАКОН (решение владельца 02.10.2026): ничего не создаём, не проверив, что такого уже нет.** Таблица, колонка, поле, функция, эндпоинт, настройка — сначала поиск, потом решение: `select table_name from information_schema.tables where table_name ilike '%тема%'`, `select column_name from information_schema.columns where table_name='...'`, `select proname from pg_proc where proname ilike '%...%'`, плюс `grep` по `migrations/` и `lib/`. И отдельно — **кто ещё пишет в эту таблицу**: `upsert_clients` / `upsert_orders_v2` / триггеры колонок могут затирать новые поля пустотой из RetailCRM (тогда правь их тем же изменением, через `COALESCE(NULLIF(новое,''), своё)`). Дополнить существующее всегда лучше, чем завести рядом ещё одно (инцидент: таблица `client_requisites` при живых колонках реквизитов в `clients`).
-
-Migrations are raw SQL in `migrations/` (341 files as of 2026-10-01, date-prefixed). There is no migration runner framework — `scripts/migrate.js` / `scripts/apply-migration.js` execute a hardcoded file via `postgres`-js against `DATABASE_URL` from `.env.local`. To apply a new migration, point one of those scripts at it or run the SQL directly. Migrations must be additive/backwards-compatible (new columns with defaults, no breaking changes).
+Migrations are raw SQL in `migrations/` (123+ files, date-prefixed). There is no migration runner framework — `scripts/migrate.js` / `scripts/apply-migration.js` execute a hardcoded file via `postgres`-js against `DATABASE_URL` from `.env.local`. To apply a new migration, point one of those scripts at it or run the SQL directly. Migrations must be additive/backwards-compatible (new columns with defaults, no breaking changes).
 
 ## Architecture
 
 ### Request flow & auth
-- `middleware.ts` gates every route. Public prefixes (`/login`, `/api/auth`, `/api/cron`, `/api/sync`, `/api/matching`, `/api/monitoring`, `/api/widget`) plus the PWA files `/messenger-sw.js` and `/manifest.webmanifest` bypass auth (the service worker MUST stay public — behind auth the browser's background update request gets redirected to login and the UI stays frozen on cached code); everything else requires a session.
-- Auth is JWT-based via `jose` (`lib/auth.ts`), supporting two sources: Supabase tokens (`sb-access-token`) and a legacy `auth_session` cookie. Roles: `admin | okk | rop | manager | jurist | demo` (`AppRole` in `lib/auth.ts`). **Passwords are currently stored in plain text** — `verifyPassword` compares strings despite the `password_hash` column name; known debt, task `P-5` in `docs/own-crm/ROADMAP.md`.
+- `middleware.ts` gates every route. Public prefixes (`/login`, `/api/auth`, `/api/cron`, `/api/sync`, `/api/matching`, `/api/monitoring`, `/api/widget`) bypass auth; everything else requires a session.
+- Auth is JWT-based via `jose` (`lib/auth.ts`), supporting two sources: Supabase tokens (`sb-access-token`) and a legacy `auth_session` cookie. Roles: `admin | okk | rop | manager | demo`.
 - RBAC is a route-prefix → allowed-roles table in `lib/rbac.ts` (`DEFAULT_ROUTE_RULES`). `lib/rbac-server.ts` resolves it server-side (rules can be overridden in DB). When adding a page or API route, add a matching `RouteRule` or it inherits the longest-prefix match — `tests/rbac-coverage.test.ts` enforces this (page↔API role parity + a baseline of legacy uncovered routes; new routes must get their own rule).
 
 ### Database access
@@ -73,7 +84,7 @@ External events (RetailCRM order changes, Telphin call/recording webhooks) are *
 - **Job queue**: `lib/system-jobs.ts` defines `SystemJobType`, `enqueueSystemJob`, `claimSystemJobs`, `completeSystemJob`, `failSystemJob`, idempotency keys, retry/backoff, concurrency keys, and dead-lettering.
 - **Worker routes**: `app/api/cron/system-jobs/<job>/route.ts`. Each is a `GET` handler (`export const dynamic = 'force-dynamic'`, `maxDuration = 300`), checks `CRON_SECRET` via `Authorization: Bearer`, gates on a runtime feature flag (`isSystemJobsPipelineRuntimeEnabled`), claims a small batch with a concurrency cap, and records success/failure via `lib/system-worker-state.ts`.
 - **Schedules**: `vercel.json` `crons` — most run every 1–2 minutes (order delta/upsert, call match, transcription, semantic rules, score refresh), plus nightly reconciliation, watchdog (every 5 min), system audit (every 4h).
-- **Principles** (`docs/ARCHITECTURE.md`): webhook-first with poller fallback; each domain object has one canonical table (`orders`, `raw_telphin_calls`, `raw_order_events`) — legacy tables are read-only fallbacks. **Calls are mid-migration:** the owner's rule is that `retailcrm_calls` (order number straight from RetailCRM) is the source of truth and our matching (`call_order_matches`, ~29% wrong) is only a fallback; OKK and transcription still read `raw_telphin_calls` — task `C-3`; idempotency everywhere; graceful degradation when OpenAI/RetailCRM are down.
+- **Principles** (`docs/ARCHITECTURE.md`): webhook-first with poller fallback; each domain object has one canonical table (`orders`, `raw_telphin_calls`, `raw_order_events`) — legacy tables are read-only fallbacks; idempotency everywhere; graceful degradation when OpenAI/RetailCRM are down.
 
 ### AI agents
 Each agent is a specialized module that reads from one table and writes to one table/queue — they hand off via tables, not synchronous calls. The personas (Семён/OKK consultant, Анна/order facts, Максим/rules & penalties, Игорь/SLA, Елена/lead catcher, plus the Legal team Лев/Дарья/Борис/Григорий) are the **source of truth** documented in `docs/ai-team/STAFF_ROLES.md`. Read it before modifying agent logic.
@@ -86,7 +97,6 @@ Major subsystems (each is a cluster of `lib/*.ts` + `app/api/*` + `app/<feature>
 - **Legal AI** — `lib/legal-*.ts` (consultant, contract analysis, OCR, antivirus, counterparty check).
 - **Lead Catcher ("Елена")** — `app/api/lead-catcher/*`, `app/lead-catcher`, embeddable widget (`/api/widget`).
 - **Corporate Messenger** — `lib/messenger/`, `app/messenger`. Has web-push and a separate release runbook.
-- **Своя CRM (own-crm)** — `lib/own-crm/`, `app/orders`, `app/clients`, `migrations/2026092*`/`2026100*`. The strategic track: RetailCRM is a temporary source, order/client fields now live in `orders`/`clients` columns named exactly as RetailCRM names them (126 columns in `orders`), filled by triggers `orders_fill_retailcrm_columns` / `order_items_sync`. `orders.is_own` + `managers.own_crm` mark orders that live only here. **Read `docs/own-crm/OVERVIEW.md` (as-built) and `docs/own-crm/ROADMAP.md` (numbered tasks Z/K/T/M/C/A/P) before touching orders, clients or sync.**
 - **Salary ОП ("Зарплата")** — `lib/salary/`, `app/salary`, `app/api/salary/*`. Composable bonus-block engine (per-manager schemes/roles), effective-dated, zero-hardcode. **Read `docs/salary/OVERVIEW.md` (as-built canonical guide) before changing anything.** UI follows `golds/`.
 
 ### Conventions

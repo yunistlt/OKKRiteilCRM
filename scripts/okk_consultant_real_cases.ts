@@ -115,15 +115,15 @@ async function loadEvidenceByOrderId(orderId: number, historyLimit: number = 10)
     const [commentRows, emailRows, callStatsRows, callRows, historyRows, orderRows] = await Promise.all([
         sql<{ count: string }[]>`
             SELECT COUNT(*)::text AS count
-            FROM public.raw_order_events
+            FROM public.order_history_log
             WHERE retailcrm_order_id = ${orderId}
-              AND event_type ILIKE '%comment%'
+              AND field ILIKE '%comment%'
         `,
         sql<{ count: string }[]>`
             SELECT COUNT(*)::text AS count
-            FROM public.raw_order_events
+            FROM public.order_history_log
             WHERE retailcrm_order_id = ${orderId}
-              AND event_type ILIKE '%email%'
+              AND field ILIKE '%email%'
         `,
         sql<{ total_calls: string; transcript_calls: string }[]>`
             SELECT

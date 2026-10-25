@@ -20,13 +20,20 @@ interface OrdersStatusSidebarProps {
     /** Свёрнута ли колонка. Запоминается за человеком списком заказов. */
     collapsed?: boolean;
     onCollapsedChange?: (collapsed: boolean) => void;
+    /**
+     * Идёт ли загрузка. Без этого признака колонка, пока данные в пути, писала
+     * «Заказов под текущий фильтр нет» — и люди читали это как ответ системы:
+     * заказов нет. 16.10.2026 по этой надписи аварию полдня искали не там,
+     * хотя список просто ещё не пришёл.
+     */
+    loading?: boolean;
 }
 
 /**
  * Левая колонка списка заказов — повторяет RetailCRM: этапы с количеством, под ними
  * статусы. Цвет группы берём из цвета её статусов, чтобы взгляд цеплялся так же.
  */
-export default function OrdersStatusSidebar({ tree, selected, onSelect, collapsed: collapsedProp, onCollapsedChange }: OrdersStatusSidebarProps) {
+export default function OrdersStatusSidebar({ tree, selected, onSelect, collapsed: collapsedProp, onCollapsedChange, loading = false }: OrdersStatusSidebarProps) {
     /**
      * Свёрнута колонка статусов или нет — личная настройка, переживающая
      * обновление страницы (жалоба владельца 05.10.2026). Хранит её список
@@ -118,7 +125,13 @@ export default function OrdersStatusSidebar({ tree, selected, onSelect, collapse
                 );
             })}
 
-            {tree.length === 0 && <p className="px-4 py-4 text-sm text-gray-500">Заказов под текущий фильтр нет.</p>}
+            {/* Пока данные в пути — говорим об этом, а не «заказов нет»:
+                иначе человек принимает ожидание за пустой результат. */}
+            {tree.length === 0 && (
+                <p className="px-4 py-4 text-sm text-gray-500">
+                    {loading ? 'Загружаем заказы…' : 'Заказов под текущий фильтр нет.'}
+                </p>
+            )}
         </aside>
     );
 }

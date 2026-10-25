@@ -18,6 +18,7 @@
  * ошибается примерно в трети случаев.
  */
 import { supabase } from '@/utils/supabase';
+import { statusKeysOf } from '@/lib/own-crm/status-code';
 import { findOrderCandidatesByPhone } from '@/lib/call-matching';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { cachedAiResult } from '@/lib/ai-cache';
@@ -115,8 +116,8 @@ export async function ordersByPhone(phone: string, limit = 20): Promise<OrderCho
 
 /** Какие статусы считаем работающими: заказ в них ведут прямо сейчас. */
 async function workingStatuses(): Promise<Set<string>> {
-    const { data } = await supabase.from('crm_statuses').select('external_code, is_working').eq('is_working', true);
-    return new Set(((data ?? []) as any[]).map((r) => String(r.external_code)).filter(Boolean));
+    const { data } = await supabase.from('crm_statuses').select('code, external_code, is_working').eq('is_working', true);
+    return new Set(((data ?? []) as any[]).flatMap((r) => statusKeysOf(r)));
 }
 
 /**
