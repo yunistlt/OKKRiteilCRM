@@ -522,7 +522,7 @@ export default function OrderMailPanel({ orderNumber, onUnread }: { orderNumber:
                                         письмо не ушло, и отправит второе. */}
                                     {message.sentCopyMissing && (
                                         <p className="mt-1 border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-900">
-                                            Клиенту отправлено, но в почтовом ящике этого письма пока не видно — копия ещё едет.
+                                            Клиенту отправлено. В почтовом ящике этого письма нет — ищите его здесь.
                                         </p>
                                     )}
 
