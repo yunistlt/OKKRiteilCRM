@@ -36,6 +36,15 @@
         "3041"
       ],
       "port": 3041
+    },
+    {
+      "name": "staging",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:staging"
+      ],
+      "port": 3051
     }
   ]
 }
