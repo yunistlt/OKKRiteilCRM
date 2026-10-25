@@ -15,7 +15,7 @@ export default async function DebugPage() {
     try {
         diagnosticStep = 'Reading Statuses';
         const { data: statuses, error: readError } = await supabase
-            .from('statuses')
+            .from('crm_statuses')
             .select('*')
             .limit(1);
 

@@ -170,14 +170,12 @@ export async function GET(req: Request) {
 
     const [
         { data: managers },
-        { data: statusColors },
         { data: cfDict },
         { data: ownGroups },
     ] = await Promise.all([
         managerIds.length
             ? supabase.from('managers').select('id, first_name, last_name').in('id', managerIds)
             : Promise.resolve({ data: [] as any[] }),
-        supabase.from('statuses').select('code, color, group_name'),
         supabase.from('retailcrm_dictionaries').select('dictionary_code, item_code, item_name').eq('entity_type', 'customField').in('dictionary_code', ['typ_castomer', 'sfera_deiatelnosti']),
         // Порядок групп — наш, с доски «Статусы и переходы»: его утверждал
         // человек, а не RetailCRM. Связь по external_code.
@@ -218,8 +216,8 @@ export async function GET(req: Request) {
         ((ownStatuses || []) as any[]).filter((s) => s.group_id),
         (s) => groupIconById.get(String(s.group_id)) ?? null,
     );
+    // ЗАКОН: цвет статуса — цвет его этапа, других источников цвета нет.
     const statusColorMap = new Map<string, string | null>([
-        ...((statusColors || []) as any[]).map((s) => [s.code, s.color || null] as [string, string | null]),
         ...Array.from(byStatusCode(
             ((ownStatuses || []) as any[]).filter((s) => s.group_id && groupColorById.get(String(s.group_id))),
             (s) => groupColorById.get(String(s.group_id))!,
