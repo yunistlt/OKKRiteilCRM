@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { loadStatusPalette } from '@/lib/own-crm/status-code';
 import { createSupabaseUserClient } from '@/utils/supabase-user';
 import { getEffectiveCapabilityForRole } from '@/lib/access-control-server';
 import { getSession } from '@/lib/auth';
@@ -112,12 +113,12 @@ export async function GET(req: Request) {
     const statusCodes = Array.from(new Set((activeOrders || []).map(o => o.status).filter(Boolean)));
     let statusMap: Record<string, { name: string; color: string | null }> = {};
     if (statusCodes.length > 0) {
-        const { data: statuses } = await readClient
-            .from('statuses')
-            .select('code, name, color')
-            .in('code', statusCodes);
-
-        statusMap = Object.fromEntries((statuses || []).map(s => [s.code, { name: s.name, color: s.color }]));
+        // Как показать статус — одна функция на проект: имя с доски, цвет этапа.
+        const palette = await loadStatusPalette();
+        statusMap = Object.fromEntries(statusCodes.map((code: string) => [code, {
+            name: palette.get(code)?.name ?? code,
+            color: palette.get(code)?.color ?? null,
+        }]));
     }
 
     // 5b. Загружаем все статусы для фильтра по текущему массиву заказов без ограничения page/pageSize.
@@ -134,16 +135,12 @@ export async function GET(req: Request) {
 
     let availableStatuses: Array<{ code: string; label: string; color: string | null }> = [];
     if (availableStatusCodes.length > 0) {
-        const { data: availableStatusRows } = await readClient
-            .from('statuses')
-            .select('code, name, color')
-            .in('code', availableStatusCodes);
-
-        availableStatuses = (availableStatusRows || [])
-            .map(status => ({
-                code: status.code,
-                label: status.name || status.code,
-                color: status.color || null,
+        const palette = await loadStatusPalette();
+        availableStatuses = availableStatusCodes
+            .map((code: string) => ({
+                code,
+                label: palette.get(code)?.name || code,
+                color: palette.get(code)?.color || null,
             }))
             .sort((a, b) => a.label.localeCompare(b.label));
     }

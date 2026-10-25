@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { loadStatusPalette } from '@/lib/own-crm/status-code';
 import { detectViolations } from '@/lib/violations';
 import { calculateEfficiency } from '@/lib/efficiency';
 
@@ -117,13 +118,10 @@ export async function GET(
         const managerViolations = allViolations.filter(v => v.manager_id === managerId);
 
         // 5. Fetch Statuses for reference
-        const { data: statusesData } = await supabase
-            .from('statuses')
-            .select('code, name, color');
-
+        // Как показать статус — одна функция на проект: имя с доски, цвет этапа.
         const statusMap: Record<string, { name: string, color?: string }> = {};
-        statusesData?.forEach((s: any) => {
-            statusMap[s.code] = { name: s.name, color: s.color };
+        (await loadStatusPalette()).forEach((look, code) => {
+            statusMap[code] = { name: look.name, color: look.color ?? undefined };
         });
 
         // Enrich calls with status names & colors

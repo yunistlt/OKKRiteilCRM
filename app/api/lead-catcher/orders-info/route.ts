@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { loadStatusPalette } from '@/lib/own-crm/status-code';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,13 +22,18 @@ export async function POST(request: Request) {
                 .from('managers')
                 .select('id, first_name, last_name'),
             supabase
-                .from('statuses')
+                .from('crm_statuses')
                 .select('code, name, color')
         ]);
 
         const ordersList = ordersRes.data || [];
         const managersList = managersRes.data || [];
-        const statusesList = statusesRes.data || [];
+        // Имя и цвет статуса — одна функция на проект.
+        const statusesList = Array.from(await loadStatusPalette(), ([code, look]) => ({
+            code,
+            name: look.name,
+            color: look.color,
+        }));
 
         const managersMap = new Map<number, string>(managersList.map((m: any) => [m.id, `${m.first_name || ''} ${m.last_name || ''}`.trim()]));
         const statusesMap = new Map<string, { name: string | null; color: string | null }>(

@@ -2,6 +2,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { loadStatusPalette } from '@/lib/own-crm/status-code';
 import { editOrder } from '@/lib/own-crm/edit-order';
 import { fieldValue } from '@/lib/own-crm/field-names';
 import { formatEventValue, COMMUNICATION_FIELD_PATTERNS } from '@/lib/order-events';
@@ -97,16 +98,13 @@ export async function POST(request: Request) {
         console.log('[AIRouter] Starting with options:', options);
 
         // 0a. Get ALL active statuses for name and color mapping
-        const { data: allStatuses } = await supabase
-            .from('statuses')
-            .select('code, name, color')
-            .eq('is_active', true);
-
+        // Имя и цвет статуса — одна функция на проект.
+        const palette = await loadStatusPalette();
         const statusMap = new Map<string, string>(
-            allStatuses?.map((s: any) => [s.code, s.name]) || []
+            Array.from(palette, ([code, look]) => [code, look.name])
         );
         const statusColorMap = new Map<string, string>(
-            allStatuses?.map((s: any) => [s.code, s.color]) || []
+            Array.from(palette, ([code, look]) => [code, look.color ?? ''])
         );
 
 

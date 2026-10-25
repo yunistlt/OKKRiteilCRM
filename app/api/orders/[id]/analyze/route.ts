@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { analyzeOrderWithAI } from '@/lib/prioritization';
 import { supabase } from '@/utils/supabase';
+import { loadStatusPalette } from '@/lib/own-crm/status-code';
 import { resolveOrderRef } from '@/lib/own-crm/order-ref';
 import { resolveRetailCRMLabel } from '@/lib/retailcrm/mapping';
 
@@ -79,13 +80,9 @@ export async function POST(
         const items = (payload.items || []) as any[];
         const productInfo = items.map(i => `${i.offer?.name || i.name} (x${i.quantity})`).join(', ') || "Нет товаров";
 
-        // Get human-readable status name (optional, but good for context)
-        const { data: statusSetting } = await supabase
-            .from('statuses')
-            .select('name')
-            .eq('code', order.status)
-            .single();
-        const statusName = statusSetting?.name || order.status;
+        // Имя статуса — одна функция на проект: доска «Статусы и переходы».
+    // Ищем по обоим кодам: старые заказы лежат под кодом времён RetailCRM.
+        const statusName = (await loadStatusPalette()).get(String(order.status))?.name || order.status;
 
         const extraContext = {
             productInfo,
