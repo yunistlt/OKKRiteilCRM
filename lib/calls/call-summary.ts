@@ -12,7 +12,7 @@
 import { supabase } from '@/utils/supabase';
 import { formatEventValue } from '@/lib/order-events';
 import { buildFieldLabelResolver } from '@/lib/order-field-labels';
-import { statusKeysOf, statusNamesByCode } from '@/lib/own-crm/status-code';
+import { loadStatusNames, statusNamesByCode } from '@/lib/own-crm/status-code';
 
 export type CallSummary = {
     orderNumber: string;
@@ -116,17 +116,9 @@ export async function callSummary(orderId: number): Promise<CallSummary | null> 
 
     // Коды статусов в истории переводим в имена: закон проекта — только
     // человеческий язык, «tender-s-dubliruyuschimi-zayavkami» никому не понятно.
-    const [{ data: allStatuses }, { data: crmStatuses }] = await Promise.all([
-        supabase.from('crm_statuses').select('code, external_code, name'),
-        // Коды RetailCRM шире нашего справочника: заказы ходят с их кодами
-        // («dubliu-zaiavki»), и без этого в сводке был бы латинский код.
-        supabase.from('retailcrm_dictionaries').select('item_code, item_name').eq('entity_type', 'status'),
-    ]);
-    const statusNames = new Map<string, string>();
-    for (const st of ((crmStatuses ?? []) as any[])) statusNames.set(String(st.item_code), String(st.item_name));
-    for (const st of ((allStatuses ?? []) as any[])) {
-        for (const key of statusKeysOf(st)) statusNames.set(key, String(st.name));
-    }
+    // Имя статуса — одно на весь проект, с доски «Статусы и переходы»:
+    // старые коды заказов («dubliu-zaiavki») на ней тоже подписаны.
+    const statusNames = await loadStatusNames();
 
     const lastHistory = (((history as any).data ?? []) as any[])
         .map((event) => {

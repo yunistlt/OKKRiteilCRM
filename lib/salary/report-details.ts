@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { statusNamesByCode } from '@/lib/own-crm/status-code';
 import { getConfigForPeriod } from '@/lib/salary/config';
 import {
     evaluateDuplicate,
@@ -211,14 +212,8 @@ export async function buildIncomingByManager(
     for (const r of (methodRows as any[]) ?? []) methodName.set(r.item_code, r.item_name);
 
     // Человеческие имена статусов-эталонов («Тендер» / «Ожидание выхода тендера»)
-    // для текста причины (имена из CRM).
-    const { data: refStatusRows } = await supabase
-        .from('retailcrm_dictionaries')
-        .select('item_code,item_name')
-        .eq('entity_type', 'status')
-        .in('item_code', rule.reference_statuses);
-    const refNameByCode = new Map<string, string>();
-    for (const r of (refStatusRows as any[]) ?? []) refNameByCode.set(r.item_code, r.item_name);
+    // для текста причины: имя статуса живёт на доске «Статусы и переходы».
+    const refNameByCode = await statusNamesByCode(rule.reference_statuses);
     const referenceStatusLabel = rule.reference_statuses
         .map((code) => refNameByCode.get(code) || code)
         .join(' / ');

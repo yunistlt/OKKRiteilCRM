@@ -1,5 +1,6 @@
 import { ConsultantOrder, OrderEvidence } from '@/lib/okk-consultant';
 import { supabase } from '@/utils/supabase';
+import { statusNamesByCode } from '@/lib/own-crm/status-code';
 import { countOrderEventsByField, COMMENT_FIELD_PATTERNS, EMAIL_FIELD_PATTERNS } from '@/lib/order-events';
 
 const CONTEXT_CACHE_TTL_MS = 1000 * 60 * 2;
@@ -54,7 +55,10 @@ export async function loadConsultantOrder(orderId: number, userRole: string, ret
             ? supabase.from('managers').select('first_name, last_name').eq('id', managerId).maybeSingle()
             : Promise.resolve({ data: null }),
         orderRow?.status
-            ? supabase.from('statuses').select('name, color').eq('code', orderRow.status).maybeSingle()
+            // Имя статуса — с доски «Статусы и переходы», одно на весь проект.
+            ? statusNamesByCode([String(orderRow.status)]).then((names) => ({
+                data: { name: names.get(String(orderRow.status)) ?? null },
+            }))
             : Promise.resolve({ data: null }),
     ]);
 

@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
+import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +13,9 @@ export async function GET() {
             .eq('is_transcribable', true);
 
         // Fetch Statuses for enrichment
-        const { data: statusesData } = await supabase.from('statuses').select('code, name, color');
+        // Названия и цвет статусов — с доски «Статусы и переходы».
+        const statusesData = (await loadStatusDirectory({ withInactive: true }))
+            .map((row) => ({ code: row.code, name: row.name, color: row.color }));
         const statusMap: Record<string, { name: string, color?: string }> = {};
         statusesData?.forEach((s: any) => {
             statusMap[s.code] = { name: s.name, color: s.color };

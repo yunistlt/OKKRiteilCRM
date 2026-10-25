@@ -14,6 +14,7 @@
  * Ошибки БД глушим: досье — усиление, а не обязательное условие классификации.
  */
 import { supabase } from '@/utils/supabase';
+import { statusNamesByCode } from '@/lib/own-crm/status-code';
 import { formatRub } from '@/lib/format';
 
 /** Сколько номеров-кандидатов проверяем в CRM (защита от письма, набитого цифрами). */
@@ -74,12 +75,8 @@ async function statusNames(codes: string[]): Promise<Map<string, string>> {
     const uniq = Array.from(new Set(codes.filter(Boolean)));
     if (!uniq.length) return map;
     try {
-        const { data } = await supabase
-            .from('retailcrm_dictionaries')
-            .select('item_code, item_name')
-            .eq('entity_type', 'status')
-            .in('item_code', uniq);
-        for (const r of data || []) if (r.item_code) map.set(r.item_code, r.item_name || r.item_code);
+        // Имя статуса — с доски «Статусы и переходы», одно на весь проект.
+        for (const [code, name] of await statusNamesByCode(uniq)) map.set(code, name || code);
     } catch {
         /* справочник недоступен — покажем код как есть */
     }

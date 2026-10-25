@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
+import { loadStatusNames } from '@/lib/own-crm/status-code';
 import { relatedClients } from '@/lib/own-crm/clients';
 import { loadClientRequisites } from '@/lib/own-crm/client-requisites';
 import { clientCalls, clientEmails, clientPhone, clientContacts } from '@/lib/own-crm/client-activity';
@@ -87,13 +88,12 @@ export async function GET(_request: Request, { params }: { params: { id: string 
         relation = data || null;
     }
 
-    const [statusesRes, managersRes] = await Promise.all([
-        supabase.from('retailcrm_dictionaries').select('item_code, item_name').eq('entity_type', 'status'),
+    const [statusNames, managersRes] = await Promise.all([
+        // Имя статуса — одно на весь проект, с доски «Статусы и переходы».
+        loadStatusNames(),
         // ЗАКОН: работаем только с активными — уволенного в выбор не предлагаем.
         supabase.from('managers').select('id, first_name, last_name, active'),
     ]);
-
-    const statusNames = new Map((statusesRes.data || []).map((s: any) => [s.item_code, s.item_name]));
     const managerNames = new Map(
         (managersRes.data || []).map((m: any) => [Number(m.id), [m.last_name, m.first_name].filter(Boolean).join(' ')])
     );

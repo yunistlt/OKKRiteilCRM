@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 import { logError } from '@/lib/error-monitor';
 import { planAllowedForManager } from '@/lib/read-gate/service';
 import { PRESALE_STATUSES, buildPlan, purchases } from '@/lib/sales-rop/rules';
@@ -455,14 +456,13 @@ async function loadSilentCancelTasks(settings: Settings, today: string): Promise
     if (!settings.cancelReturnEnabled || settings.cancelReturnPerDay <= 0) return [];
     if (!settings.cancelReturnSince) return [];
 
-    const { data: dict } = await supabase
-        .from('retailcrm_dictionaries')
-        .select('item_code, item_name')
-        .eq('entity_type', 'status');
     const cancelNames = new Map<string, string>();
-    for (const row of ((dict ?? []) as any[])) {
-        const name = String(row.item_name ?? '');
-        if (/отмен|купили в другом/i.test(name)) cancelNames.set(String(row.item_code), name);
+    for (const row of await loadStatusDirectory({ withInactive: true })) {
+        if (!/отмен|купили в другом/i.test(row.name)) continue;
+        // Заказ может лежать и под старым кодом — подписываем оба.
+        for (const code of [row.code, row.externalCode].filter(Boolean) as string[]) {
+            cancelNames.set(code, row.name);
+        }
     }
     if (cancelNames.size === 0) return [];
 
@@ -1280,16 +1280,15 @@ export async function detectSilentCancels(
     const result = new Map<number, { statusName: string }>();
     if (orderIds.length === 0) return result;
 
-    // Какие статусы считаются закрытием без продажи — из справочника CRM, а не
-    // списком в коде: статусы заводит владелец, и зашитый список устареет молча.
-    const { data: dict } = await supabase
-        .from('retailcrm_dictionaries')
-        .select('item_code, item_name, active')
-        .eq('entity_type', 'status');
+    // Какие статусы считаются закрытием без продажи — с доски «Статусы и
+    // переходы», а не списком в коде: статусы заводит владелец, и зашитый
+    // список устареет молча.
     const cancelCodes = new Map<string, string>();
-    for (const row of ((dict ?? []) as any[])) {
-        const name = String(row.item_name ?? '');
-        if (/отмен|купили в другом/i.test(name)) cancelCodes.set(String(row.item_code), name);
+    for (const row of await loadStatusDirectory({ withInactive: true })) {
+        if (!/отмен|купили в другом/i.test(row.name)) continue;
+        for (const code of [row.code, row.externalCode].filter(Boolean) as string[]) {
+            cancelCodes.set(code, row.name);
+        }
     }
     if (cancelCodes.size === 0) return result;
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
+import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,8 +42,9 @@ export async function GET() {
             .maybeSingle();
         const reasonDict = (reasonFieldRow?.dictionary as string) || 'prichiny_otmeny_zakazov';
 
-        const [statusesRes, methodsRes, catsRes, reasonsRes] = await Promise.all([
-            supabase.from('retailcrm_dictionaries').select('item_code,item_name').eq('entity_type', 'status').order('item_name'),
+        const [statuses, methodsRes, catsRes, reasonsRes] = await Promise.all([
+            // Статусы — с доски «Статусы и переходы»: один справочник на проект.
+            loadStatusDirectory({ withInactive: true }),
             supabase.from('retailcrm_dictionaries').select('item_code,item_name').eq('entity_type', 'orderMethod').order('item_name'),
             supabase.from('retailcrm_dictionaries').select('item_code,item_name').eq('entity_type', 'customField').eq('dictionary_code', catDict).order('item_name'),
             supabase.from('retailcrm_dictionaries').select('item_code,item_name').eq('entity_type', 'customField').eq('dictionary_code', reasonDict).order('item_name'),
@@ -50,7 +52,9 @@ export async function GET() {
 
         const map = (rows: any[] | null) => (rows ?? []).map((r) => ({ code: r.item_code, name: r.item_name }));
         return NextResponse.json({
-            statuses: map(statusesRes.data),
+            statuses: statuses
+                .map((row) => ({ code: row.code, name: row.name }))
+                .sort((a, b) => a.name.localeCompare(b.name, 'ru')),
             orderMethods: map(methodsRes.data),
             categories: map(catsRes.data),
             cancelReasons: map(reasonsRes.data),
