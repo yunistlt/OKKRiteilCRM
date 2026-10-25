@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { statusNamesByCode } from '@/lib/own-crm/status-code';
 import { NormalizedPointPayment, kopecksToRubles } from './types';
 import { matchPaymentToOrder, classifyNonCustomerPayment } from './matching';
 import { notifyPaymentTelegram, notifyPendingPaymentsTelegram, notifyPaymentPushErrorTelegram } from './notify';
@@ -353,12 +354,8 @@ async function orderStatusName(orderNumber: string | null): Promise<string | nul
     .maybeSingle();
   const code = (order as any)?.status;
   if (!code) return null;
-  const { data: st } = await supabase
-    .from('statuses')
-    .select('name')
-    .eq('code', String(code))
-    .maybeSingle();
-  return ((st as any)?.name as string) || null;
+  // Имя статуса — одна функция на проект, по любому из кодов.
+  return (await statusNamesByCode([String(code)])).get(String(code)) ?? null;
 }
 
 /**

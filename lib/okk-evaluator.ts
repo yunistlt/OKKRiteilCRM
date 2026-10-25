@@ -10,6 +10,7 @@
 
 // ОТВЕТСТВЕННЫЙ: МАКСИМ (Аудитор) — Тройная проверка качества, оценка звонков и сценариев.
 import { supabase } from '@/utils/supabase';
+import { loadStatusDirectory, loadStatusPalette, statusRank } from '@/lib/own-crm/status-code';
 import { countOrderEventsByField, COMMENT_FIELD_PATTERNS, EMAIL_FIELD_PATTERNS } from '@/lib/order-events';
 import OpenAI from 'openai';
 import { runInsightAnalysisDetailed, type BusinessInsights } from './insight-agent';
@@ -164,19 +165,22 @@ async function collectOrderStatusCodes(orderId: number, currentStatus: string | 
  * Дошёл ли заказ до статуса «Согласование параметров заказа» (или дальше).
  * Основной источник — история статусов (заказ хоть раз входил в na-soglasovanii, даже если
  * потом ушёл в отмену). Фолбэк для заказов без синка истории — текущий статус на этапе
- * согласования или позже по числовому ordering из справочника statuses.
+ * согласования или позже: место в потоке считаем по этапу и порядку внутри
+ * него (`statusRank`), справочник статусов один — `crm_statuses`.
  */
 async function reachedApprovalStatus(statusCodes: Set<string>, currentStatus: string | null): Promise<boolean> {
     if (statusCodes.has(APPROVAL_STATUS_CODE)) return true;
     if (currentStatus) {
         try {
-            const { data: rows } = await supabase
-                .from('statuses')
-                .select('code, ordering')
-                .in('code', [currentStatus, APPROVAL_STATUS_CODE]);
-            const cur = (rows || []).find((r: any) => r.code === currentStatus)?.ordering;
-            const appr = (rows || []).find((r: any) => r.code === APPROVAL_STATUS_CODE)?.ordering;
-            if (typeof cur === 'number' && typeof appr === 'number' && cur >= appr) return true;
+            const board = await loadStatusDirectory({ withInactive: true });
+            const byCode = new Map<string, (typeof board)[number]>();
+            for (const row of board) {
+                byCode.set(row.code, row);
+                if (row.externalCode) byCode.set(row.externalCode, row);
+            }
+            const cur = byCode.get(String(currentStatus));
+            const appr = byCode.get(APPROVAL_STATUS_CODE);
+            if (cur && appr && statusRank(cur) >= statusRank(appr)) return true;
         } catch {
             // гейт по истории уже отработал — молча выходим
         }
@@ -187,16 +191,16 @@ async function reachedApprovalStatus(statusCodes: Set<string>, currentStatus: st
 /**
  * Передан ли заказ в производство (или дальше по потоку) либо отменён.
  * Момент, к которому менеджер обязан был выяснить квалификационные факты о клиенте.
- * Группы статусов берём из справочника RetailCRM (statuses.group_name), коды не хардкодим.
+ * Этапы статусов берём из справочника `crm_statuses`, коды не хардкодим.
  */
 async function reachedProductionOrCancel(statusCodes: Set<string>): Promise<boolean> {
     if (statusCodes.size === 0) return false;
     try {
-        const { data } = await supabase
-            .from('statuses')
-            .select('code, group_name')
-            .in('code', Array.from(statusCodes));
-        return (data || []).some((row: any) => FINAL_STATUS_GROUPS.includes(row.group_name));
+        const palette = await loadStatusPalette();
+        return Array.from(statusCodes).some((code) => {
+            const stage = palette.get(code)?.groupName;
+            return Boolean(stage && FINAL_STATUS_GROUPS.includes(stage));
+        });
     } catch (e) {
         console.warn('[ОКК] Справочник статусов недоступен для гейта производства/отмены:', (e as Error)?.message);
         return false;
@@ -1151,17 +1155,15 @@ export async function checkSLA(orderId: number, order: any, leadReceivedAt: stri
     const diffMs = now.getTime() - statusChangedAt.getTime();
     const daysInStatus = diffMs / (1000 * 60 * 60 * 24);
 
-    // Норма дней в статусе — из справочника statuses (на каждый статус своя),
-    // редактируется в админке. Никакого хардкода. Если норма не задана — не судим.
+    // Норма дней в статусе — из справочника `crm_statuses` (на каждый статус
+    // своя), редактируется в настройках статусов. Никакого хардкода. Если
+    // норма не задана — не судим.
     const statusCode = order?.status || (order?.raw_payload as any)?.status?.code || (order?.raw_payload as any)?.status;
     let normDays: number | null = null;
     if (statusCode) {
-        const { data: st } = await supabase
-            .from('statuses')
-            .select('norm_days')
-            .eq('code', statusCode)
-            .maybeSingle();
-        normDays = st?.norm_days ?? null;
+        const board = await loadStatusDirectory({ withInactive: true });
+        const row = board.find((item) => item.code === statusCode || item.externalCode === statusCode);
+        normDays = row?.normDays ?? null;
     }
 
     const deal_in_status_lt_5_days = normDays != null ? daysInStatus < normDays : true;

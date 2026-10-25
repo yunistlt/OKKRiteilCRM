@@ -274,8 +274,6 @@ export async function GET(req: Request) {
             { groupName: group.name, groupCode: group.code, ordering: group.ordering },
             {
                 code,
-                // Название — из справочника RetailCRM (закон «имена из RetailCRM»),
-                // своё имя с доски — только если в справочнике его нет.
                 label: statusNames.get(code) || String(own.name || code),
                 // Заказы могут лежать и под старым кодом RetailCRM — считаем по обоим.
                 count: statusKeysOf(own).reduce((sum, key) => sum + (counts.get(key) ?? 0), 0),
@@ -287,9 +285,9 @@ export async function GET(req: Request) {
     }
 
     /**
-     * Статус без группы на доске, но заказы в нём есть: показываем последним,
-     * «Без группы», — иначе заказы пропадут из колонки. Такие статусы остались
-     * от старых заказов: отменённые, «старые», «битрикс».
+     * Недействующий статус, в котором всё ещё лежат заказы: показываем
+     * последним — иначе заказы пропадут из колонки. Это история: отменённые,
+     * «Цех-успех», старые воронки.
      */
     for (const own of ((ownStatuses || []) as any[])) {
         const code = statusCodeOf(own);
@@ -297,9 +295,14 @@ export async function GET(req: Request) {
         const count = statusKeysOf(own).reduce((sum, key) => sum + (counts.get(key) ?? 0), 0);
         if (!count) continue;
 
+        const historyGroup = own.group_id ? ownGroupById.get(String(own.group_id)) : undefined;
         pushStatus(
-            '__none__',
-            { groupName: 'Без группы', groupCode: null, ordering: 9999 },
+            historyGroup ? `old:${own.group_id}` : '__none__',
+            {
+                groupName: historyGroup ? `${historyGroup.name} (не используется)` : 'Без группы',
+                groupCode: null,
+                ordering: 9999,
+            },
             {
                 code,
                 label: statusNames.get(code) || code,

@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { loadStatusPalette } from '@/lib/own-crm/status-code';
 import { editOrder } from '@/lib/own-crm/edit-order';
 import { queueOrderForProduction } from '@/lib/own-crm/tseh-outbox';
 
@@ -8,7 +9,8 @@ export const PRODUCTION_STATUS = process.env.RETAILCRM_PRODUCTION_STATUS || 'sen
 
 // Группы статусов, из которых НЕ переводим (заказ уже в производстве/отгрузке/завершён/
 // отменён/рекламация/ВТО/другой бизнес «Цех-успех») — «не откатывать назад».
-// Матчим по подстроке group_name из таблицы statuses (данные RetailCRM-синка).
+// Матчим по названию ЭТАПА статуса (crm_statuses + crm_status_groups) —
+// справочник статусов один на весь проект.
 const BLOCKED_GROUP_SUBSTR = ['производств', 'оставк', 'отмен', 'рекламац', 'вто', 'цех-успех', 'выполн'];
 
 let _blockedCache: { set: Set<string>; prodName: string; names: Record<string, string>; at: number } | null = null;
@@ -18,13 +20,14 @@ async function loadStatusMeta(): Promise<{ set: Set<string>; prodName: string; n
   const set = new Set<string>([PRODUCTION_STATUS, 'complete', 'cancel']);
   const names: Record<string, string> = {};
   let prodName = 'Передано в производство';
-  const { data } = await supabase.from('statuses').select('code, group_name, name');
-  for (const r of (data as Array<{ code: string; group_name: string | null; name: string | null }>) || []) {
-    const g = String(r.group_name || '').toLowerCase();
-    if (r.code && BLOCKED_GROUP_SUBSTR.some((p) => g.includes(p))) set.add(r.code);
-    if (r.code && r.name) names[r.code] = r.name;
-    if (r.code === PRODUCTION_STATUS && r.name) prodName = r.name;
-  }
+  // Ключи палитры — оба кода статуса: заказ может лежать и под старым.
+  const palette = await loadStatusPalette();
+  palette.forEach((look, code) => {
+    const stage = String(look.groupName || '').toLowerCase();
+    if (BLOCKED_GROUP_SUBSTR.some((p) => stage.includes(p))) set.add(code);
+    if (look.name) names[code] = look.name;
+    if (code === PRODUCTION_STATUS && look.name) prodName = look.name;
+  });
   const meta = { set, prodName, names };
   if (set.size > 3) _blockedCache = { ...meta, at: Date.now() }; // кэшируем только непустой справочник
   return meta;
