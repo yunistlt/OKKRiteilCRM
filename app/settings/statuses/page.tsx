@@ -5,14 +5,30 @@ export const dynamic = 'force-dynamic';
 
 export default async function StatusesPage() {
     // 1. Справочник статусов — один на весь проект: crm_statuses.
-    const { data: statuses, error: statusError } = await supabase
-        .from('crm_statuses')
-        .select('code, name, ordering, color, active, is_working, norm_days, ai_description')
-        .order('ordering', { ascending: true });
+    //    Этап берём из crm_status_groups: по нему статусы сгруппированы на экране.
+    const [{ data: statusRows, error: statusError }, { data: stageRows }] = await Promise.all([
+        supabase
+            .from('crm_statuses')
+            .select('code, name, ordering, color, active, is_working, norm_days, ai_description, group_id')
+            .order('ordering', { ascending: true }),
+        supabase.from('crm_status_groups').select('id, name, ordering'),
+    ]);
 
     if (statusError) {
         return <div style={{ padding: 40, color: 'red' }}>Error loading statuses: {statusError.message}</div>;
     }
+
+    const stageById = new Map<string, { name: string; ordering: number }>(
+        ((stageRows ?? []) as any[]).map((g) => [String(g.id), { name: String(g.name ?? ''), ordering: Number(g.ordering ?? 999) }]),
+    );
+    const statuses = ((statusRows ?? []) as any[])
+        .map((row) => ({
+            ...row,
+            group_name: row.group_id ? stageById.get(String(row.group_id))?.name ?? 'Без группы' : 'Без группы',
+            is_active: row.active,
+            stage_ordering: row.group_id ? stageById.get(String(row.group_id))?.ordering ?? 999 : 999,
+        }))
+        .sort((a, b) => a.stage_ordering - b.stage_ordering || a.ordering - b.ordering);
 
     // 2. Get User Settings
     const { data: settings, error: settingsError } = await supabase
