@@ -194,6 +194,22 @@ export async function GET(req: Request) {
     const statusNames = new Map<string, string>(
         ((statusDict || []) as any[]).map((s) => [s.item_code, s.item_name])
     );
+    /**
+     * Названия статусов нашей доски.
+     *
+     * В справочнике RetailCRM их нет и не будет: она архив на чтение, а новые
+     * статусы заводятся у нас (`dubl-zayavki` — 23.10.2026). Без этого в
+     * колонке статусов вместо названия стоял код — закон «интерфейс только на
+     * человеческом языке». Имя из RetailCRM остаётся главным там, где оно есть
+     * (закон «имена из RetailCRM»), наше — для своих статусов.
+     */
+    for (const own of ((ownStatuses || []) as any[])) {
+        const name = String(own.name ?? '').trim();
+        if (!name) continue;
+        for (const key of statusKeysOf(own)) {
+            if (!statusNames.has(key)) statusNames.set(key, name);
+        }
+    }
     const cfNames = new Map<string, string>(
         ((cfDict || []) as any[]).map((d) => [`${d.dictionary_code}:${d.item_code}`, d.item_name])
     );
