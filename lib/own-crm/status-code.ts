@@ -105,8 +105,12 @@ export type StatusDirectoryRow = {
     isWorking: boolean;
     color: string | null;
     groupId: string | null;
-    /** Название этапа: им статусы сгруппированы на доске. */
+    /** Название этапа: им статусы сгруппированы. */
     groupName: string | null;
+    /** Порядок этапа: вместе с `ordering` даёт место статуса в потоке работы. */
+    groupOrdering: number;
+    /** Сколько дней заказу позволено стоять в этом статусе (null — не судим). */
+    normDays: number | null;
     ordering: number;
     /** Старый код: по нему лежат статусы заказов, созданных до отвязки. */
     externalCode: string | null;
@@ -125,13 +129,17 @@ export async function loadStatusDirectory(opts: { withInactive?: boolean } = {})
             .from('crm_statuses')
             .select('code, external_code, name, active, is_working, color, group_id, ordering')
             .order('ordering', { ascending: true }),
-        supabase.from('crm_status_groups').select('id, name, color'),
+        supabase.from('crm_status_groups').select('id, name, color, ordering'),
     ]);
 
     // ЗАКОН: цвет у этапа, а не у статуса. У самих статусов колонка цвета
     // пустая — красит группа, как на доске.
-    const groupById = new Map<string, { name: string; color: string | null }>(
-        ((groups ?? []) as any[]).map((g) => [String(g.id), { name: String(g.name ?? ''), color: g.color ?? null }]),
+    const groupById = new Map<string, { name: string; color: string | null; ordering: number }>(
+        ((groups ?? []) as any[]).map((g) => [String(g.id), {
+            name: String(g.name ?? ''),
+            color: g.color ?? null,
+            ordering: Number(g.ordering ?? 999),
+        }]),
     );
 
     return ((data ?? []) as any[])
@@ -144,6 +152,8 @@ export async function loadStatusDirectory(opts: { withInactive?: boolean } = {})
             color: row.color ?? (row.group_id ? groupById.get(String(row.group_id))?.color ?? null : null),
             groupId: row.group_id ? String(row.group_id) : null,
             groupName: row.group_id ? groupById.get(String(row.group_id))?.name ?? null : null,
+            groupOrdering: row.group_id ? groupById.get(String(row.group_id))?.ordering ?? 999 : 999,
+            normDays: typeof row.norm_days === 'number' ? row.norm_days : null,
             ordering: Number(row.ordering ?? 999),
             externalCode: row.external_code ? String(row.external_code) : null,
         }))
@@ -170,4 +180,14 @@ export async function loadStatusPalette(): Promise<Map<string, StatusLook>> {
         }
     }
     return palette;
+}
+
+/**
+ * Место статуса в потоке работы: сначала этап, потом порядок внутри этапа.
+ *
+ * Сравнивать статусы по одному `ordering` нельзя — он считается внутри этапа,
+ * и «Новый» (1) сравнялся бы с «Отменён» (1).
+ */
+export function statusRank(row: { groupOrdering: number; ordering: number }): number {
+    return row.groupOrdering * 1000 + row.ordering;
 }
