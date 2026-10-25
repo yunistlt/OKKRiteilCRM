@@ -2,49 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "jurist-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev",
-        "--",
-        "-p",
-        "3021"
-      ],
-      "port": 3021
-    },
-    {
       "name": "okk-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev",
-        "--",
-        "-p",
-        "3031"
-      ],
-      "port": 3031
-    },
-    {
-      "name": "orders-dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev",
-        "--",
-        "-p",
-        "3041"
-      ],
-      "port": 3041
-    },
-    {
-      "name": "staging",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev:staging"
-      ],
-      "port": 3051
+      "runtimeArgs": ["run", "dev", "--", "--port", "3077"],
+      "port": 3077
     }
   ]
 }
