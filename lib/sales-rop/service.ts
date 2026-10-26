@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { loadMonthFacts, revenueNoVatForOrders } from '@/lib/salary/month-fact';
 import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 import { logError } from '@/lib/error-monitor';
 import { planAllowedForManager } from '@/lib/read-gate/service';
@@ -1723,11 +1724,17 @@ async function loadPersonalPlans(today: string): Promise<Map<number, number>> {
     return out;
 }
 
-/** Сколько каждый уже сделал за месяц: та же выручка без НДС, что и в общем плане. */
+/**
+ * Сколько каждый уже сделал за месяц — из снимка зарплаты.
+ *
+ * Своей формулы у бота нет: правило расчёта денег одно, в движке ЗП
+ * (lib/salary/month-fact.ts). До 26.10.2026 бот звал RPC со своей копией
+ * формулы, и она отстала от зарплатной на скидку по заказу.
+ */
 async function loadMonthSoldByManager(today: string): Promise<Map<number, number>> {
-    const { data, error } = await supabase.rpc('sales_rop_month_by_manager', { p_date: today });
-    if (error) return new Map();
-    return new Map(((data ?? []) as any[]).map((r) => [Number(r.manager_id), Number(r.sold_sum ?? 0)]));
+    const date = new Date(today);
+    const facts = await loadMonthFacts(date.getUTCFullYear(), date.getUTCMonth() + 1);
+    return new Map(Array.from(facts.byManager.values()).map((f) => [f.managerId, f.revenueNoVat]));
 }
 
 /** Рабочих дней до конца месяца, не считая сегодняшний: он уже прожит. */
@@ -1758,18 +1765,33 @@ async function loadMonthPlan(today: string, fallback: number): Promise<number> {
 }
 
 async function dayFacts(today: string, monthPlanFallback: number): Promise<string> {
+    // База отдаёт только отбор — какие заказы вошли сегодня в «Предоплату» и в
+    // производство. Деньги по ним считает движок ЗП: формула одна на всех.
     const { data, error } = await supabase.rpc('sales_rop_day_facts', { p_date: today });
     if (error) throw new Error(error.message);
     const f = (data ?? [])[0] ?? {};
-    const monthPlan = await loadMonthPlan(today, monthPlanFallback);
+    const invoiceIds = ((f.invoice_ids ?? []) as any[]).map(Number).filter(Boolean);
+    const soldIds = ((f.sold_ids ?? []) as any[]).map(Number).filter(Boolean);
+
+    const date = new Date(today);
+    const [monthPlan, invoicesSum, soldSum, facts] = await Promise.all([
+        loadMonthPlan(today, monthPlanFallback),
+        revenueNoVatForOrders(invoiceIds, date),
+        revenueNoVatForOrders(soldIds, date),
+        loadMonthFacts(date.getUTCFullYear(), date.getUTCMonth() + 1),
+    ]);
+
+    // Выручка месяца — сумма снимка ЗП по всем менеджерам, та же цифра, что в
+    // ведомости и в «Моём дне».
+    const monthSold = Array.from(facts.byManager.values()).reduce((s, m) => s + m.revenueNoVat, 0);
 
     return formatEveningHeader({
-        date: new Date(today).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }),
-        invoicesToday: Number(f.invoices_count ?? 0),
-        invoicesSum: Number(f.invoices_sum ?? 0),
-        soldToday: Number(f.sold_count ?? 0),
-        soldSum: Number(f.sold_sum ?? 0),
-        monthSold: Number(f.month_sold ?? 0),
+        date: date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }),
+        invoicesToday: invoiceIds.length,
+        invoicesSum,
+        soldToday: soldIds.length,
+        soldSum,
+        monthSold,
         monthPlan,
         workdaysLeft: workdaysLeftInMonth(today),
     });

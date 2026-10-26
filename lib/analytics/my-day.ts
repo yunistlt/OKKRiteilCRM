@@ -13,6 +13,7 @@
 import { supabase } from '@/utils/supabase';
 import { CUSTOM_FIELD_CODES } from '@/lib/orders-filter';
 import { byStatusCode } from '@/lib/own-crm/status-code';
+import { loadManagerMonthFact } from '@/lib/salary/month-fact';
 
 /** Сколько минут даётся на ответ новому лиду, прежде чем он станет горящим. */
 const LEAD_SLA_MINUTES = 30;
@@ -51,7 +52,19 @@ export type MyDay = {
     next: NextAction[];
     all: NextAction[];
     counts: { urgent: number; next: number; planned: number; total: number; done: number };
-    plan: { target: number; fact: number; forecast: number; factPct: number; forecastPct: number; workdaysLeft: number; perDay: number };
+    plan: {
+        target: number;
+        fact: number;
+        forecast: number;
+        factPct: number;
+        forecastPct: number;
+        workdaysLeft: number;
+        perDay: number;
+        /** Когда зарплата считала снимок: цифра не живая, и это видно человеку. */
+        computedAt: string | null;
+        /** Сколько заказов засчитано в факт — чтобы число раскладывалось. */
+        soldOrders: number;
+    };
     funnel: Array<{ name: string; color: string | null; count: number; amount: number }>;
     metrics: { callsToday: number; talksToday: number; ordersMonth: number; revenueMonth: number };
 };
@@ -122,13 +135,10 @@ async function loadPlan(managerId: number, today: Date) {
 
     const target = money((planRow as any)?.target);
 
-    const { data: factRows } = await supabase.rpc('sales_rop_month_by_manager', {
-        p_date: today.toISOString().slice(0, 10),
-    });
-
-    const fact = money(
-        ((factRows ?? []) as any[]).find((r) => Number(r.manager_id) === managerId)?.sold_sum,
-    );
+    // Факт — из снимка зарплаты, а не из своей формулы: правило расчёта денег
+    // одно и живёт в движке ЗП (см. lib/salary/month-fact.ts).
+    const snapshot = await loadManagerMonthFact(managerId, today.getFullYear(), today.getMonth() + 1);
+    const fact = money(snapshot.revenueNoVat);
 
     const { total, left, passed } = workdays(today);
     // Прогноз — текущий темп до конца месяца. Это не обещание, а продолжение
@@ -143,6 +153,8 @@ async function loadPlan(managerId: number, today: Date) {
         forecastPct: target > 0 ? Math.round((forecast / target) * 100) : 0,
         workdaysLeft: left,
         perDay: left > 0 ? Math.max(0, Math.round((target - fact) / left)) : 0,
+        computedAt: snapshot.computedAt,
+        soldOrders: snapshot.ordersCount,
     };
 }
 
@@ -394,7 +406,7 @@ export async function loadMyDay(managerId: number | null, today = new Date()): P
             next: [],
             all: [],
             counts: { urgent: 0, next: 0, planned: 0, total: 0, done: 0 },
-            plan: { target: 0, fact: 0, forecast: 0, factPct: 0, forecastPct: 0, workdaysLeft: 0, perDay: 0 },
+            plan: { target: 0, fact: 0, forecast: 0, factPct: 0, forecastPct: 0, workdaysLeft: 0, perDay: 0, computedAt: null, soldOrders: 0 },
             funnel: [],
             metrics: { callsToday: 0, talksToday: 0, ordersMonth: 0, revenueMonth: 0 },
         };
