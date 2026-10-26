@@ -41,7 +41,17 @@ type MyDay = {
     next: Action[];
     all: Action[];
     counts: { urgent: number; next: number; planned: number; total: number; done: number };
-    plan: { target: number; fact: number; forecast: number; factPct: number; forecastPct: number; workdaysLeft: number; perDay: number };
+    plan: {
+        target: number;
+        fact: number;
+        forecast: number;
+        factPct: number;
+        forecastPct: number;
+        workdaysLeft: number;
+        perDay: number;
+        computedAt: string | null;
+        soldOrders: number;
+    };
     funnel: Array<{ name: string; color: string | null; count: number; amount: number }>;
     metrics: { callsToday: number; talksToday: number; ordersMonth: number; revenueMonth: number };
 };
@@ -446,6 +456,14 @@ function PlanCard({ plan }: { plan: MyDay['plan'] }) {
             <p className="mt-2 text-xs text-gray-600">
                 До конца месяца: <b className="text-gray-900">{plan.workdaysLeft}</b> рабочих дн. · нужно в день{' '}
                 <b className="text-gray-900">{formatRub(plan.perDay)}</b>
+            </p>
+
+            {/* Факт — снимок ведомости зарплаты, а не живой пересчёт: человек
+                должен видеть, на какой момент цифра и из скольких заказов. */}
+            <p className="mt-1 text-[11px] text-gray-500">
+                {plan.computedAt
+                    ? `Факт из ведомости зарплаты: ${plan.soldOrders} заказ(ов), данные на ${new Date(plan.computedAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}`
+                    : 'Зарплата за этот месяц ещё не считалась — факт появится после ближайшего расчёта'}
             </p>
         </section>
     );
