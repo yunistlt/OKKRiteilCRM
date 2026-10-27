@@ -39,6 +39,12 @@ const DEFAULT_BATCH = 100;
  */
 const SCAN_PER_LETTER = 6;
 
+/**
+ * Сколько времени проход работает в одном заходе. У маршрута потолок 300
+ * секунд (`maxDuration`), оставляем запас на запись и закрытие сессии.
+ */
+const DEFAULT_BUDGET_MS = 230_000;
+
 export type TaggedBackfillResult = {
     ok: boolean;
     error?: string;
@@ -50,6 +56,8 @@ export type TaggedBackfillResult = {
     left: number;
     /** Сколько писем отбросили как роботные. */
     robots: number;
+    /** Сколько пачек успели прокрутить за заход. */
+    passes: number;
 };
 
 /** Ключ курсора: своя отметка на каждую папку. */
@@ -111,7 +119,7 @@ async function pullFolder(params: {
     mailbox: string;
 }): Promise<TaggedBackfillResult> {
     const { client, folder, kind, batch, mailbox } = params;
-    const result: TaggedBackfillResult = { ok: true, read: 0, addedIncoming: 0, addedOutgoing: 0, left: 0, robots: 0 };
+    const result: TaggedBackfillResult = { ok: true, read: 0, addedIncoming: 0, addedOutgoing: 0, left: 0, robots: 0, passes: 0 };
 
     const since = new Date();
     since.setMonth(since.getMonth() - MONTHS);
@@ -304,8 +312,11 @@ async function pullFolder(params: {
 }
 
 /** Заход по обеим папкам. Одно соединение с ящиком на весь проход. */
-export async function backfillTaggedMail(batch = DEFAULT_BATCH): Promise<TaggedBackfillResult> {
-    const empty: TaggedBackfillResult = { ok: false, read: 0, addedIncoming: 0, addedOutgoing: 0, left: 0, robots: 0 };
+export async function backfillTaggedMail(
+    batch = DEFAULT_BATCH,
+    budgetMs = DEFAULT_BUDGET_MS,
+): Promise<TaggedBackfillResult> {
+    const empty: TaggedBackfillResult = { ok: false, read: 0, addedIncoming: 0, addedOutgoing: 0, left: 0, robots: 0, passes: 0 };
 
     if (!isImapConfigured()) return { ...empty, error: 'Доступ к почтовому ящику не настроен' };
 
@@ -314,20 +325,35 @@ export async function backfillTaggedMail(batch = DEFAULT_BATCH): Promise<TaggedB
     const session = await openImapSession();
     if (!session) return { ...empty, error: 'Почтовый ящик не отвечает' };
 
-    const total: TaggedBackfillResult = { ok: true, read: 0, addedIncoming: 0, addedOutgoing: 0, left: 0, robots: 0 };
+    const total: TaggedBackfillResult = { ok: true, read: 0, addedIncoming: 0, addedOutgoing: 0, left: 0, robots: 0, passes: 0 };
+
+    /**
+     * Один вход в ящик — много работы.
+     *
+     * Ящик Яндекса считает именно сессии и при частых входах отвечает
+     * «Connection not available» (27.10.2026), поэтому ускоряемся не частотой
+     * захода, а работой внутри него: крутим пачки, пока есть бюджет времени.
+     * Потолок маршрута — 300 секунд, оставляем запас на закрытие сессии.
+     */
+    const deadline = Date.now() + budgetMs;
 
     try {
         const folders: Array<{ folder: string; kind: 'in' | 'out' }> = [{ folder: 'INBOX', kind: 'in' }];
         if (sentFolder) folders.push({ folder: sentFolder, kind: 'out' });
 
         for (const { folder, kind } of folders) {
-            const part = await pullFolder({ client: session.client, folder, kind, batch, mailbox });
-            total.read += part.read;
-            total.addedIncoming += part.addedIncoming;
-            total.addedOutgoing += part.addedOutgoing;
-            total.left += part.left;
-            total.robots += part.robots;
-            if (!part.ok) return { ...total, ok: false, error: part.error };
+            // Папка кончилась — курсор дошёл до дна, крутить её незачем.
+            while (Date.now() < deadline) {
+                const part = await pullFolder({ client: session.client, folder, kind, batch, mailbox });
+                total.read += part.read;
+                total.addedIncoming += part.addedIncoming;
+                total.addedOutgoing += part.addedOutgoing;
+                total.left = part.left;
+                total.robots += part.robots;
+                total.passes += 1;
+                if (!part.ok) return { ...total, ok: false, error: part.error };
+                if (part.left === 0) break;
+            }
         }
 
         return total;
