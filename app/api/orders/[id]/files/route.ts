@@ -41,7 +41,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     // Приложенные руками — отдельной выборкой: это наши файлы, а не почтовые.
     const { data: manual } = await supabase
         .from('order_files')
-        .select('id, file_name, content_type, size_bytes, note, uploaded_by, created_at')
+        .select('id, file_name, content_type, size_bytes, note, uploaded_by, created_at, source_at')
         .eq('order_number', orderNumber)
         .is('deleted_at', null)
         // Архивные в рабочем списке не показываем: они остаются в разделе «Файлы».
@@ -56,7 +56,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         contentType: row.content_type ?? null,
         note: row.note ?? null,
         uploadedBy: row.uploaded_by ?? null,
-        receivedAt: row.created_at,
+        // У файла из письма показываем дату письма: иначе вложение
+        // полугодовой давности выглядит сегодняшним (Андрей, 27.10.2026).
+        receivedAt: row.source_at ?? row.created_at,
         downloadable: true,
     }));
 

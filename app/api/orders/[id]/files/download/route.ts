@@ -165,6 +165,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 storage_path: path,
                 note: 'из письма клиента',
                 uploaded_by: null,
+                // В списке файлов показываем дату письма, а не момент докачки.
+                source_at: mail?.receivedAt ?? null,
             });
         }
 

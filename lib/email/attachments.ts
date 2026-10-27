@@ -93,6 +93,8 @@ export async function attachMailFileToOrder(params: {
     size: number;
     path: string;
     fromName: string | null;
+    /** Когда пришло письмо: в списке файлов показываем эту дату, а не момент записи. */
+    sourceAt?: string | null;
 }): Promise<boolean> {
     const { data: already } = await supabase
         .from('order_files')
@@ -115,6 +117,7 @@ export async function attachMailFileToOrder(params: {
         storage_path: params.path,
         note: 'Вложение письма',
         uploaded_by: params.fromName || 'Письмо клиента',
+        source_at: params.sourceAt ?? null,
     });
 
     // Уникальный индекс сработал — значит файл уже в заказе, и это не ошибка.
@@ -232,6 +235,7 @@ export async function storePendingAttachments(limit = 10): Promise<SaveResult> {
                         size: bytes.length,
                         path,
                         fromName: letter.from_name || letter.from_email || null,
+                        sourceAt: content.receivedAt,
                     });
                 }
             }
@@ -351,6 +355,7 @@ async function storeOutgoing(limit: number, session: Awaited<ReturnType<typeof o
                 size: bytes.length,
                 path,
                 fromName: 'Наше письмо',
+                sourceAt: content.receivedAt,
             });
 
             if (written) result.files += 1;
