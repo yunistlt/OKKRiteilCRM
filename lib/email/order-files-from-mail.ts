@@ -144,6 +144,7 @@ async function pullFolder(params: {
                     size: file.content.length,
                     path,
                     fromName: author,
+                    sourceAt: parsed.date ? parsed.date.toISOString() : null,
                 });
 
                 if (written) result.added += 1;
