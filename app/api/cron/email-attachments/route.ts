@@ -21,6 +21,19 @@ export const maxDuration = 300;
 /** Вложения тяжёлые: берём помалу, чтобы уложиться в лимит выполнения. */
 const BATCH = 10;
 
+/**
+ * Ночью берём впятеро больше: после переноса старой переписки (27.10.2026)
+ * в очереди оказались тысячи писем с вложениями, а по десять штук за десять
+ * минут это недели работы. Ночь считаем по UTC — 21:00–04:00, это 01:00–08:00
+ * по Самаре: отдел не работает, диск базы свободен (ЗАКОН 16.10.2026).
+ */
+const NIGHT_BATCH = 50;
+
+function batchForNow(): number {
+    const hour = new Date().getUTCHours();
+    return hour >= 21 || hour < 4 ? NIGHT_BATCH : BATCH;
+}
+
 export async function GET(req: Request) {
     if (!isCronHeaderAuthorized(req)) {
         return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -31,7 +44,7 @@ export async function GET(req: Request) {
     }
 
     try {
-        const result = await storePendingAttachments(BATCH);
+        const result = await storePendingAttachments(batchForNow());
 
         const { count } = await supabase
             .from('incoming_emails')
