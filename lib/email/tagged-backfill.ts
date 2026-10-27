@@ -24,6 +24,7 @@
 import { supabase } from '@/utils/supabase';
 import { openImapSession, findSentFolder, isImapConfigured } from '@/lib/email/imap';
 import { simpleParser } from 'mailparser';
+import { fixCharsetMojibake } from '@/lib/email/mojibake';
 
 /** Сколько месяцев назад заходим. */
 const MONTHS = 18;
@@ -223,8 +224,9 @@ async function pullFolder(params: {
                 in_reply_to: (parsed.inReplyTo as string) ?? null,
                 email_refs: Array.isArray(parsed.references) ? parsed.references.join(' ') : (parsed.references ?? null),
                 received_at: parsed.date ? parsed.date.toISOString() : null,
-                body_text: parsed.text ?? null,
-                body_html: typeof parsed.html === 'string' ? parsed.html : null,
+                // Письмо могло соврать о кодировке — см. lib/email/mojibake.ts.
+                body_text: fixCharsetMojibake(parsed.text ?? null),
+                body_html: fixCharsetMojibake(typeof parsed.html === 'string' ? parsed.html : null),
                 has_attachments: (parsed.attachments ?? []).length > 0,
                 attachments_meta: (parsed.attachments ?? []).map((a: any) => ({
                     filename: a.filename ?? null,
@@ -275,8 +277,8 @@ async function pullFolder(params: {
             from_email: parsed.from?.value?.[0]?.address ?? null,
             to_email: parsed.to?.value?.[0]?.address ?? null,
             sent_at: parsed.date ? parsed.date.toISOString() : null,
-            body_text: parsed.text ?? null,
-            body_html: typeof parsed.html === 'string' ? parsed.html : null,
+            body_text: fixCharsetMojibake(parsed.text ?? null),
+            body_html: fixCharsetMojibake(typeof parsed.html === 'string' ? parsed.html : null),
             has_attachments: (parsed.attachments ?? []).length > 0,
             attachments_meta: (parsed.attachments ?? []).map((a: any) => ({
                 filename: a.filename ?? null,
