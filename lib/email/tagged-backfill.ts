@@ -31,6 +31,13 @@ const MONTHS = 18;
 /** Писем за заход: тела тяжёлые, а у крона потолок в 300 секунд. */
 const DEFAULT_BATCH = 100;
 
+/**
+ * Сколько UID просматриваем на одно нужное письмо. В ящике с тегом заказа
+ * примерно каждое третье письмо, запас берём двойной: лишние конверты стоят
+ * дёшево, а недобор означал бы полупустые проходы.
+ */
+const SCAN_PER_LETTER = 6;
+
 export type TaggedBackfillResult = {
     ok: boolean;
     error?: string;
@@ -38,7 +45,7 @@ export type TaggedBackfillResult = {
     read: number;
     addedIncoming: number;
     addedOutgoing: number;
-    /** Сколько писем папки осталось позади курсора. */
+    /** Сколько UID осталось просмотреть ниже курсора (письма, не все с тегом). */
     left: number;
 };
 
@@ -106,30 +113,57 @@ async function pullFolder(params: {
     const since = new Date();
     since.setMonth(since.getMonth() - MONTHS);
 
+    /**
+     * Идём по диапазонам UID, а не поиском по всему ящику.
+     *
+     * IMAP SEARCH по 167 тысячам писем Яндекс терпит пару раз, а потом
+     * отвечает `false` и роняет соединение — ровно это и случилось на пробе
+     * 27.10.2026. Поэтому берём подряд идущий кусок UID ниже курсора, читаем
+     * у него только конверты (тема и дата — дёшево) и за телами идём лишь к
+     * тем письмам, у которых в теме наш тег.
+     */
     const lock = await client.getMailboxLock(folder, { readOnly: true } as any);
     let picked: number[] = [];
     let uidValidity = 0;
+    let bottom = 1;
+    let tooOld = false;
     try {
         uidValidity = Number((client.mailbox as any)?.uidValidity ?? 0);
-        const found: number[] = await client
-            .search({ header: { subject: '[#' }, since } as any, { uid: true } as any)
-            .catch(() => [] as number[]);
+        const uidNext = Number((client.mailbox as any)?.uidNext ?? 0);
 
-        const cursor = await readCursor(folder);
-        // Свежие письма нужнее старых, поэтому идём сверху вниз: курсор — самый
-        // старый уже разобранный UID, ниже него и продолжаем.
-        const queue = found
-            .map(Number)
-            .filter((uid) => (cursor === null ? true : uid < cursor))
-            .sort((a, b) => b - a);
+        const cursor = (await readCursor(folder)) ?? (uidNext > 0 ? uidNext : 1);
+        const top = cursor - 1;
+        if (top < 1) return { ...result, left: 0 };
 
-        picked = queue.slice(0, batch);
-        result.left = Math.max(0, queue.length - picked.length);
+        bottom = Math.max(1, top - batch * SCAN_PER_LETTER + 1);
+        result.left = bottom - 1;
+
+        for await (const msg of client.fetch(
+            `${bottom}:${top}`,
+            { uid: true, envelope: true } as any,
+            { uid: true } as any,
+        )) {
+            const envelope = (msg as any).envelope ?? {};
+            const date: Date | null = envelope.date ? new Date(envelope.date) : null;
+            if (date && date < since) { tooOld = true; continue; }
+            if (!orderNumberFromSubject(envelope.subject ?? null)) continue;
+            picked.push(Number((msg as any).uid));
+        }
+
+        // Самые свежие вперёд, и не больше пачки за заход.
+        picked = picked.sort((a, b) => b - a).slice(0, batch);
     } finally {
         lock.release();
     }
 
-    if (!picked.length) return result;
+    /**
+     * Весь просмотренный кусок старше 18 месяцев — дальше вниз только архив,
+     * который мы не берём. Курсор ставим в единицу: проходы станут холостыми.
+     */
+    if (!picked.length) {
+        await writeCursor(folder, tooOld ? 1 : bottom);
+        return { ...result, left: tooOld ? 0 : result.left };
+    }
 
     const letters: Array<{ uid: number; parsed: any; number: string }> = [];
     const lock2 = await client.getMailboxLock(folder, { readOnly: true } as any);
@@ -140,7 +174,6 @@ async function pullFolder(params: {
             const parsed = await simpleParser(source);
             result.read += 1;
             const number = orderNumberFromSubject(parsed.subject ?? null);
-            // Тег есть не у всех найденных: IMAP ищет подстроку «[#» по всей теме.
             if (number) letters.push({ uid: Number((msg as any).uid), parsed, number });
         }
     } finally {
@@ -148,7 +181,7 @@ async function pullFolder(params: {
     }
 
     if (!letters.length) {
-        await writeCursor(folder, Math.min(...picked));
+        await writeCursor(folder, bottom);
         return result;
     }
 
@@ -186,15 +219,31 @@ async function pullFolder(params: {
             }));
 
         if (rows.length) {
-            // Письмо могло прийти и штатным приёмом — тогда запись уже есть.
-            const { error, count } = await supabase
+            /**
+             * Письмо могло прийти и штатным приёмом — тогда запись уже есть.
+             * Через `upsert` сюда не зайти: уникальные индексы у таблицы
+             * частичные (`WHERE imap_uid IS NOT NULL`), а `ON CONFLICT` таким
+             * не пользуется. Поэтому сначала смотрим, что уже лежит.
+             */
+            const { data: known } = await supabase
                 .from('incoming_emails')
-                .upsert(rows, { onConflict: 'mailbox,folder,uid_validity,imap_uid', ignoreDuplicates: true, count: 'exact' });
-            if (error) {
-                console.warn('[tagged-backfill] входящие не записались:', error.message);
-                return { ...result, ok: false, error: error.message };
+                .select('imap_uid')
+                .eq('mailbox', mailbox)
+                .eq('folder', folder)
+                .in('imap_uid', rows.map((row) => row.imap_uid));
+            const seen = new Set(((known ?? []) as any[]).map((row) => Number(row.imap_uid)));
+
+            const fresh = rows.filter((row) => !seen.has(row.imap_uid));
+
+            for (const row of fresh) {
+                const { error } = await supabase.from('incoming_emails').insert(row);
+                // Тот же Message-ID мог прийти другой папкой — это не ошибка.
+                if (error && !String(error.message).includes('duplicate key')) {
+                    console.warn('[tagged-backfill] входящее не записалось:', row.imap_uid, error.message);
+                    return { ...result, ok: false, error: error.message };
+                }
+                if (!error) result.addedIncoming += 1;
             }
-            result.addedIncoming = count ?? rows.length;
         }
     } else {
         const rows = letters.map(({ uid, parsed, number }) => ({
@@ -228,8 +277,8 @@ async function pullFolder(params: {
         result.addedOutgoing = count ?? rows.length;
     }
 
-    // Курсор двигаем только после записи: упали на полпути — пачку переберём.
-    await writeCursor(folder, Math.min(...picked));
+    // Курсор двигаем только после записи: упали на полпути — кусок переберём.
+    await writeCursor(folder, bottom);
     return result;
 }
 

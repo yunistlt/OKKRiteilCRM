@@ -78,11 +78,13 @@ async function uidsByTag(client: any, folder: string, orderNumber: string): Prom
     try {
         // Ищем по куску тега `/<номер>]`: он отсекает и чужие заказы, и номер,
         // случайно попавший в текст темы.
-        const found = await client
+        // Поиск иногда отвечает `false`, когда ящик отбивается от напора.
+        const answer = await client
             .search({ header: { subject: `/${orderNumber}]` } } as any, { uid: true } as any)
-            .catch(() => [] as number[]);
+            .catch(() => null);
+        const found: number[] = Array.isArray(answer) ? answer : [];
         // Самые свежие вперёд: у длинной переписки забираем хвост.
-        return Array.from(new Set(((found || []) as number[]).map(Number)))
+        return Array.from(new Set(found.map(Number)))
             .sort((a, b) => b - a)
             .slice(0, MAX_MESSAGES);
     } finally {
