@@ -29,7 +29,7 @@ async function main() {
         console.log(
             `проход ${passes}: прочитано ${result.read}, входящих ${result.addedIncoming},`
             + ` отправленных ${result.addedOutgoing}, роботных пропущено ${result.robots},`
-            + ` осталось ${result.left}`,
+            + ` пачек ${result.passes}, осталось просмотреть ${result.left}`,
         );
 
         if (!result.ok) {
