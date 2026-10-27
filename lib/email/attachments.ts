@@ -185,7 +185,17 @@ export async function storePendingAttachments(limit = 10): Promise<SaveResult> {
             const meta = metaList(letter.attachments_meta);
             const saved: StoredAttachment[] = [];
 
-            for (const attachment of content.attachments) {
+            /**
+             * Картинки подписи файлами заказа не считаем.
+             *
+             * В письме логотип и кнопка каталога — такие же вложения, и при
+             * массовом переносе старой переписки (27.10.2026) они завалили бы
+             * список файлов: из тридцати проверенных писем вложения есть у
+             * двадцати девяти, и у большинства это подпись.
+             */
+            const worth = content.attachments.filter((a) => !a.related);
+
+            for (const attachment of worth) {
                 const fileName = String(attachment.filename ?? '').trim() || 'Без имени';
                 const bytes = attachment.content;
 

@@ -165,6 +165,10 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/cron/email-tagged-backfill",
+      "schedule": "*/5 21-23,0-3 * * *"
+    },
+    {
       "path": "/api/cron/email-sent-poll",
       "schedule": "*/10 * * * *"
     },

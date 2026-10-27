@@ -125,7 +125,13 @@ export interface EmailContentForForward {
     receivedAt: string | null; // ISO
     bodyText: string | null;
     bodyHtml: string | null;
-    attachments: Array<{ filename: string | null; contentType: string | null; content: Buffer }>;
+    attachments: Array<{
+        filename: string | null;
+        contentType: string | null;
+        content: Buffer;
+        /** Картинка из тела письма (подпись, логотип), а не приложенный файл. */
+        related?: boolean;
+    }>;
 }
 
 /**
@@ -173,6 +179,8 @@ async function fetchEmailContentOn(
                 filename: a.filename ?? null,
                 contentType: a.contentType ?? null,
                 content: a.content as Buffer,
+                // Признак нужен разбору вложений: подпись файлом заказа не делаем.
+                related: Boolean(a.related),
             }));
         return {
             subject: parsed.subject ?? null,

@@ -14,6 +14,11 @@
  *   npx tsx scripts/backfill-retailcrm-files.ts            — показать, сколько не хватает
  *   npx tsx scripts/backfill-retailcrm-files.ts --apply    — перенести
  *   … --limit=500                                          — перенести частями
+ *   … --months=0                                           — не ограничивать возрастом заказа
+ *
+ * По умолчанию берём только заказы моложе 18 месяцев (решение владельца
+ * 27.10.2026): у архива 2016–2024 годов файлы уже никому не нужны, а место на
+ * слабом диске базы и в хранилище они занимают.
  */
 import { config } from 'dotenv';
 
@@ -53,6 +58,8 @@ async function crmFiles(base: string, key: string): Promise<CrmFile[]> {
 async function main() {
     const apply = process.argv.includes('--apply');
     const limit = Number(process.argv.find((a) => a.startsWith('--limit='))?.split('=')[1] ?? 0);
+    const monthsArg = process.argv.find((a) => a.startsWith('--months='))?.split('=')[1];
+    const months = monthsArg === undefined ? 18 : Number(monthsArg);
 
     const base = process.env.RETAILCRM_URL;
     const key = process.env.RETAILCRM_API_KEY;
@@ -67,6 +74,39 @@ async function main() {
     console.log('читаю файлы RetailCRM…');
     const files = await crmFiles(base, key);
     console.log(`в RetailCRM привязано к заказам: ${files.length}`);
+
+    /**
+     * Возраст заказа считаем по нашей базе: в списке файлов RetailCRM есть
+     * дата файла, но не дата заказа, а решение владельца — про заказы.
+     */
+    let fresh = files;
+    if (months > 0) {
+        const cutoff = new Date();
+        cutoff.setMonth(cutoff.getMonth() - months);
+
+        const recent = new Set<string>();
+        for (let from = 0; ; from += 1000) {
+            const { data, error } = await supabase
+                .from('orders')
+                .select('number')
+                .gte('created_at', cutoff.toISOString())
+                .range(from, from + 999);
+
+            if (error) {
+                console.error('заказы не прочитались:', error.message);
+                process.exit(1);
+            }
+            const page = (data ?? []) as any[];
+            for (const row of page) recent.add(String(row.number));
+            if (page.length < 1000) break;
+        }
+
+        fresh = files.filter((file) => recent.has(file.order));
+        console.log(
+            `заказов моложе ${months} мес.: ${recent.size}; файлов по ним: ${fresh.length}`
+            + ` (отложено как старьё: ${files.length - fresh.length})`,
+        );
+    }
 
     // Что уже лежит у нас — по пути в хранилище.
     const have = new Set<string>();
@@ -90,7 +130,7 @@ async function main() {
     const pathOf = (file: CrmFile) =>
         `order-files/${safeStorageSegment(file.order, 40)}/retailcrm/${file.id}-${safeStorageSegment(file.filename)}`;
 
-    const todo = files.filter((file) => !have.has(pathOf(file)));
+    const todo = fresh.filter((file) => !have.has(pathOf(file)));
     const bytes = todo.reduce((sum, file) => sum + file.size, 0);
     console.log(`не перенесено: ${todo.length} файлов по ${new Set(todo.map((f) => f.order)).size} заказам, ${(bytes / 1024 / 1024).toFixed(0)} МБ`);
 
