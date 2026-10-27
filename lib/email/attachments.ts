@@ -251,10 +251,114 @@ export async function storePendingAttachments(limit = 10): Promise<SaveResult> {
 
             result.letters += 1;
         }
+
+        /**
+         * Наши письма из папки «Отправленные» — в том же заходе и на том же
+         * соединении: счёт и КП уходили вложением, и в файлах заказа их не
+         * было (Андрей 27.10.2026).
+         */
+        const sent = await storeOutgoing(limit, session);
+        result.letters += sent.letters;
+        result.files += sent.files;
+        result.skipped += sent.skipped;
     } finally {
         // Соединение закрываем всегда: брошенная сессия у Яндекса живёт
         // минутами и считается занятой.
         await session?.close();
+    }
+
+    return result;
+}
+
+/**
+ * Вложения наших исходящих писем.
+ *
+ * Берём из папки «Отправленные» по UID письма, кладём в хранилище и
+ * регистрируем файлом заказа: заказ у письма уже известен — его проставил
+ * перенос переписки (`order_number`).
+ *
+ * Отдельная отметка `attachments_stored_at` не даёт перечитывать одно и то же
+ * письмо каждые десять минут.
+ */
+async function storeOutgoing(limit: number, session: Awaited<ReturnType<typeof openImapSession>>): Promise<SaveResult> {
+    const result: SaveResult = { letters: 0, files: 0, skipped: 0 };
+    if (!session) return result;
+
+    const { data: letters } = await supabase
+        .from('outgoing_emails')
+        .select('id, imap_uid, folder, from_email, subject, order_number')
+        .eq('has_attachments', true)
+        .is('attachments_stored_at', null)
+        .not('order_number', 'is', null)
+        .order('sent_at', { ascending: false })
+        .limit(limit);
+
+    for (const letter of ((letters ?? []) as any[])) {
+        const uid = Number(letter.imap_uid);
+        const done = () => supabase
+            .from('outgoing_emails')
+            .update({ attachments_stored_at: new Date().toISOString() })
+            .eq('id', letter.id);
+
+        if (!Number.isFinite(uid)) {
+            await done();
+            result.skipped += 1;
+            continue;
+        }
+
+        let content: Awaited<ReturnType<typeof fetchEmailContentByUid>> = null;
+        try {
+            content = await fetchEmailContentByUid(uid, letter.folder || 'Sent', session);
+        } catch (error) {
+            // Ящик недоступен — вернёмся к письму следующим заходом.
+            console.warn('[email-attachments] исходящее не прочиталось:', letter.id, error);
+            continue;
+        }
+
+        if (!content) {
+            // Письма в папке больше нет: вложения потеряны, ждать их незачем.
+            await done();
+            result.skipped += 1;
+            continue;
+        }
+
+        // Картинки подписи файлами заказа не делаем — их в наших письмах больше всего.
+        for (const attachment of content.attachments.filter((a) => !a.related)) {
+            const fileName = String(attachment.filename ?? '').trim() || 'Без имени';
+            const bytes = attachment.content;
+
+            if (!bytes?.length || bytes.length > MAX_BYTES) {
+                result.skipped += 1;
+                continue;
+            }
+
+            const path = `email-files/sent-${safeStorageSegment(String(letter.id), 40)}/${safeStorageSegment(fileName)}`;
+            const upload = await supabase.storage.from(BUCKET).upload(path, new Uint8Array(bytes), {
+                contentType: attachment.contentType || 'application/octet-stream',
+                upsert: true,
+            });
+
+            if (upload.error) {
+                console.warn('[email-attachments] наш файл не сохранился:', fileName, upload.error.message);
+                result.skipped += 1;
+                continue;
+            }
+
+            const written = await attachMailFileToOrder({
+                orderNumber: String(letter.order_number),
+                fileName,
+                contentType: attachment.contentType ?? null,
+                size: bytes.length,
+                path,
+                fromName: 'Наше письмо',
+            });
+
+            if (written) result.files += 1;
+            else result.skipped += 1;
+        }
+
+        await done();
+        result.letters += 1;
     }
 
     return result;
