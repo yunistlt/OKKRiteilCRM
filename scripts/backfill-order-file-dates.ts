@@ -20,13 +20,21 @@ config({ path: '.env.local' });
 
 const PAGE = 500;
 
-/** Идентификатор письма из пути в хранилище, если он там есть. */
-function letterIdFrom(path: string): string | null {
+/**
+ * Какое письмо лежит за файлом.
+ *
+ * Пути разные: `email-files/<id входящего>/…`, `email-files/sent-<id нашего>/…`
+ * и `order-files/<заказ>/<id входящего>/…` у докачанных по ссылке.
+ */
+function letterFrom(path: string): { table: 'incoming_emails' | 'outgoing_emails'; id: string } | null {
+    const sent = /^email-files\/sent-([^/]+)\//.exec(path);
+    if (sent) return { table: 'outgoing_emails', id: sent[1] };
+
     const email = /^email-files\/([^/]+)\//.exec(path);
-    if (email) return email[1].replace(/^sent-/, '');
+    if (email) return { table: 'incoming_emails', id: email[1] };
 
     const order = /^order-files\/[^/]+\/([0-9a-f-]{36})\//.exec(path);
-    return order ? order[1] : null;
+    return order ? { table: 'incoming_emails', id: order[1] } : null;
 }
 
 async function main() {
@@ -55,16 +63,16 @@ async function main() {
         seen += rows.length;
 
         for (const row of rows) {
-            const letterId = letterIdFrom(String(row.storage_path));
-            if (!letterId) continue;
+            const letter = letterFrom(String(row.storage_path));
+            if (!letter) continue;
 
-            const { data: letter } = await supabase
-                .from('incoming_emails')
-                .select('received_at')
-                .eq('id', letterId)
+            const { data: found } = await supabase
+                .from(letter.table)
+                .select(letter.table === 'incoming_emails' ? 'received_at' : 'sent_at')
+                .eq('id', letter.id)
                 .maybeSingle();
 
-            const receivedAt = (letter as any)?.received_at;
+            const receivedAt = (found as any)?.received_at ?? (found as any)?.sent_at;
             if (!receivedAt) continue;
 
             matched += 1;
