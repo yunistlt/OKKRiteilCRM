@@ -77,19 +77,23 @@ async function orderOfLetter(letter: any): Promise<string | null> {
 }
 
 /**
- * Записать файл в заказ, если такого там ещё нет.
+ * Записать файл в заказ, если такого там ещё нет. Возвращает, завелась ли
+ * новая строка: вызывающий отличает «положили» от «уже было».
+ *
+ * Наружу эту функцию зовёт докачка вложений по тегу темы
+ * (`lib/email/order-files-from-mail.ts`) — писатель в `order_files` один.
  *
  * Проверка плюс уникальный индекс в базе: проверка объясняет человеку, индекс
  * не пускает при одновременных проходах.
  */
-async function attachToOrder(params: {
+export async function attachMailFileToOrder(params: {
     orderNumber: string;
     fileName: string;
     contentType: string | null;
     size: number;
     path: string;
     fromName: string | null;
-}): Promise<void> {
+}): Promise<boolean> {
     const { data: already } = await supabase
         .from('order_files')
         .select('id')
@@ -100,7 +104,7 @@ async function attachToOrder(params: {
         .limit(1)
         .maybeSingle();
 
-    if (already) return;
+    if (already) return false;
 
     const { error } = await supabase.from('order_files').insert({
         order_number: params.orderNumber,
@@ -117,6 +121,8 @@ async function attachToOrder(params: {
     if (error && !String(error.message).includes('duplicate key')) {
         console.warn('[email-attachments] файл не записан в заказ:', params.fileName, error.message);
     }
+
+    return !error;
 }
 
 export type SaveResult = { letters: number; files: number; skipped: number };
@@ -209,7 +215,7 @@ export async function storePendingAttachments(limit = 10): Promise<SaveResult> {
                 result.files += 1;
 
                 if (orderNumber) {
-                    await attachToOrder({
+                    await attachMailFileToOrder({
                         orderNumber,
                         fileName,
                         contentType: attachment.contentType ?? null,

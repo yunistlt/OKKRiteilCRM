@@ -290,6 +290,29 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
         }
     };
 
+    /**
+     * Забрать в заказ вложения его писем.
+     *
+     * У старых сделок счёт, КП и сертификаты остались только в письмах:
+     * RetailCRM такие вложения в API не отдаёт, и перенос файлов их не увидел.
+     * Ищем письма по нашему тегу темы и кладём вложения в файлы заказа.
+     */
+    const pullFromMail = async () => {
+        setBusy(true);
+        setNote('Смотрю почту по этому заказу…');
+        try {
+            const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files/from-mail`, { method: 'POST' });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Файлы из почты забрать не удалось');
+            setNote(payload.message || 'Готово');
+            await load();
+        } catch (e: any) {
+            setNote(e.message);
+        } finally {
+            setBusy(false);
+        }
+    };
+
     const upload = async (file: File) => {
         setBusy(true);
         setNote(null);
@@ -344,6 +367,14 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
                         }}
                     />
                 </label>
+                <button
+                    onClick={() => void pullFromMail()}
+                    disabled={busy}
+                    className="border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                    title="Вложения писем по этому заказу — счета, КП, ТЗ — лягут в файлы заказа"
+                >
+                    Забрать файлы из почты
+                </button>
                 <span className="text-[11px] text-gray-500">до 25 МБ; видно всем, кто работает с заказом</span>
                 {note && <span className="text-[11px] text-gray-700">{note}</span>}
             </div>
