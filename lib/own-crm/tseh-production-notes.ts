@@ -37,6 +37,11 @@ export async function loadProductionNote(orderNumber: string): Promise<Productio
             .select('id, file_name, content_type, size_bytes, for_production')
             .eq('order_number', orderNumber)
             .is('deleted_at', null)
+            // Архивные не показываем: это дубли, разобранные 14.10.2026
+            // (migrations/20261014_order_files_no_dupes.sql), и их содержимое ЦехУспеху не
+            // отдаётся — маршрут ./[id] требует archived_at IS NULL. Пока их показывали,
+            // менеджер мог отметить файл, который в цех не уедет никогда.
+            .is('archived_at', null)
             // Свежие сверху: менеджер приложил новый чертёж и должен увидеть
             // его сразу, а не искать в хвосте списка. Евгения Матвеева
             // 09.10.2026: «новые файлы не подтягиваются» — они подтягивались,
@@ -96,6 +101,9 @@ export async function productionFiles(orderNumber: string): Promise<ProductionFi
         .eq('order_number', orderNumber)
         .eq('for_production', true)
         .is('deleted_at', null)
+        // Те же архивные дубли: в списке они были, а содержимое отдать нельзя — ЦехУспех
+        // получал 404 (заказы 54779 и 54623, поймано 27.10.2026).
+        .is('archived_at', null)
         .order('created_at', { ascending: true });
 
     return ((data as any[]) || []).map((f) => ({
