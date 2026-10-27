@@ -13,6 +13,7 @@
  */
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
+import { fixCharsetMojibake } from '@/lib/email/mojibake';
 
 export interface ParsedIncomingEmail {
     messageId: string | null;
@@ -111,8 +112,9 @@ async function parseSource(uid: number, uidValidity: number, source: Buffer): Pr
             ? parsed.references.join(' ')
             : (parsed.references as string) ?? null,
         receivedAt: parsed.date ? parsed.date.toISOString() : null,
-        bodyText: parsed.text ?? null,
-        bodyHtml: typeof parsed.html === 'string' ? parsed.html : null,
+        // Письмо могло соврать о кодировке — см. lib/email/mojibake.ts.
+        bodyText: fixCharsetMojibake(parsed.text ?? null),
+        bodyHtml: fixCharsetMojibake(typeof parsed.html === 'string' ? parsed.html : null),
         hasAttachments: atts.length > 0,
         attachmentsMeta: atts,
     };
@@ -187,8 +189,8 @@ async function fetchEmailContentOn(
             fromEmail: from.email,
             fromName: from.name,
             receivedAt: parsed.date ? parsed.date.toISOString() : null,
-            bodyText: parsed.text ?? null,
-            bodyHtml: typeof parsed.html === 'string' ? parsed.html : null,
+            bodyText: fixCharsetMojibake(parsed.text ?? null),
+            bodyHtml: fixCharsetMojibake(typeof parsed.html === 'string' ? parsed.html : null),
             attachments,
         };
     } finally {
