@@ -28,7 +28,8 @@ async function main() {
         passes += 1;
         console.log(
             `проход ${passes}: прочитано ${result.read}, входящих ${result.addedIncoming},`
-            + ` отправленных ${result.addedOutgoing}, осталось ${result.left}`,
+            + ` отправленных ${result.addedOutgoing}, роботных пропущено ${result.robots},`
+            + ` осталось ${result.left}`,
         );
 
         if (!result.ok) {

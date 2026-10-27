@@ -47,6 +47,8 @@ export type TaggedBackfillResult = {
     addedOutgoing: number;
     /** Сколько UID осталось просмотреть ниже курсора (письма, не все с тегом). */
     left: number;
+    /** Сколько писем отбросили как роботные. */
+    robots: number;
 };
 
 /** Ключ курсора: своя отметка на каждую папку. */
@@ -108,7 +110,7 @@ async function pullFolder(params: {
     mailbox: string;
 }): Promise<TaggedBackfillResult> {
     const { client, folder, kind, batch, mailbox } = params;
-    const result: TaggedBackfillResult = { ok: true, read: 0, addedIncoming: 0, addedOutgoing: 0, left: 0 };
+    const result: TaggedBackfillResult = { ok: true, read: 0, addedIncoming: 0, addedOutgoing: 0, left: 0, robots: 0 };
 
     const since = new Date();
     since.setMonth(since.getMonth() - MONTHS);
@@ -188,7 +190,24 @@ async function pullFolder(params: {
     const ids = await orderIds(letters.map((l) => l.number));
 
     if (kind === 'in') {
-        const rows = letters
+        /**
+         * Роботные уведомления не переносим (решение владельца 27.10.2026):
+         * переписки в них нет, а места и времени они занимают наравне с
+         * настоящими письмами.
+         *
+         * Признак — отправитель совпадает с нашим же ящиком: так приходят
+         * «Долгое нахождение в статусе» от RetailCRM (250 писем из 901) и
+         * письма Елены про горячих лидов. Ответ клиента на такое уведомление
+         * приходит уже с его адреса и переносится как обычно.
+         */
+        const worth = letters.filter(({ parsed }) => {
+            const from = String(parsed.from?.value?.[0]?.address ?? '').trim().toLowerCase();
+            const robot = Boolean(from) && from === mailbox.trim().toLowerCase();
+            if (robot) result.robots += 1;
+            return !robot;
+        });
+
+        const rows = worth
             // Заказа нет у нас — цеплять письмо не к чему.
             .filter((l) => ids.has(l.number))
             .map(({ uid, parsed, number }) => ({
@@ -284,7 +303,7 @@ async function pullFolder(params: {
 
 /** Заход по обеим папкам. Одно соединение с ящиком на весь проход. */
 export async function backfillTaggedMail(batch = DEFAULT_BATCH): Promise<TaggedBackfillResult> {
-    const empty: TaggedBackfillResult = { ok: false, read: 0, addedIncoming: 0, addedOutgoing: 0, left: 0 };
+    const empty: TaggedBackfillResult = { ok: false, read: 0, addedIncoming: 0, addedOutgoing: 0, left: 0, robots: 0 };
 
     if (!isImapConfigured()) return { ...empty, error: 'Доступ к почтовому ящику не настроен' };
 
@@ -293,7 +312,7 @@ export async function backfillTaggedMail(batch = DEFAULT_BATCH): Promise<TaggedB
     const session = await openImapSession();
     if (!session) return { ...empty, error: 'Почтовый ящик не отвечает' };
 
-    const total: TaggedBackfillResult = { ok: true, read: 0, addedIncoming: 0, addedOutgoing: 0, left: 0 };
+    const total: TaggedBackfillResult = { ok: true, read: 0, addedIncoming: 0, addedOutgoing: 0, left: 0, robots: 0 };
 
     try {
         const folders: Array<{ folder: string; kind: 'in' | 'out' }> = [{ folder: 'INBOX', kind: 'in' }];
@@ -305,6 +324,7 @@ export async function backfillTaggedMail(batch = DEFAULT_BATCH): Promise<TaggedB
             total.addedIncoming += part.addedIncoming;
             total.addedOutgoing += part.addedOutgoing;
             total.left += part.left;
+            total.robots += part.robots;
             if (!part.ok) return { ...total, ok: false, error: part.error };
         }
 
