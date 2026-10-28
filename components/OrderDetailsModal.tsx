@@ -211,6 +211,30 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
     );
 };
 
+/**
+ * Карточка заказа с сервера.
+ *
+ * Ответ бывает не нашим: при перезапуске или сбое площадка отдаёт HTML-страницу
+ * ошибки, и `res.json()` падает сообщением «Unexpected token '<'» — менеджер
+ * видел его вместо карточки и перезагружал страницу наугад (Женя Матвеева,
+ * заказ 50537, 23.10.2026). Запрос повторяем один раз, и если ответ снова не
+ * наш — говорим человеческим языком, что это сбой связи, а не заказ.
+ */
+async function loadOrderDetails(orderId: number | string): Promise<any> {
+    let lastStatus = 0;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        if (attempt > 0) await new Promise((done) => setTimeout(done, 700));
+        const res = await fetch(`/api/orders/${orderId}/details`);
+        lastStatus = res.status;
+        try {
+            return await res.json();
+        } catch {
+            // Не наш ответ — пробуем ещё раз.
+        }
+    }
+    throw new Error(`сервер не ответил карточкой заказа (код ${lastStatus}). Это сбой связи, а не заказ — откройте его ещё раз через минуту.`);
+}
+
 const InfoField = ({ label, value, required }: InfoFieldProps) => (
     <div className="space-y-0.5">
         <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
@@ -355,7 +379,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
     // (item.discountTotal): цена со скидкой = price − discount.
     const [draftItems, setDraftItems] = useState<Array<{ id?: number | null; name: string; quantity: number; price: number; discount: number; discountPercent: number; article?: string | null; siteId?: string | null; xmlId?: string | null }>>([]);
     // Ссылки на карточки товаров сайта по артикулу: название в составе кликабельно.
-    const [catalogLinks, setCatalogLinks] = useState<Record<string, { url: string; name: string; image?: string | null }>>({});
+    const [catalogLinks, setCatalogLinks] = useState<Record<string, { url: string; name: string; image?: string | null; weight?: string | null }>>({});
     const [draftClientComment, setDraftClientComment] = useState('');
     const [draftManagerComment, setDraftManagerComment] = useState('');
     const [dirty, setDirty] = useState(false);
@@ -778,8 +802,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`/api/orders/${orderId}/details`);
-            const json = await res.json();
+            const json = await loadOrderDetails(orderId);
             if (json.error) throw new Error(json.error);
             setData(json);
 
@@ -1726,9 +1749,29 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                         </div>
                                                     );
                                                 })()}
-                                                {row.article && (
-                                                    <div className="mt-0.5 font-mono text-[11px] text-gray-400">{row.article}</div>
-                                                )}
+                                                {(() => {
+                                                    /**
+                                                     * Артикул и вес изделия — одной строкой под названием.
+                                                     *
+                                                     * Вес просила Лена Парфёнова 22.10.2026 (доработки 39 и
+                                                     * 40): он нужен под доставку, а за ним приходилось лазить
+                                                     * на сайт по каждой позиции. Берём с карточки товара —
+                                                     * оттуда же, откуда фото; на сайте не указан — не пишем.
+                                                     */
+                                                    const found = (row.xmlId && catalogLinks[`1c:${String(row.xmlId).split('#')[0]}`])
+                                                        || (row.siteId && catalogLinks[`id:${row.siteId}`])
+                                                        || (row.article && catalogLinks[`art:${row.article}`])
+                                                        || null;
+                                                    const weight = found?.weight ? String(found.weight).trim() : '';
+                                                    if (!row.article && !weight) return null;
+                                                    return (
+                                                        <div className="mt-0.5 font-mono text-[11px] text-gray-400">
+                                                            {row.article}
+                                                            {row.article && weight ? ' · ' : ''}
+                                                            {weight && <span className="text-gray-500">вес {weight}</span>}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </td>
                                             <td className="px-3 py-2">
                                                 <NumberInput

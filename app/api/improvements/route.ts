@@ -26,7 +26,7 @@ const LINK_TTL_SECONDS = 60;
 
 const FIELDS = 'id, text, section, order_number, screenshot_bucket, screenshot_path, screenshot_name,'
     + ' author_email, author_name, author_manager_id, created_at, done_at, done_by, done_note, done_build,'
-    + ' clarify_note, clarify_at, clarify_by';
+    + ' clarify_note, clarify_at, clarify_by, pinned_at, pinned_by, edited_at, edited_by';
 
 /** Имя человека для реестра: фамилия и имя, иначе логин. */
 function personName(user: { first_name: string | null; last_name: string | null; username: string | null }): string | null {
@@ -47,7 +47,7 @@ async function screenshotLink(row: any): Promise<string | null> {
     return data?.signedUrl ?? null;
 }
 
-async function toRow(row: any) {
+async function toRow(row: any, user?: any) {
     return {
         id: row.id,
         text: row.text,
@@ -68,7 +68,23 @@ async function toRow(row: any) {
         clarifyNote: row.clarify_note ?? null,
         clarifyAt: row.clarify_at ?? null,
         clarifyBy: row.clarify_by ?? null,
+        // Закреплённая запись стоит первой, пока её не открепят; правку видно,
+        // чтобы просьбу нельзя было молча переписать (Лена Парфёнова
+        // 21.10.2026, доработка №31).
+        pinnedAt: row.pinned_at ?? null,
+        pinnedBy: row.pinned_by ?? null,
+        editedAt: row.edited_at ?? null,
+        editedBy: row.edited_by ?? null,
+        /** Своя ли это запись: её автор может поправить текст. */
+        mine: isAuthor(row, user),
     };
+}
+
+/** Своя запись — по почте или логину: по ним же её и записали. */
+function isAuthor(row: any, user: any): boolean {
+    const me = String(user?.email || user?.username || '').trim().toLowerCase();
+    if (!me) return false;
+    return String(row?.author_email ?? '').trim().toLowerCase() === me;
 }
 
 export async function GET(request: Request) {
@@ -92,7 +108,7 @@ export async function GET(request: Request) {
         if (!data) return NextResponse.json({ error: 'Доработка не найдена' }, { status: 404 });
 
         return NextResponse.json({
-            improvement: await toRow(data),
+            improvement: await toRow(data, session.user),
             canClose: canCloseImprovements(session.user.role),
         });
     }
@@ -100,12 +116,14 @@ export async function GET(request: Request) {
     const { data, error } = await supabase
         .from('improvements')
         .select(FIELDS)
+        // Закреплённые — первыми: ради этого закреп и просили.
+        .order('pinned_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
         .limit(500);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    const rows = await Promise.all(((data ?? []) as any[]).map(toRow));
+    const rows = await Promise.all(((data ?? []) as any[]).map((row) => toRow(row, session.user)));
 
     return NextResponse.json({
         // Открытые отдельно от выполненных: выполненные уезжают вниз
@@ -174,7 +192,7 @@ export async function POST(request: Request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    return NextResponse.json({ ok: true, improvement: await toRow(data) });
+    return NextResponse.json({ ok: true, improvement: await toRow(data, session.user) });
 }
 
 /**
@@ -187,19 +205,77 @@ export async function PATCH(request: Request) {
     const session = await getSession();
     if (!session?.user) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
 
-    if (!canCloseImprovements(session.user.role)) {
-        return NextResponse.json({ error: 'Отметку «выполнено» ставит владелец' }, { status: 403 });
-    }
-
     const body = await request.json().catch(() => ({}));
     const id = Number((body as any)?.id);
     if (!Number.isFinite(id)) return NextResponse.json({ error: 'Не указана доработка' }, { status: 400 });
+    const action = String((body as any)?.action ?? '');
+
+    /**
+     * Закреп записи и правка своей записи — работа самих менеджеров, а не
+     * владельца (Лена Парфёнова 21.10.2026, доработка №31: «нужно чтобы запись
+     * главная была вверху и её мог закреплять или откреплять, переписывать
+     * менеджер»). Поэтому эти два действия идут ДО проверки на владельца.
+     */
+    if (action === 'pin' || action === 'unpin') {
+        const pin = action === 'pin';
+        const { data: pinned, error: pinError } = await supabase
+            .from('improvements')
+            .update(pin
+                ? { pinned_at: new Date().toISOString(), pinned_by: personName(session.user) || session.user.email || null }
+                : { pinned_at: null, pinned_by: null })
+            .eq('id', id)
+            .select(FIELDS)
+            .maybeSingle();
+
+        if (pinError) return NextResponse.json({ error: pinError.message }, { status: 500 });
+        if (!pinned) return NextResponse.json({ error: 'Доработка не найдена' }, { status: 404 });
+        return NextResponse.json({ ok: true, improvement: await toRow(pinned, session.user) });
+    }
+
+    if (action === 'edit') {
+        const text = String((body as any)?.text ?? '').trim();
+        if (!text) return NextResponse.json({ error: 'Напишите, что доработать' }, { status: 400 });
+
+        const { data: current } = await supabase
+            .from('improvements')
+            .select('id, author_email, done_at')
+            .eq('id', id)
+            .maybeSingle();
+
+        if (!current) return NextResponse.json({ error: 'Доработка не найдена' }, { status: 404 });
+        // Чужую просьбу не переписываем: иначе в реестре будет не то, что
+        // просил человек. Владелец правит как автор своих записей.
+        if (!isAuthor(current, session.user) && !canCloseImprovements(session.user.role)) {
+            return NextResponse.json({ error: 'Переписать можно только свою запись' }, { status: 403 });
+        }
+        if ((current as any).done_at) {
+            return NextResponse.json({ error: 'Выполненную доработку не переписываем' }, { status: 409 });
+        }
+
+        const { data: edited, error: editError } = await supabase
+            .from('improvements')
+            .update({
+                text,
+                edited_at: new Date().toISOString(),
+                edited_by: personName(session.user) || session.user.email || null,
+            })
+            .eq('id', id)
+            .select(FIELDS)
+            .maybeSingle();
+
+        if (editError) return NextResponse.json({ error: editError.message }, { status: 500 });
+        return NextResponse.json({ ok: true, improvement: await toRow(edited, session.user) });
+    }
+
+    if (!canCloseImprovements(session.user.role)) {
+        return NextResponse.json({ error: 'Отметку «выполнено» ставит владелец' }, { status: 403 });
+    }
 
     /**
      * Вопрос автору вместо отметки: из записи не понять, что делать.
      * Доработка остаётся в работе, вопрос виден в реестре и уходит человеку.
      */
-    if (String((body as any)?.action) === 'clarify') {
+    if (action === 'clarify') {
         const question = String((body as any)?.note ?? '').trim();
         if (!question) return NextResponse.json({ error: 'Напишите, что уточнить' }, { status: 400 });
 
@@ -218,7 +294,7 @@ export async function PATCH(request: Request) {
         if (!asked) return NextResponse.json({ error: 'Доработка не найдена' }, { status: 404 });
 
         await askAuthor(asked);
-        return NextResponse.json({ ok: true, improvement: await toRow(asked) });
+        return NextResponse.json({ ok: true, improvement: await toRow(asked, session.user) });
     }
 
     const done = (body as any)?.done !== false;
@@ -245,7 +321,7 @@ export async function PATCH(request: Request) {
 
     if (done) await tellAuthor(data);
 
-    return NextResponse.json({ ok: true, improvement: await toRow(data) });
+    return NextResponse.json({ ok: true, improvement: await toRow(data, session.user) });
 }
 
 /**

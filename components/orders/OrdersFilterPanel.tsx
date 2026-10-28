@@ -7,6 +7,7 @@ import { FILTER_FIELDS, DEFAULT_FILTER_FIELDS, normalizeSelection } from '@/lib/
 import { fetchViewRegistry } from '@/lib/orders-view-registry';
 import RelativeDateInput from './RelativeDateInput';
 import ClearFiltersButton from '@/components/ui/ClearFiltersButton';
+import { fetchJsonRetry } from '@/lib/fetch-json';
 
 interface Option { value: string; label: string }
 
@@ -81,9 +82,10 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply, 
     }, [value]);
 
     useEffect(() => {
-        fetch('/api/okk/filter-options')
-            .then((r) => r.json())
-            .then((d) => setOptions({ categories: d.categories || [], sferas: d.sferas || [] }))
+        // Значения для выпадающих списков — с повтором: без него один сбой
+        // оставлял «Сферу деятельности» пустой до перезагрузки страницы.
+        fetchJsonRetry('/api/okk/filter-options')
+            .then((d: any) => setOptions({ categories: d.categories || [], sferas: d.sferas || [] }))
             .catch(() => undefined);
 
         // Сначала реестр, потом выбор: сохранённое поле карточки иначе

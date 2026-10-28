@@ -14,6 +14,7 @@ import CommentCell from '@/components/orders/CommentCell';
 import BulkEmailModal from '@/components/orders/BulkEmailModal';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { formatRub } from '@/lib/format';
+import { fetchJsonRetry } from '@/lib/fetch-json';
 
 interface OrderRow {
     orderId: number;
@@ -236,8 +237,9 @@ export default function OrdersClient() {
     const [columnsOpen, setColumnsOpen] = useState(false);
 
     useEffect(() => {
-        fetch('/api/okk/managers')
-            .then((r) => r.json())
+        // Список менеджеров — с повтором: один сбой оставлял фильтр
+        // «Менеджеры» пустым на весь день (Женя Матвеева 23.10.2026).
+        fetchJsonRetry('/api/okk/managers')
             .then((d) => {
                 const list = Array.isArray(d) ? d : d.managers || [];
                 setManagers(list.map((m: any) => ({

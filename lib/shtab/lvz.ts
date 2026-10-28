@@ -77,6 +77,39 @@ export function normalizeDashes(text: string): string {
 }
 
 /**
+ * \u041B\u0430\u0442\u0438\u043D\u0441\u043A\u0438\u0435 \u0431\u0443\u043A\u0432\u044B, \u043D\u0435\u043E\u0442\u043B\u0438\u0447\u0438\u043C\u044B\u0435 \u043D\u0430 \u0432\u0438\u0434 \u043E\u0442 \u0440\u0443\u0441\u0441\u043A\u0438\u0445, \u2014 \u043A \u0440\u0443\u0441\u0441\u043A\u0438\u043C.
+ *
+ * \u0412 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F\u0445 \u043A\u0430\u0442\u0430\u043B\u043E\u0433\u0430 \u043E\u043D\u0438 \u043F\u0435\u0440\u0435\u043C\u0435\u0448\u0430\u043D\u044B: \u00AB\u0428\u043A\u0430\u0444 \u0441\u0443\u0448\u0438\u043B\u044C\u043D\u044B\u0439 \u0428\u0421**O** 02\u00BB \u043D\u0430\u043F\u0438\u0441\u0430\u043D \u0441
+ * \u043B\u0430\u0442\u0438\u043D\u0441\u043A\u043E\u0439 \u00ABO\u00BB, \u00AB**C**\u0443\u0448\u0438\u043B\u044C\u043D\u044B\u0439 \u0448\u043A\u0430\u0444 \u2026 \u0417\u0432\u0435\u0437\u0434\u0430\u00BB \u2014 \u0441 \u043B\u0430\u0442\u0438\u043D\u0441\u043A\u043E\u0439 \u00ABC\u00BB, \u00AB**\u0415**RGO\u00BB \u2014
+ * \u043D\u0430\u043E\u0431\u043E\u0440\u043E\u0442, \u0441 \u0440\u0443\u0441\u0441\u043A\u043E\u0439 \u00AB\u0415\u00BB. \u0422\u0430\u043A\u0438\u0445 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0439 \u043D\u0430 \u0432\u0438\u0442\u0440\u0438\u043D\u0435 67 \u0438\u0437 8 291, \u0438 \u0433\u043B\u0430\u0437\u043E\u043C \u0438\u0445
+ * \u043D\u0435 \u043E\u0442\u043B\u0438\u0447\u0438\u0442\u044C: \u043C\u0435\u043D\u0435\u0434\u0436\u0435\u0440 \u043D\u0430\u0431\u0438\u0440\u0430\u0435\u0442 \u00AB\u0428\u0421\u041E-02\u00BB \u0440\u0443\u0441\u0441\u043A\u0438\u043C\u0438 \u0431\u0443\u043A\u0432\u0430\u043C\u0438, \u043F\u043E\u0438\u0441\u043A \u0441\u0440\u0430\u0432\u043D\u0438\u0432\u0430\u0435\u0442
+ * \u043F\u043E\u0431\u0443\u043A\u0432\u0435\u043D\u043D\u043E \u0438 \u043D\u0435 \u043D\u0430\u0445\u043E\u0434\u0438\u0442 \u043D\u0438\u0447\u0435\u0433\u043E \u2014 \u043F\u0440\u0438\u0445\u043E\u0434\u0438\u043B\u043E\u0441\u044C \u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0441 \u0441\u0430\u0439\u0442\u0430
+ * \u0446\u0435\u043B\u0438\u043A\u043E\u043C (\u0418\u0440\u0438\u043D\u0430 \u0413\u043E\u0440\u0434\u0435\u0435\u0432\u0430 22.10.2026). \u0412\u0438\u0442\u0440\u0438\u043D\u0430 \u043D\u0435 \u043D\u0430\u0448\u0430, \u0447\u0438\u043D\u0438\u0442\u044C \u0442\u0430\u043C \u043D\u0435\u0447\u0435\u0433\u043E:
+ * \u0441\u0440\u0430\u0432\u043D\u0438\u0432\u0430\u0435\u043C \u0442\u0430\u043A, \u0447\u0442\u043E\u0431\u044B \u043D\u0430\u043F\u0438\u0441\u0430\u043D\u0438\u0435 \u043D\u0435 \u0440\u0435\u0448\u0430\u043B\u043E.
+ */
+const LOOKALIKES: Array<[string, string]> = [
+    ['A', '\u0410'], ['B', '\u0412'], ['C', '\u0421'], ['E', '\u0415'], ['H', '\u041D'], ['K', '\u041A'], ['M', '\u041C'],
+    ['O', '\u041E'], ['P', '\u0420'], ['T', '\u0422'], ['X', '\u0425'], ['Y', '\u0423'],
+    ['a', '\u0430'], ['c', '\u0441'], ['e', '\u0435'], ['o', '\u043E'], ['p', '\u0440'], ['x', '\u0445'], ['y', '\u0443'],
+];
+
+/** \u0411\u0443\u043A\u0432\u044B, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u043C\u043E\u0433\u0443\u0442 \u0431\u044B\u0442\u044C \u043D\u0430\u043F\u0438\u0441\u0430\u043D\u044B \u0438 \u0442\u0430\u043A \u0438 \u0442\u0430\u043A \u2014 \u0432 \u043E\u0431\u0440\u0430\u0437\u0446\u0435 \u0434\u043B\u044F \u0431\u0430\u0437\u044B \u043E\u043D\u0438 \u0441\u0442\u0430\u043D\u043E\u0432\u044F\u0442\u0441\u044F \u00AB_\u00BB. */
+const CONFUSABLE_CHARS = new Set(
+    LOOKALIKES.flatMap(([latin, cyrillic]) => [latin, cyrillic, latin.toLowerCase(), cyrillic.toLowerCase()]),
+);
+
+export function foldLookalikes(text: string): string {
+    let out = String(text ?? '');
+    for (const [latin, cyrillic] of LOOKALIKES) out = out.split(latin).join(cyrillic);
+    return out;
+}
+
+/** \u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0438\u043B\u0438 \u0437\u0430\u043F\u0440\u043E\u0441 \u0432 \u0441\u0440\u0430\u0432\u043D\u0438\u043C\u043E\u043C \u0432\u0438\u0434\u0435: \u0442\u0438\u0440\u0435 \u043E\u0431\u044B\u0447\u043D\u044B\u0435, \u0434\u0432\u043E\u0439\u043D\u0438\u043A\u0438 \u0440\u0443\u0441\u0441\u043A\u0438\u0435, \u0441\u0442\u0440\u043E\u0447\u043D\u044B\u0435 \u0431\u0443\u043A\u0432\u044B. */
+export function normalizeForMatch(text: string): string {
+    return foldLookalikes(normalizeDashes(text)).toLowerCase();
+}
+
+/**
  * Образец для поиска, которому всё равно, какие знаки стоят между словами.
  *
  * Требование владельца 06.10.2026: «сделай фильтр, чтобы он не обращал
@@ -95,6 +128,21 @@ export function looseLike(part: string): string {
         // оно становится подстановкой наравне с дефисом и точкой.
         .replace(/[\\%]/g, (ch) => `\\${ch}`)
         .replace(/[^a-zа-яё0-9\\%]+/gi, '%');
+}
+
+/**
+ * Тот же образец, но буквам-двойникам всё равно, каким алфавитом их набрали.
+ *
+ * Каждая такая буква становится «_» — одним любым знаком. База сравнивает
+ * побуквенно и про алфавиты не знает, поэтому иначе «ШСО 02» русскими буквами
+ * не нашло бы «ШСO 02» с латинской «O». Образец получается шире, и выдачу
+ * после него обязательно просеиваем у себя (`matchesAllParts`).
+ */
+export function confusableLike(part: string): string {
+    return looseLike(part)
+        .split('')
+        .map((ch) => (CONFUSABLE_CHARS.has(ch) ? '_' : ch))
+        .join('');
 }
 
 export function catalogQueryParts(query: string): { models: string[]; words: string[] } {
@@ -143,13 +191,48 @@ export function catalogQueryParts(query: string): { models: string[]; words: str
  * видят, и правило молча не срабатывало бы на русских названиях.
  */
 function looseRegex(part: string): RegExp {
-    const body = normalizeDashes(String(part ?? ''))
-        .toLowerCase()
+    const body = normalizeForMatch(part)
         .split(/[^a-zа-яё0-9]+/i)
         .filter(Boolean)
-        .map((chunk) => chunk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .map((chunk) => {
+            const safe = chunk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            /**
+             * Число из запроса ищем числом целиком, а не куском другого числа.
+             *
+             * «20 пар» находило «2200х1250х515» и «2050х1975х680»: «20» входит
+             * в габариты почти любого изделия. Поиск показывал стеллажи на 40,
+             * 48, 72 и 90 пар и молчал о том, что двадцати среди них нет —
+             * менеджер считал это ответом на свой запрос (Ирина Гордеева
+             * 22.10.2026). Теперь сказанное число либо есть, либо его нет.
+             */
+            return /^\d+$/.test(chunk) ? `(?<!\\d)${safe}(?!\\d)` : safe;
+        })
         .join('[^a-zа-яё0-9]*');
     return new RegExp(body || '(?!)', 'i');
+}
+
+/** Все ли куски запроса действительно есть в названии. */
+function matchesAllParts(name: string, parts: string[]): boolean {
+    const folded = normalizeForMatch(name);
+    return parts.every((part) => looseRegex(part).test(folded));
+}
+
+/**
+ * Где ищем совпадения: название, артикул и названия модификаций.
+ *
+ * Размер изделия живёт не в названии карточки, а в её модификациях: у
+ * «Сушильный стеллаж SL1 Вираж-Эконом. Односторонний» есть «На 12 пар обуви»,
+ * «На 16 пар обуви», «На 21 пару обуви». Если смотреть только на название,
+ * «на 12 пар» не находится нигде, хотя товар на витрине есть (жалобы Ирины
+ * Гордеевой 20 и 22.10.2026).
+ */
+function searchHaystack(row: any): string {
+    const skus = Array.isArray(row?.raw_data?.skus) ? row.raw_data.skus : [];
+    return [
+        String(row?.name ?? ''),
+        String(row?.sku ?? ''),
+        ...skus.map((sku: any) => `${sku?.name ?? ''} ${sku?.sku ?? ''}`),
+    ].join(' ');
 }
 
 /**
@@ -173,8 +256,10 @@ function rankCatalogRows(rows: any[], query: string, parts: string[], take: numb
     const partRes = parts.map((part) => looseRegex(part));
 
     const scored = rows.map((row) => {
-        const name = normalizeDashes(String(row.name ?? '')).toLowerCase();
-        const matched = partRes.reduce((sum, re) => sum + (re.test(name) ? 1 : 0), 0);
+        const name = normalizeForMatch(String(row.name ?? ''));
+        // Совпадения считаем и по модификациям: размер изделия написан в них.
+        const haystack = normalizeForMatch(searchHaystack(row));
+        const matched = partRes.reduce((sum, re) => sum + (re.test(haystack) ? 1 : 0), 0);
         return {
             row,
             name,
@@ -231,18 +316,49 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
          * «И» с отбрасыванием слов с конца, и лишь в конце «ИЛИ» — но выдачу
          * ранжируем на большой выборке, а не на случайной горстке.
          */
-        const search = async (parts: string[]) => {
+        const search = async (parts: string[], tolerateLookalikes = false) => {
             if (!parts.length) return [] as any[];
             let request = client()
                 .from('marketing_products')
                 .select('id, sku, name, price, full_url, category_id, meta, raw_data');
             // Знаки препинания в образце — подстановочными: в каталоге на их
             // месте бывает длинное тире, пробел или ничего.
-            for (const part of parts) request = request.ilike('name', `%${looseLike(part)}%`);
+            /**
+             * База сужает по словам, числа проверяем у себя.
+             *
+             * Размер («20 пар») в названии карточки обычно не написан — он в
+             * модификациях, а по ним база искать не умеет. Поэтому числа из
+             * запроса в условие к базе не ставим, зато ниже требуем их наличия
+             * в названии, артикуле или модификации.
+             */
+            const words = parts.filter((part) => !/^\d+$/.test(part));
+            const askDatabase = words.length ? words : parts;
+            for (const part of askDatabase) {
+                request = request.ilike('name', `%${tolerateLookalikes ? confusableLike(part) : looseLike(part)}%`);
+            }
             // С запасом: пятнадцать строк выбирает ранжирование, а не порядок базы.
-            const { data, error } = await request.limit(200);
+            const { data, error } = await request.limit(askDatabase.length === parts.length ? 200 : 500);
             if (error) throw new Error(error.message);
-            return (data ?? []) as any[];
+            /**
+             * Что отдала база — просеиваем у себя: образец нарочно шире
+             * сказанного (знаки и буквы-двойники стоят подстановками), а
+             * показывать надо только то, где есть ВСЁ названное.
+             */
+            return ((data ?? []) as any[]).filter((row) => matchesAllParts(searchHaystack(row), parts));
+        };
+
+        /**
+         * Одна попытка — два образца: как набрано и терпимо к буквам-двойникам.
+         *
+         * Оба нужны вместе, а не по очереди: на «ШСО-02» точный образец находит
+         * «Шкаф сушильной шсо - 02- 39п», и если на этом остановиться, «Шкаф
+         * сушильный ШСO 02 (1880х820х620мм)» с латинской «O» так и не покажется
+         * — а менеджеру нужен был именно он.
+         */
+        const searchBoth = async (parts: string[]) => {
+            const [exact, tolerant] = await Promise.all([search(parts), search(parts, true)]);
+            const seen = new Set(exact.map((row) => String(row.id)));
+            return [...exact, ...tolerant.filter((row) => !seen.has(String(row.id)))];
         };
 
         const attempts: string[][] = [];
@@ -273,7 +389,7 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
 
         let rows: any[] = [];
         for (const parts of attempts) {
-            rows = await search(parts);
+            rows = await searchBoth(parts);
             if (rows.length) break;
         }
 
@@ -281,7 +397,7 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
             // Последняя попытка — «ИЛИ», как раньше, но с большой выборкой и
             // ранжированием по числу совпавших слов.
             const all = [...models, ...words];
-            const or = all.map((part) => `name.ilike.%${looseLike(part)}%`).join(',');
+            const or = all.map((part) => `name.ilike.%${confusableLike(part)}%`).join(',');
             const { data, error } = await client()
                 .from('marketing_products')
                 .select('id, sku, name, price, full_url, category_id, meta, raw_data')
@@ -290,7 +406,7 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
             if (error) throw new Error(error.message);
 
             rows = (data ?? []).filter((row: any) =>
-                all.some((part) => looseRegex(part).test(normalizeDashes(String(row.name ?? '')).toLowerCase())));
+                all.some((part) => looseRegex(part).test(normalizeForMatch(String(row.name ?? '')))));
         }
 
         const allParts = [...models, ...words];
@@ -304,7 +420,10 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
          * Теперь в окне написано, по чему на самом деле показан список
          * (жалоба владельца 15.10.2026).
          */
-        const topName = rows.length ? normalizeDashes(String(rows[0].name ?? '')).toLowerCase() : '';
+        // По чему показан список — считаем по верхней строке целиком, вместе с
+        // её модификациями: размер написан в них, и объявлять его ненайденным
+        // нельзя, если он там есть.
+        const topName = rows.length ? normalizeForMatch(searchHaystack(rows[0])) : '';
         const matchedParts = allParts.filter((part) => looseRegex(part).test(topName));
         const missedParts = allParts.filter((part) => !matchedParts.includes(part));
 

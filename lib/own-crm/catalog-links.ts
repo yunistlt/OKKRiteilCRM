@@ -50,6 +50,15 @@ export type CatalogLink = {
     name: string;
     /** Фото с карточки товара на сайте — его же показываем в КП. */
     image: string | null;
+    /**
+     * Вес изделия, как он написан на сайте: «125 кг».
+     *
+     * Просьба Лены Парфёновой 22.10.2026 (доработки 39 и 40): «нужно, чтобы
+     * отображался вес товара». Вес нужен под доставку, а менеджер лазил за ним
+     * на сайт по каждой позиции. Берём оттуда же, откуда фото и ссылку —
+     * `features.weight` карточки; не указан на сайте — не показываем.
+     */
+    weight: string | null;
 };
 
 /**
@@ -69,6 +78,16 @@ function firstImage(images: unknown): string | null {
 }
 
 const clean = (value: unknown): string => String(value ?? '').replace(/^"+|"+$/g, '').trim();
+
+/**
+ * Вес изделия с карточки сайта. Запросы берут его отдельной колонкой
+ * (`weight:raw_data->features->>weight`), а запрос по модификациям — целиком
+ * в `raw_data`: поддерживаем оба.
+ */
+function productWeight(row: any): string | null {
+    const value = clean(row?.weight ?? row?.raw_data?.features?.weight);
+    return value || null;
+}
 
 /** Ссылки по идентификаторам товаров сайта и, запасным ключом, по артикулам. */
 export async function catalogLinks(params: {
@@ -102,7 +121,7 @@ export async function catalogLinks(params: {
         if (xmlIds.length) {
             const { data, error } = await db
                 .from('marketing_products')
-                .select('id, name, full_url, images, raw_data->>id_1c')
+                .select('id, name, full_url, images, raw_data->>id_1c, weight:raw_data->features->>weight')
                 .in('raw_data->>id_1c', xmlIds);
             if (error) throw new Error(error.message);
             for (const row of ((data ?? []) as any[])) {
@@ -113,6 +132,7 @@ export async function catalogLinks(params: {
                     url: String(row.full_url ?? ''),
                     name: decodeEntities(String(row.name ?? '')),
                     image: firstImage(row.images),
+                    weight: productWeight(row),
                 });
             }
         }
@@ -120,23 +140,73 @@ export async function catalogLinks(params: {
         if (ids.length) {
             const { data, error } = await db
                 .from('marketing_products')
-                .select('id, name, full_url, images')
+                .select('id, name, full_url, images, weight:raw_data->features->>weight')
                 .in('id', ids);
             if (error) throw new Error(error.message);
             for (const row of ((data ?? []) as any[])) {
-                if (row.full_url) found.push({ key: `id:${row.id}`, productId: String(row.id ?? ''), url: String(row.full_url), name: decodeEntities(String(row.name ?? '')), image: firstImage(row.images) });
+                if (row.full_url) found.push({ key: `id:${row.id}`, productId: String(row.id ?? ''), url: String(row.full_url), name: decodeEntities(String(row.name ?? '')), image: firstImage(row.images), weight: productWeight(row) });
             }
         }
 
         if (articles.length) {
             const { data, error } = await db
                 .from('marketing_products')
-                .select('id, sku, name, full_url, images')
+                .select('id, sku, name, full_url, images, weight:raw_data->features->>weight')
                 .in('sku', articles);
             if (error) throw new Error(error.message);
             for (const row of ((data ?? []) as any[])) {
                 if (row.sku && row.full_url) {
-                    found.push({ key: `art:${clean(row.sku)}`, productId: String(row.id ?? ''), url: String(row.full_url), name: decodeEntities(String(row.name ?? '')), image: firstImage(row.images) });
+                    found.push({ key: `art:${clean(row.sku)}`, productId: String(row.id ?? ''), url: String(row.full_url), name: decodeEntities(String(row.name ?? '')), image: firstImage(row.images), weight: productWeight(row) });
+                }
+            }
+        }
+
+        /**
+         * Артикул позиции — это артикул МОДИФИКАЦИИ, а не карточки.
+         *
+         * Товар на витрине заведён одной карточкой с размерами внутри, и в
+         * заказ попадает размер: «РИ.13.137.1456.2560.460», «49301». Среди
+         * `marketing_products.sku` таких артикулов нет вовсе, поэтому у позиции
+         * не было ни фото, ни ссылки на сайт — хотя товар на витрине есть
+         * (Лена Парфёнова 26.10.2026 по заказу 54789: «куда деваются актуальные
+         * комплекты, да и в целом товар? нет картинки, нет ссылки на сайт»).
+         *
+         * Ищем такой артикул внутри модификаций. Сначала грубо — по тексту
+         * `raw_data`, это умеет база, — а потом точно, по самим модификациям:
+         * иначе числовой артикул «49301» совпал бы с любой ценой.
+         */
+        const unresolved = articles.filter((article) => !found.some((link) => link.key === `art:${article}`));
+        for (let i = 0; i < unresolved.length; i += 20) {
+            const batch = unresolved.slice(i, i + 20).filter((article) => !/[,()]/.test(article));
+            if (!batch.length) continue;
+
+            const { data, error } = await db
+                .from('marketing_products')
+                .select('id, sku, name, full_url, images, raw_data')
+                .or(batch.map((article) => `raw_data->>skus.ilike.%${article}%`).join(','))
+                .limit(200);
+            if (error) throw new Error(error.message);
+
+            for (const row of ((data ?? []) as any[])) {
+                if (!row.full_url) continue;
+                const variants = Array.isArray(row.raw_data?.skus) ? row.raw_data.skus : [];
+                for (const article of batch) {
+                    if (found.some((link) => link.key === `art:${article}`)) continue;
+                    const hit = variants.some((variant: any) => {
+                        const sku = clean(variant?.sku).toLowerCase();
+                        const id = clean(variant?.id);
+                        const wanted = article.toLowerCase();
+                        return id === article || (Boolean(sku) && (sku === wanted || sku.includes(wanted) || wanted.includes(sku)));
+                    });
+                    if (!hit) continue;
+                    found.push({
+                        key: `art:${article}`,
+                        productId: String(row.id ?? ''),
+                        url: String(row.full_url),
+                        name: decodeEntities(String(row.name ?? '')),
+                        image: firstImage(row.images),
+                        weight: productWeight(row),
+                    });
                 }
             }
         }

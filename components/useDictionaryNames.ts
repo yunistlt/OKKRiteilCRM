@@ -32,11 +32,45 @@ let inflight: Promise<Catalog> | null = null;
 
 const key = (entity: string, dictionary: string | null, code: string) => `${entity}|${dictionary ?? ''}|${code}`;
 
+/**
+ * Каталог запрашиваем с повторами и НИКОГДА не запоминаем пустой ответ.
+ *
+ * Сбой одного запроса обнулял выпадающие списки на всё время, пока страница
+ * открыта: карточка рисовала «Не выбрано» и больше ничего — ни причин отмены,
+ * ни часового пояса, ни сферы деятельности. Менеджер видел не ошибку, а
+ * «поле не работает» (Женя Матвеева, заказ 900346, 23.10.2026; тем же сбоем
+ * пропадал фильтр «Город доставки» — доработка №38). Пустой каталог теперь не
+ * кэшируется, и запрос повторяется сам.
+ */
+const RETRY_DELAYS_MS = [400, 1200, 3000];
+
+async function fetchCatalogOnce(): Promise<{ items: Item[]; fields: Field[]; fieldNames?: FieldName[] }> {
+    const res = await fetch('/api/dictionaries');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+async function fetchCatalogWithRetries(): Promise<{ items: Item[]; fields: Field[]; fieldNames?: FieldName[] }> {
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+        if (attempt > 0) {
+            await new Promise((done) => setTimeout(done, RETRY_DELAYS_MS[attempt - 1]));
+        }
+        try {
+            const data = await fetchCatalogOnce();
+            if ((data?.items ?? []).length) return data;
+            lastError = new Error('каталог пуст');
+        } catch (error) {
+            lastError = error;
+        }
+    }
+    throw lastError instanceof Error ? lastError : new Error('каталог не загрузился');
+}
+
 async function loadCatalog(): Promise<Catalog> {
     if (cache) return cache;
     if (inflight) return inflight;
-    inflight = fetch('/api/dictionaries')
-        .then((r) => (r.ok ? r.json() : { items: [], fields: [] }))
+    inflight = fetchCatalogWithRetries()
         .then((data: { items: Item[]; fields: Field[]; fieldNames?: FieldName[] }) => {
             const names: Record<string, string> = {};
             const lists: Record<string, Option[]> = {};
@@ -107,13 +141,33 @@ export function useDictionaryNames(): DictionaryResolver {
 
     useEffect(() => {
         let alive = true;
-        loadCatalog().then((c) => {
-            if (!alive) return;
-            setCatalog(c);
-            setReady(true);
-        });
+        let timer: ReturnType<typeof setTimeout> | null = null;
+
+        const attempt = () => {
+            // В скрытой вкладке не стучимся — ЗАКОН о нагрузке: фоновый опрос
+            // только у того, кто смотрит на экран.
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+                timer = setTimeout(attempt, 15000);
+                return;
+            }
+            loadCatalog().then((c) => {
+                if (!alive) return;
+                setCatalog(c);
+                // Пустой каталог — это несостоявшаяся загрузка, а не ответ:
+                // не объявляем списки готовыми и пробуем ещё раз, пока
+                // страница открыта. Иначе поле молча остаётся пустым.
+                if (Object.keys(c.names).length) {
+                    setReady(true);
+                    return;
+                }
+                timer = setTimeout(attempt, 15000);
+            });
+        };
+
+        attempt();
         return () => {
             alive = false;
+            if (timer) clearTimeout(timer);
         };
     }, []);
 
