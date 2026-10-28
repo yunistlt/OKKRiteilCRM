@@ -95,6 +95,14 @@ async function main() {
     let rows: Row[] = JSON.parse(readFileSync(file, 'utf8'));
     if (only) rows = rows.filter((r) => String(r.order) === only);
 
+    /**
+     * Идём от поздних заказов к ранним (требование владельца 28.10.2026).
+     * Свежие заказы ещё в работе, и файлы по ним нужны людям сегодня, а архив
+     * 2016 года подождёт. Прогон длинный и может прерваться — тогда недобранным
+     * останется самое старое, а не то, чем пользуются.
+     */
+    rows.sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
+
     /** Что уже лежит в заказах: пара «заказ + имя + размер». */
     const have = new Set<string>();
 
