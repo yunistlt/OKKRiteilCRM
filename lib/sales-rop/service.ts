@@ -1,6 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { loadMonthFacts, revenueNoVatForOrders } from '@/lib/salary/month-fact';
 import { loadStatusDirectory } from '@/lib/own-crm/status-code';
+import { touchClosesTask } from '@/lib/sales-rop/touch-rules';
 import { logError } from '@/lib/error-monitor';
 import { planAllowedForManager } from '@/lib/read-gate/service';
 import { PRESALE_STATUSES, buildPlan, purchases } from '@/lib/sales-rop/rules';
@@ -1402,7 +1403,7 @@ export async function backfillTouches(date: string): Promise<{ filled: number; r
         const kind = touches.get(Number(t.order_id)) ?? null;
         await supabase
             .from('sales_rop_task')
-            .update({ touched: Boolean(kind), touch_kind: kind, checked_at: stamp })
+            .update({ touched: touchClosesTask(kind), touch_kind: kind, checked_at: stamp })
             .eq('plan_date', date)
             .eq('order_id', t.order_id);
     }
@@ -1443,7 +1444,7 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
 
     for (const t of touches === null ? [] : (tasks as any[])) {
         const kind = touches!.get(Number(t.order_id)) ?? null;
-        if (kind) touchedCount += 1;
+        if (touchClosesTask(kind)) touchedCount += 1;
         const row: EveningRow = {
             orderId: Number(t.order_id),
             number: t.order_number,
@@ -1455,7 +1456,7 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
             reasonCode: t.reason_code,
             reasonText: t.reason_text,
             weight: Number(t.weight),
-            touched: Boolean(kind),
+            touched: touchClosesTask(kind),
             touchKind: kind,
         };
         const list = byManager.get(row.managerId) ?? [];

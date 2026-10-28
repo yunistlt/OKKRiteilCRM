@@ -11,6 +11,7 @@
  * пишем, всё считается на лету.
  */
 import { supabase } from '@/utils/supabase';
+import { touchClosesTask } from '@/lib/sales-rop/touch-rules';
 import { CUSTOM_FIELD_CODES } from '@/lib/orders-filter';
 import { byStatusCode } from '@/lib/own-crm/status-code';
 import { loadManagerMonthFact } from '@/lib/salary/month-fact';
@@ -375,9 +376,9 @@ async function loadQueue(managerId: number, today: Date): Promise<NextAction[]> 
      * прогон бота-РОПа, поэтому днём список не менялся.
      *
      * Касания считает та же функция базы, что и у бота (`sales_rop_touches`):
-     * звонок, письмо, смена статуса, перенос даты с объяснением, правка,
-     * комментарий. «Перенос даты без причины» отработкой не считается — иначе
-     * задачу можно бесконечно отодвигать.
+     * звонок, письмо, смена статуса, правка, комментарий, перенос даты. Что
+     * из этого закрывает задачу, решает одно правило — `touchClosesTask`:
+     * перенос даты не закрывает, им задачу только откладывают.
      */
     const { data: touchRows } = await supabase.rpc('sales_rop_touches', { p_date: date });
     const touched = new Map<number, string>(
@@ -386,10 +387,11 @@ async function loadQueue(managerId: number, today: Date): Promise<NextAction[]> 
 
     for (const action of actions) {
         const kind = touched.get(action.orderId);
-        if (kind && kind !== 'перенос даты без причины') {
-            action.done = true;
-            action.doneBy = kind;
-        }
+        if (!kind) continue;
+        // Подпись ставим всегда: даже если задача не закрыта, видно, что с
+        // заказом сегодня делали.
+        action.doneBy = kind;
+        action.done = touchClosesTask(kind);
     }
 
     return actions.sort((a, b) => Number(a.done) - Number(b.done) || b.weight - a.weight);

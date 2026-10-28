@@ -156,20 +156,22 @@ export default function DayPlanPanel({ onClose }: { onClose?: () => void }) {
                                 {task.reason && (
                                     <p className="mt-0.5 text-[11px] leading-snug text-gray-500">{task.reason}</p>
                                 )}
-                                {task.done && (
-                                    /* Перенос даты без объяснения — не работа, а нарушение:
-                                       им можно бесконечно отодвигать клиента (закон владельца
-                                       05.10.2026). Красим иначе и называем честно. */
-                                    task.doneBy === 'перенос даты без причины' ? (
-                                        <p className="mt-0.5 text-[11px] font-semibold text-red-700">
-                                            Нарушение: дату перенесли без причины
-                                        </p>
-                                    ) : (
-                                        <p className="mt-0.5 text-[11px] font-semibold text-green-700">
-                                            Отработан{task.doneBy ? `: ${task.doneBy}` : ''}
-                                        </p>
-                                    )
-                                )}
+                                {/* Перенос даты задачу не закрывает: менеджер её отложил,
+                                    а не сделал (закон владельца 28.10.2026). Показываем, что
+                                    с заказом делали, но зелёным не красим. */}
+                                {task.done ? (
+                                    <p className="mt-0.5 text-[11px] font-semibold text-green-700">
+                                        Отработан{task.doneBy ? `: ${task.doneBy}` : ''}
+                                    </p>
+                                ) : task.doneBy === 'перенос даты без причины' ? (
+                                    <p className="mt-0.5 text-[11px] font-semibold text-red-700">
+                                        Нарушение: дату перенесли без причины
+                                    </p>
+                                ) : task.doneBy ? (
+                                    <p className="mt-0.5 text-[11px] font-semibold text-amber-800">
+                                        Дату перенесли — звонка нет, задача остаётся
+                                    </p>
+                                ) : null}
                             </li>
                         ))}
                     </ul>

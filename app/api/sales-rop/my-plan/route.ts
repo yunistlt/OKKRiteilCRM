@@ -10,6 +10,7 @@
  * правды разошёлся бы с чатом в первый же день.
  */
 import { NextResponse } from 'next/server';
+import { TASK_DONE_RULE } from '@/lib/sales-rop/touch-rules';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 
@@ -44,7 +45,7 @@ function toTask(row: TaskRow) {
 }
 
 const RULE =
-    'Задача считается отработанной, если по заказу сегодня был комментарий, смена статуса, письмо или звонок.';
+    TASK_DONE_RULE;
 
 export async function GET(request: Request) {
     const session = await getSession();
