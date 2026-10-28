@@ -289,6 +289,54 @@ async function sendTypedSafe(
 }
 
 /**
+ * Клиенты, у которых прямо сейчас есть заявка в рабочем статусе.
+ *
+ * Требование владельца 28.10.2026: прежде чем дать задание «напомнить о себе»
+ * или «предложить ещё», надо посмотреть, нет ли у этого клиента живой заявки.
+ * Если есть — разговор идёт по ней, а не по тому, что он покупал год назад;
+ * два повода в один день читаются как спам, и человек перестаёт читать оба.
+ *
+ * Берём готовый ночной снимок отношений (`has_open_deal` считается по
+ * `status_settings.is_working`, как и план) — считать это заново по заказам
+ * значит ещё один тяжёлый проход по базе в утреннем прогоне.
+ *
+ * Ключ клиента в снимке — ИНН либо «cust:<id карточки>», а у кандидатов на
+ * развитие — ИНН либо «cid:<id карточки>». Это один и тот же клиент, поэтому
+ * в множество кладём оба написания.
+ */
+async function loadClientsWithOpenDeal(): Promise<Set<string>> {
+    const keys = new Set<string>();
+    // REST отдаёт не больше тысячи строк за запрос и молчит об этом. Клиентов с
+    // живой заявкой сейчас пятьсот, но тихо потерять половину проверки, когда
+    // их станет больше тысячи, нельзя — читаем страницами до конца.
+    const PAGE = 1000;
+
+    for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+            .from('sales_client_relation')
+            .select('client_key')
+            .eq('has_open_deal', true)
+            .range(from, from + PAGE - 1);
+
+        // Снимок не поднялся — развитие не отменяем: план без развития хуже,
+        // чем план, где у части клиентов повод выбран не лучший.
+        if (error) break;
+
+        const rows = (data ?? []) as any[];
+        for (const row of rows) {
+            const key = String(row.client_key ?? '');
+            if (!key) continue;
+            keys.add(key);
+            if (key.startsWith('cust:')) keys.add(`cid:${key.slice(5)}`);
+        }
+
+        if (rows.length < PAGE) break;
+    }
+
+    return keys;
+}
+
+/**
  * Задачи на развитие клиента: кому что ещё можно продать.
  *
  * Цель — 300 постоянных клиентов со средним чеком 3 млн в год, и достигается она
@@ -303,6 +351,8 @@ async function loadDevelopmentTasks(
     plannedOrderIds: Set<number>,
     /** Сколько задач не хватает каждому до нормы дня. */
     shortfallByManager: Map<number | null, number>,
+    /** Клиенты с живой заявкой: по ним разговор идёт по заявке. */
+    clientsWithOpenDeal: Set<string>,
 ): Promise<Task[]> {
     const { data, error } = await supabase.rpc('sales_dev_candidates', {
         p_min_orders: settings.devMinOrders,
@@ -334,6 +384,8 @@ async function loadDevelopmentTasks(
         // Один заказ — одна строка в плане: если по нему уже есть срочная
         // задача, развитие подождёт до следующего дня.
         if (plannedOrderIds.has(orderId)) continue;
+        // И одна строка на клиента: есть живая заявка — работают по ней.
+        if (clientsWithOpenDeal.has(String(r.client_key ?? ''))) continue;
 
         const own = (r.own_categories ?? []).filter((c: string) => c !== 'Прочее' && c !== 'Доставка');
         // Второй слой: модель читает досье клиента — покупки, комментарии
@@ -385,6 +437,7 @@ async function loadReactivationTasks(
     settings: Settings,
     plannedOrderIds: Set<number>,
     shortfallByManager: Map<number | null, number>,
+    clientsWithOpenDeal: Set<string>,
 ): Promise<Task[]> {
     const need = Array.from(shortfallByManager.entries()).filter(([, n]) => n > 0);
     if (need.length === 0) return [];
@@ -409,6 +462,8 @@ async function loadReactivationTasks(
 
         const orderId = Number(r.last_order_id);
         if (plannedOrderIds.has(orderId)) continue;
+        // Живая заявка у клиента — звонить «давно не покупали» незачем.
+        if (clientsWithOpenDeal.has(String(r.client_key ?? ''))) continue;
 
         list.push({
             orderId,
@@ -438,6 +493,12 @@ async function loadReactivationTasks(
  *
  * Задача привязана к последнему заказу клиента — просто чтобы менеджеру было с
  * чего начать разговор и куда нажать. Повод при этом не в заказе, а в клиенте.
+ *
+ * Клиентов с живой заявкой здесь отсеивает сама выборка базы (`NOT
+ * has_open_deal` в `sales_client_touch_candidates`) — проверка «нет ли на этом
+ * клиенте заявок в рабочих статусах» для этого блока уже сделана, второй раз в
+ * коде её не повторяем. У развития и обзвона базы такой проверки в SQL нет, им
+ * множество `loadClientsWithOpenDeal()` передаётся явно.
  */
 /**
  * Заказы, закрытые без разговора с клиентом, — обратно в план.
@@ -933,7 +994,11 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         plan.set(touch.managerId, list);
     }
 
-    for (const dev of await loadDevelopmentTasks(settings, plannedIds, shortfall)) {
+    // Один и тот же снимок на оба блока развития: лишний запрос к базе в
+    // утреннем прогоне ничего не уточняет.
+    const clientsWithOpenDeal = await loadClientsWithOpenDeal();
+
+    for (const dev of await loadDevelopmentTasks(settings, plannedIds, shortfall, clientsWithOpenDeal)) {
         const list = plan.get(dev.managerId) ?? [];
         list.push(dev);
         plan.set(dev.managerId, list);
@@ -945,7 +1010,7 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     // когда-то покупали и давно молчат, хватает всегда; умного повода для
     // звонка тут нет, и притворяться, что он есть, не надо: «давно не покупали»
     // это честная причина позвонить.
-    for (const task of await loadReactivationTasks(settings, plannedIds, shortfall)) {
+    for (const task of await loadReactivationTasks(settings, plannedIds, shortfall, clientsWithOpenDeal)) {
         const list = plan.get(task.managerId) ?? [];
         list.push(task);
         plan.set(task.managerId, list);

@@ -12,6 +12,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { compareByPriority, taskBlock } from '@/lib/sales-rop/rules';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,10 +29,28 @@ type TaskRow = {
     touched: boolean | null;
     touch_kind: string | null;
     manager_id: number;
+    reason_code: string | null;
+    weight: number | null;
 };
+
+/**
+ * Порядок — тот же, что в утреннем письме: блок «текущие активные заявки»,
+ * потом «развитие клиента» (решение владельца 28.10.2026). Раньше панель
+ * сортировала по сумме, и развитие клиента с его прошлыми покупками
+ * оказывалось выше висящего счёта.
+ */
+function sortByPriority(rows: TaskRow[]): TaskRow[] {
+    return [...rows].sort((a, b) =>
+        compareByPriority(
+            { reasonCode: String(a.reason_code ?? ''), weight: Number(a.weight ?? 0) },
+            { reasonCode: String(b.reason_code ?? ''), weight: Number(b.weight ?? 0) },
+        ),
+    );
+}
 
 function toTask(row: TaskRow) {
     return {
+        block: taskBlock(String(row.reason_code ?? '')),
         orderId: Number(row.order_id),
         orderNumber: String(row.order_number ?? ''),
         client: row.client || 'Покупатель не указан',
@@ -56,7 +75,8 @@ export async function GET(request: Request) {
     const ownManagerId = Number(session.user.retail_crm_manager_id ?? 0);
     const isChief = CHIEF_ROLES.has(String(session.user.role));
 
-    const columns = 'order_id, order_number, client, amount, reason_text, status_name, touched, touch_kind, manager_id';
+    const columns =
+        'order_id, order_number, client, amount, reason_text, status_name, touched, touch_kind, manager_id, reason_code, weight';
 
     // Менеджер со своим планом видит только его — чужие задачи ему не работа.
     if (ownManagerId && !isChief) {
@@ -64,12 +84,11 @@ export async function GET(request: Request) {
             .from('sales_rop_task')
             .select(columns)
             .eq('plan_date', date)
-            .eq('manager_id', ownManagerId)
-            .order('weight', { ascending: false });
+            .eq('manager_id', ownManagerId);
 
         if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-        const tasks = ((data ?? []) as TaskRow[]).map(toTask);
+        const tasks = sortByPriority((data ?? []) as TaskRow[]).map(toTask);
 
         // Текст утреннего сообщения — тот же, что ушёл в Telegram, с пояснениями
         // и советами. Его читают утром целиком, прежде чем браться за работу.
@@ -95,12 +114,11 @@ export async function GET(request: Request) {
     const { data, error } = await supabase
         .from('sales_rop_task')
         .select(columns)
-        .eq('plan_date', date)
-        .order('weight', { ascending: false });
+        .eq('plan_date', date);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    const rows = (data ?? []) as TaskRow[];
+    const rows = sortByPriority((data ?? []) as TaskRow[]);
     const managerIds = Array.from(new Set(rows.map((r) => Number(r.manager_id)).filter(Boolean)));
 
     const names = new Map<number, string>();

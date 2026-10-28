@@ -14,6 +14,8 @@ import { supabase } from '@/utils/supabase';
 import { CUSTOM_FIELD_CODES } from '@/lib/orders-filter';
 import { byStatusCode } from '@/lib/own-crm/status-code';
 import { loadManagerMonthFact } from '@/lib/salary/month-fact';
+import { taskBlock } from '@/lib/sales-rop/rules';
+import type { TaskBlock } from '@/lib/sales-rop/rules';
 
 /** Сколько минут даётся на ответ новому лиду, прежде чем он станет горящим. */
 const LEAD_SLA_MINUTES = 30;
@@ -21,7 +23,37 @@ const LEAD_SLA_MINUTES = 30;
 /** Через сколько дней молчания сделка считается зависшей. */
 const STALE_DAYS = 5;
 
-export type ActionKind = 'lead' | 'promise' | 'plan' | 'stale';
+export type ActionKind = 'lead' | 'promise' | 'plan' | 'stale' | 'development';
+
+/**
+ * Порядок дня (решение владельца 28.10.2026).
+ *
+ * Сначала блок «текущие активные заявки», и внутри него — сперва заявки в
+ * рабочих статусах, а уже за ними поступившие сегодня. Потом блок «развитие
+ * клиента». До этого всё стояло одной очередью по весу, а вес развития —
+ * сумма всех прошлых покупок клиента, поэтому «напомнить о себе» оказывалось
+ * выше живой сделки.
+ */
+const BLOCK_ORDER: Record<TaskBlock, number> = { active: 0, development: 1 };
+
+const KIND_TIER: Record<ActionKind, number> = {
+    promise: 0,
+    plan: 0,
+    stale: 0,
+    // Новая заявка сегодня — после того, что уже в работе.
+    lead: 1,
+    development: 0,
+};
+
+/** Один порядок на экран и на список: сделанное вниз, дальше блок и ярус. */
+export function compareActions(a: NextAction, b: NextAction): number {
+    return (
+        Number(a.done) - Number(b.done) ||
+        BLOCK_ORDER[a.block] - BLOCK_ORDER[b.block] ||
+        KIND_TIER[a.kind] - KIND_TIER[b.kind] ||
+        b.weight - a.weight
+    );
+}
 
 export type NextAction = {
     orderId: number;
@@ -36,6 +68,8 @@ export type NextAction = {
     /** Совет ИИ по этому заказу: что сделать, почему и о чём спросить. */
     advice: { action: string; why: string | null; offer: string | null } | null;
     kind: ActionKind;
+    /** Блок дня: деньги в работе или работа вдолгую. */
+    block: TaskBlock;
     /** Чем выше, тем раньше в очереди. */
     weight: number;
     /** Сколько минут осталось по SLA, если это новый лид. */
@@ -51,7 +85,7 @@ export type MyDay = {
     now: NextAction | null;
     next: NextAction[];
     all: NextAction[];
-    counts: { urgent: number; next: number; planned: number; total: number; done: number };
+    counts: { urgent: number; next: number; planned: number; development: number; total: number; done: number };
     plan: {
         target: number;
         fact: number;
@@ -276,7 +310,12 @@ async function loadQueue(managerId: number, today: Date): Promise<NextAction[]> 
         const orderId = Number(row.order_id);
         seen.add(orderId);
 
-        const promise = String(row.reason_code ?? '') === 'contact_today';
+        const reasonCode = String(row.reason_code ?? '');
+        const promise = reasonCode === 'contact_today';
+        // Блок задачи считает бот-РОП — там же, где отбирает её в план: два
+        // места с одним правилом разъехались бы в первый же день.
+        const block = taskBlock(reasonCode);
+        const kind: ActionKind = block === 'development' ? 'development' : promise ? 'promise' : 'plan';
         actions.push({
             orderId,
             orderNumber: String(row.order_number ?? ''),
@@ -285,8 +324,9 @@ async function loadQueue(managerId: number, today: Date): Promise<NextAction[]> 
             statusName: row.status_name || '',
             action: promise ? 'Позвонить' : 'Связаться',
             reason: row.reason_text || '',
-            kind: promise ? 'promise' : 'plan',
-            weight: weigh({ amount: money(row.amount), kind: promise ? 'promise' : 'plan', slaLeftMinutes: null, daysSilent: 0 }),
+            kind,
+            block,
+            weight: weigh({ amount: money(row.amount), kind, slaLeftMinutes: null, daysSilent: 0 }),
             slaLeftMinutes: null,
             advice: adviceByOrder.get(`${orderId}:${row.reason_code}`) ?? null,
             done: row.touched === true,
@@ -324,6 +364,7 @@ async function loadQueue(managerId: number, today: Date): Promise<NextAction[]> 
                 ? `Заявка поступила ${minutes} мин назад, ответить осталось ${left} мин`
                 : `Заявка поступила ${minutes} мин назад — срок ответа вышел`,
             kind: 'lead',
+            block: 'active',
             weight: weigh({ amount: money(row.totalsumm), kind: 'lead', slaLeftMinutes: left, daysSilent: 0 }),
             slaLeftMinutes: left,
             advice: null,
@@ -360,6 +401,7 @@ async function loadQueue(managerId: number, today: Date): Promise<NextAction[]> 
             action: 'Связаться',
             reason: `Нет движения ${silent} дн.`,
             kind: 'stale',
+            block: 'active',
             weight: weigh({ amount: money(row.totalsumm), kind: 'stale', slaLeftMinutes: null, daysSilent: silent }),
             slaLeftMinutes: null,
             advice: null,
@@ -392,7 +434,7 @@ async function loadQueue(managerId: number, today: Date): Promise<NextAction[]> 
         }
     }
 
-    return actions.sort((a, b) => Number(a.done) - Number(b.done) || b.weight - a.weight);
+    return actions.sort(compareActions);
 }
 
 export async function loadMyDay(managerId: number | null, today = new Date()): Promise<MyDay> {
@@ -405,7 +447,7 @@ export async function loadMyDay(managerId: number | null, today = new Date()): P
             now: null,
             next: [],
             all: [],
-            counts: { urgent: 0, next: 0, planned: 0, total: 0, done: 0 },
+            counts: { urgent: 0, next: 0, planned: 0, development: 0, total: 0, done: 0 },
             plan: { target: 0, fact: 0, forecast: 0, factPct: 0, forecastPct: 0, workdaysLeft: 0, perDay: 0, computedAt: null, soldOrders: 0 },
             funnel: [],
             metrics: { callsToday: 0, talksToday: 0, ordersMonth: 0, revenueMonth: 0 },
@@ -432,6 +474,7 @@ export async function loadMyDay(managerId: number | null, today = new Date()): P
             urgent: open.filter((a) => a.kind === 'lead' || a.kind === 'promise').length,
             next: open.filter((a) => a.kind === 'plan').length,
             planned: open.filter((a) => a.kind === 'stale').length,
+            development: open.filter((a) => a.block === 'development').length,
             total: queue.length,
             done: queue.filter((a) => a.done).length,
         },

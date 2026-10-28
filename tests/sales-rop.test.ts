@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildPlan, taskFor } from '@/lib/sales-rop/rules';
-import type { PresaleOrder, Thresholds } from '@/lib/sales-rop/rules';
+import { buildPlan, compareByPriority, taskBlock, taskFor } from '@/lib/sales-rop/rules';
+import type { PresaleOrder, Task, Thresholds } from '@/lib/sales-rop/rules';
 import {
     formatDiscipline,
     formatEvening,
@@ -787,5 +787,95 @@ describe('нагрузка по людям', () => {
         const plan = buildPlan(mixed, TODAY, T, new Map(), new Map([[249, 1.5]]));
         expect(live(plan.get(249)!).length).toBeGreaterThan(T.tasksPerManager);
         expect(live(plan.get(10)!)).toHaveLength(T.tasksPerManager);
+    });
+});
+
+// Два блока дня (решение владельца 28.10.2026).
+//
+// Порядок здесь — не вкусовщина: менеджер берётся за первое в списке. Пока
+// развитие стояло вперемешку с живыми сделками, оно эту первую строку и
+// занимало — вес развития это все прошлые покупки клиента, а их всегда больше
+// одной текущей сделки.
+describe('два блока дня', () => {
+    const task = (reasonCode: Task['reasonCode'], weight = 1): Task => ({
+        orderId: 1,
+        number: '54132',
+        client: 'ООО «Техномакс»',
+        statusCode: 'otlozeno',
+        statusName: 'Отложено',
+        amount: weight,
+        managerId: 249,
+        reasonCode,
+        reasonText: 'повод',
+        weight,
+    });
+
+    it('всё, что в работе, — первый блок; развитие — второй', () => {
+        expect(taskBlock('invoice_stale')).toBe('active');
+        expect(taskBlock('contact_today')).toBe('active');
+        expect(taskBlock('cold')).toBe('active');
+        expect(taskBlock('development')).toBe('development');
+        expect(taskBlock('reactivation')).toBe('development');
+        expect(taskBlock('client_touch')).toBe('development');
+    });
+
+    it('неизвестный код считаем активной работой, а не развитием', () => {
+        // Новая причина появится раньше, чем о ней вспомнят здесь. Пусть лучше
+        // попадёт в первый блок: потерять её хуже, чем поставить не туда.
+        expect(taskBlock('что-то новое')).toBe('active');
+    });
+
+    it('развитие с миллионом прошлых покупок не обгоняет висящий счёт', () => {
+        const list = [task('client_touch', 9_000_000), task('development', 5_000_000), task('invoice_stale', 50_000)];
+        list.sort(compareByPriority);
+        expect(list.map((t) => t.reasonCode)).toEqual(['invoice_stale', 'development', 'client_touch']);
+    });
+
+    it('остывшие закрывают первый блок, а не уходят за развитие', () => {
+        const list = [task('development', 1_000_000), task('cold', 10_000)];
+        list.sort(compareByPriority);
+        expect(list.map((t) => t.reasonCode)).toEqual(['cold', 'development']);
+    });
+
+    it('в плане бота развитие идёт последним', () => {
+        // buildPlan отбирает только заказы, развитие дописывается после него —
+        // но сортировка внутри плана обязана оставить его в конце.
+        const orders = [
+            order({ orderId: 1, statusCode: 'prepayed', lastTouchAt: '2026-08-28' }),
+            order({ orderId: 2, contactDate: '2026-08-20' }),
+            order({ orderId: 3, contactDate: '2023-06-01' }),
+        ];
+        const tasks = buildPlan(orders, TODAY, T).get(249)!;
+        const blocks = tasks.map((t) => taskBlock(t.reasonCode));
+        expect(blocks).toEqual(blocks.slice().sort());
+        expect(tasks[tasks.length - 1].reasonCode).toBe('cold');
+    });
+
+    it('в письме блоки разделены шапками', () => {
+        const text = formatMorning(
+            {
+                managerId: 249,
+                managerName: 'Иванова Мария',
+                telegramUsername: 'maria',
+                tasks: [task('invoice_stale', 100_000), task('client_touch', 900_000)],
+            },
+            '',
+        );
+        expect(text).toContain('ТЕКУЩИЕ АКТИВНЫЕ ЗАЯВКИ');
+        expect(text).toContain('РАЗВИТИЕ КЛИЕНТА');
+        expect(text.indexOf('ТЕКУЩИЕ АКТИВНЫЕ ЗАЯВКИ')).toBeLessThan(text.indexOf('РАЗВИТИЕ КЛИЕНТА'));
+    });
+
+    it('блок один — шапку не рисуем', () => {
+        const text = formatMorning(
+            {
+                managerId: 249,
+                managerName: 'Иванова Мария',
+                telegramUsername: 'maria',
+                tasks: [task('invoice_stale', 100_000)],
+            },
+            '',
+        );
+        expect(text).not.toContain('ТЕКУЩИЕ АКТИВНЫЕ ЗАЯВКИ');
     });
 });

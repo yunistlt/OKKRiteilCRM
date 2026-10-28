@@ -10,6 +10,11 @@
  *
  * Очередь считает система: приоритет зависит от суммы сделки, срочности,
  * обещания клиенту и времени без контакта, а не от того, когда задачу завели.
+ *
+ * День разделён на два блока (решение владельца 28.10.2026): сначала текущие
+ * активные заявки — то, что уже в работе, и за ними поступившие сегодня, —
+ * потом развитие клиента. Порядок задаёт сервер (`lib/analytics/my-day.ts`),
+ * экран его только показывает: второй сортировки здесь нет.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -25,7 +30,8 @@ type Action = {
     statusName: string;
     action: string;
     reason: string;
-    kind: 'lead' | 'promise' | 'plan' | 'stale';
+    kind: 'lead' | 'promise' | 'plan' | 'stale' | 'development';
+    block: 'active' | 'development';
     advice: { action: string; why: string | null; offer: string | null } | null;
     weight: number;
     slaLeftMinutes: number | null;
@@ -40,7 +46,7 @@ type MyDay = {
     now: Action | null;
     next: Action[];
     all: Action[];
-    counts: { urgent: number; next: number; planned: number; total: number; done: number };
+    counts: { urgent: number; next: number; planned: number; development: number; total: number; done: number };
     plan: {
         target: number;
         fact: number;
@@ -61,6 +67,7 @@ const KIND_LABEL: Record<Action['kind'], string> = {
     promise: 'Обещание клиенту',
     plan: 'План дня',
     stale: 'Нет движения',
+    development: 'Развитие клиента',
 };
 
 const KIND_STYLE: Record<Action['kind'], string> = {
@@ -68,7 +75,14 @@ const KIND_STYLE: Record<Action['kind'], string> = {
     promise: 'bg-amber-50 text-amber-800',
     plan: 'bg-blue-50 text-blue-700',
     stale: 'bg-gray-100 text-gray-600',
+    development: 'bg-green-50 text-green-800',
 };
+
+/** Шапки блоков дня — те же слова, что в утреннем письме бота. */
+const BLOCKS: Array<{ key: Action['block']; title: string; hint: string }> = [
+    { key: 'active', title: 'Текущие активные заявки', hint: 'заявки в работе, затем поступившие сегодня' },
+    { key: 'development', title: 'Развитие клиента', hint: 'берём, когда по активным заявкам сделано' },
+];
 
 /** Вкладки списка — срезы той же очереди, как в образце. */
 const TABS = [
@@ -117,7 +131,12 @@ export default function MyDayClient() {
         if (!day) return [];
         const byTab = tab === 'all' ? day.all : day.all.filter((a) => a.kind === tab);
         const filtered = showDone ? byTab.filter((a) => a.done) : byTab.filter((a) => !a.done);
-        return showAll ? filtered : filtered.slice(0, 8);
+        if (showAll) return filtered;
+        // Короткий вид режет только активный блок: если резать список целиком,
+        // развитие при восьми активных заявках не видно вовсе, а оно второй
+        // блок дня, а не продолжение первого.
+        const active = filtered.filter((a) => a.block === 'active').slice(0, 8);
+        return [...active, ...filtered.filter((a) => a.block === 'development')];
     }, [day, tab, showAll, showDone]);
 
     if (loading) return <p className="px-6 py-8 text-sm text-gray-500">Собираем ваш день…</p>;
@@ -319,6 +338,9 @@ function TaskTable({
     // В счётчике вкладки — то, что осталось сделать, а не весь день.
     const countOf = (key: TabKey) => day.all.filter((a) => !a.done && (key === 'all' || a.kind === key)).length;
 
+    // Оба блока в списке — значит их надо разделить шапками.
+    const splitBlocks = new Set(rows.map((action) => action.block)).size > 1;
+
     return (
         <section className="border border-gray-200 bg-white">
             <div className="flex flex-wrap items-center gap-1 border-b border-gray-200 px-3 pt-2">
@@ -345,6 +367,9 @@ function TaskTable({
                     <span className="text-red-700">🔴 {counts.urgent} приоритетных</span>
                     <span className="text-amber-700">🟡 {counts.next} следующих</span>
                     <span className="text-gray-600">⚪ {counts.planned} плановых</span>
+                    {counts.development > 0 && (
+                        <span className="text-green-800">🟢 {counts.development} на развитие</span>
+                    )}
                     {counts.done > 0 && (
                         <button
                             type="button"
@@ -380,33 +405,54 @@ function TaskTable({
                             <th className="px-3 py-2">Действие</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        {rows.map((action) => (
-                            <tr key={action.orderNumber} className={`border-b border-gray-100 ${action.done ? 'bg-green-50/50' : ''}`}>
-                                <td className="px-3 py-2">
-                                    <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${KIND_STYLE[action.kind]}`}>
-                                        {KIND_LABEL[action.kind]}
-                                    </span>
-                                </td>
-                                <td className="px-3 py-2 text-gray-900">{action.client}</td>
-                                <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gray-900">{formatRub(action.amount)}</td>
-                                <td className="px-3 py-2 font-semibold text-gray-900">{action.action}</td>
-                                <td className="px-3 py-2 text-gray-600">
-                                    {action.done && action.doneBy
-                                        ? <span className="text-green-700">сделано сегодня: {action.doneBy}</span>
-                                        : action.reason}
-                                </td>
-                                <td className="px-3 py-2 text-right">
-                                    <Link
-                                        href={`/orders?order=${action.orderId}&from=my-day`}
-                                        className="text-xs font-bold text-blue-700 hover:underline"
-                                    >
-                                        №{action.orderNumber}
-                                    </Link>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
+                    {BLOCKS.map((block) => {
+                        const blockRows = rows.filter((action) => action.block === block.key);
+                        if (blockRows.length === 0) return null;
+
+                        return (
+                            <tbody key={block.key}>
+                                {/* Шапку блока рисуем только когда в списке оба:
+                                    разделять один блок нечем, и строка станет шумом. */}
+                                {splitBlocks && (
+                                    <tr className="border-b border-gray-300 bg-gray-50">
+                                        <td colSpan={6} className="px-3 py-1.5">
+                                            <span className="text-[11px] font-black uppercase tracking-widest text-gray-900">
+                                                {block.title}
+                                            </span>
+                                            <span className="ml-2 text-[11px] text-gray-500">
+                                                {blockRows.length} · {block.hint}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                )}
+                                {blockRows.map((action) => (
+                                    <tr key={action.orderNumber} className={`border-b border-gray-100 ${action.done ? 'bg-green-50/50' : ''}`}>
+                                        <td className="px-3 py-2">
+                                            <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${KIND_STYLE[action.kind]}`}>
+                                                {KIND_LABEL[action.kind]}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-gray-900">{action.client}</td>
+                                        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gray-900">{formatRub(action.amount)}</td>
+                                        <td className="px-3 py-2 font-semibold text-gray-900">{action.action}</td>
+                                        <td className="px-3 py-2 text-gray-600">
+                                            {action.done && action.doneBy
+                                                ? <span className="text-green-700">сделано сегодня: {action.doneBy}</span>
+                                                : action.reason}
+                                        </td>
+                                        <td className="px-3 py-2 text-right">
+                                            <Link
+                                                href={`/orders?order=${action.orderId}&from=my-day`}
+                                                className="text-xs font-bold text-blue-700 hover:underline"
+                                            >
+                                                №{action.orderNumber}
+                                            </Link>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        );
+                    })}
                 </table>
             )}
         </section>
