@@ -143,7 +143,13 @@ async function main() {
 
             for (let attempt = 1; attempt <= TRIES && !body; attempt += 1) {
                 try {
-                    const response = await fetch(row.url);
+                    /**
+                     * Часть ссылок хранит имя файла как есть — с пробелами и
+                     * кириллицей («…/Коммерческое предложение ПОБТ (НДС 5%)…»).
+                     * Такой адрес S3 отвергает с HTTP 400, пока его не закодировать.
+                     */
+                    let response = await fetch(encodeURI(row.url));
+                    if (!response.ok) response = await fetch(row.url);
                     if (!response.ok) throw new Error(`HTTP ${response.status}`);
                     body = await response.arrayBuffer();
                 } catch (error) {
