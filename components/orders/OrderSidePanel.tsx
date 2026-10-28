@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { openPickerOnClick } from '@/components/ui/openPickerOnClick';
 import OrderMailPanel from '@/components/orders/OrderMailPanel';
 import { orderFileHref } from '@/lib/orders/file-href';
+import { fileKindLabel } from '@/lib/file-type';
 
 export type PanelKind = 'history' | 'files' | 'tasks' | 'mail';
 
@@ -446,60 +447,82 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
                     Файлов по этому заказу нет: вложения в письмах не приходили, руками ничего не прикладывали.
                 </p>
             ) : (
-                <ul className="divide-y divide-gray-100">
-                    {files.map((f, i) => (
-                        <li key={f.source === 'manual' ? `m${f.fileId}` : `e${i}`} className="py-2">
-                            {/* Файл открывается: вложение письма при первом нажатии
-                                докачивается из ящика, приложенный руками лежит у нас
-                                (требование владельца 02.10.2026). */}
-                            {f.source === 'manual' ? (
-                                <div className="flex items-baseline justify-between gap-2">
-                                    <a
-                                        href={orderFileHref({ orderNumber, fileId: f.fileId })}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="text-sm font-bold text-blue-700 hover:underline"
-                                    >
-                                        {f.filename}
-                                    </a>
-                                    <button
-                                        onClick={() => remove(f.fileId, f.filename)}
-                                        disabled={busy}
-                                        className="text-[11px] font-semibold text-gray-500 hover:underline disabled:text-gray-300"
-                                        title="Файл уйдёт в архив и останется в разделе «Файлы»"
-                                    >
-                                        в архив
-                                    </button>
-                                </div>
-                            ) : f.downloadable !== false && f.emailId ? (
-                                <a
-                                    href={orderFileHref({ orderNumber, emailId: String(f.emailId), name: f.filename })}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-sm font-bold text-blue-700 hover:underline"
-                                >
-                                    {f.filename}
-                                </a>
-                            ) : (
-                                <p className="text-sm font-bold text-gray-900">
-                                    {f.filename}
-                                    <span className="ml-2 text-[11px] font-normal text-amber-800">
-                                        письма уже нет в ящике — открыть нельзя
-                                    </span>
-                                </p>
-                            )}
-                            <p className="text-[11px] text-gray-500">
-                                {size(f.size)}
-                                {f.source === 'manual'
-                                    ? ` · приложил ${f.uploadedBy || 'менеджер'}`
-                                    : (f.fromName || f.fromEmail ? ` · от ${f.fromName || f.fromEmail}` : '')}
-                                {f.receivedAt
-                                    ? ` · ${new Date(f.receivedAt).toLocaleDateString('ru-RU')}, ${new Date(f.receivedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
-                                    : ''}
-                            </p>
-                        </li>
-                    ))}
-                </ul>
+                /**
+                 * Таблица как в RetailCRM: формат, название с размером, источник
+                 * и дата (требование владельца 28.10.2026 — «сделай 1 в 1»).
+                 * Раньше строки шли списком в две линии, и глазу было не за что
+                 * зацепиться: имя, вес и «приложил …» сливались в кашу.
+                 */
+                <table className="w-full table-fixed border-collapse text-sm">
+                    <thead>
+                        <tr className="border-b border-gray-200 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                            <th className="w-[55%] py-1.5 pr-2 font-semibold">Название файла</th>
+                            <th className="w-[25%] py-1.5 pr-2 font-semibold">Источник</th>
+                            <th className="w-[20%] py-1.5 font-semibold">Дата</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {files.map((f, i) => {
+                            const openable = f.source === 'manual' || (f.downloadable !== false && f.emailId);
+                            const href = f.source === 'manual'
+                                ? orderFileHref({ orderNumber, fileId: f.fileId })
+                                : orderFileHref({ orderNumber, emailId: String(f.emailId), name: f.filename });
+
+                            return (
+                                <tr key={f.source === 'manual' ? `m${f.fileId}` : `e${i}`} className="group border-b border-gray-100 align-top">
+                                    <td className="py-2 pr-2">
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="shrink-0 border border-gray-300 px-1 py-0.5 text-[10px] font-bold text-gray-600">
+                                                {fileKindLabel(f.filename, f.contentType)}
+                                            </span>
+                                            {openable ? (
+                                                <a
+                                                    href={href}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="truncate font-semibold text-blue-700 hover:underline"
+                                                    title={f.filename}
+                                                >
+                                                    {f.filename}
+                                                </a>
+                                            ) : (
+                                                <span className="truncate font-semibold text-gray-900" title={f.filename}>
+                                                    {f.filename}
+                                                </span>
+                                            )}
+                                            <span className="shrink-0 text-xs text-gray-500">{size(f.size)}</span>
+                                        </div>
+                                        {!openable && (
+                                            <span className="text-[11px] text-amber-800">письма уже нет в ящике — открыть нельзя</span>
+                                        )}
+                                    </td>
+                                    <td className="py-2 pr-2 text-xs text-gray-600">
+                                        <span className="block truncate" title={f.origin || ''}>{f.origin || '—'}</span>
+                                    </td>
+                                    <td className="py-2 text-xs text-gray-600">
+                                        <div className="flex items-baseline justify-between gap-2">
+                                            <span>
+                                                {f.receivedAt
+                                                    ? `${new Date(f.receivedAt).toLocaleDateString('ru-RU')} ${new Date(f.receivedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
+                                                    : '—'}
+                                            </span>
+                                            {f.source === 'manual' && (
+                                                <button
+                                                    onClick={() => remove(f.fileId, f.filename)}
+                                                    disabled={busy}
+                                                    className="invisible shrink-0 font-semibold text-gray-500 hover:underline group-hover:visible disabled:text-gray-300"
+                                                    title="Файл уйдёт в архив и останется в разделе «Файлы»"
+                                                >
+                                                    в архив
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
             )}
         </>
     );

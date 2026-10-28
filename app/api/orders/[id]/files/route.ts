@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { isImapConfigured } from '@/lib/email/imap';
+import { fileContentType } from '@/lib/file-type';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,26 @@ export const dynamic = 'force-dynamic';
  * отдаются ссылкой сразу — просьба Евгении 02.10.2026: счёт из RetailCRM надо
  * иметь при заказе в ОКК.
  */
+/**
+ * Откуда файл взялся — человеческой строкой для колонки «Источник».
+ *
+ * В базе источник записан по-разному: пометкой (`note`), кем приложен
+ * (`uploaded_by`), а у вложений писем — только темой самого письма. В списке
+ * человек должен видеть одно понятное слово, а не служебную пометку.
+ */
+function fileOrigin(note: string | null, uploadedBy: string | null): string {
+    const mark = String(note ?? '').trim();
+    const who = String(uploadedBy ?? '').trim();
+
+    if (mark.startsWith('Вложение письма')) return 'Письмо';
+    if (mark.startsWith('Файл заказа из RetailCRM')) return 'Перенос из RetailCRM';
+    if (mark.startsWith('из письма клиента')) return 'Письмо клиента';
+    if (mark.startsWith('Взят из заказа')) return mark;
+    if (who && who !== 'RetailCRM' && who !== 'Перенесено из RetailCRM') return `Приложил ${who}`;
+
+    return mark || 'Приложен вручную';
+}
+
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -65,9 +86,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         fileId: row.id,
         filename: row.file_name,
         size: row.size_bytes ?? null,
-        contentType: row.content_type ?? null,
+        // Тип у вложений, долитых из RetailCRM, не записан: выводим по имени,
+        // иначе в списке не будет значка формата.
+        contentType: row.content_type ?? fileContentType(row.file_name),
         note: row.note ?? null,
         uploadedBy: row.uploaded_by ?? null,
+        /** Откуда файл взялся — одной строкой, как в RetailCRM. */
+        origin: fileOrigin(row.note, row.uploaded_by),
         // У файла из письма показываем дату письма: иначе вложение
         // полугодовой давности выглядит сегодняшним (Андрей, 27.10.2026).
         receivedAt: row.source_at ?? row.created_at,
@@ -103,6 +128,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             fromEmail: letter.from_email,
             fromName: letter.from_name,
             subject: letter.subject,
+            // В RetailCRM источником вложения показана тема его письма — так
+            // видно, в каком разговоре файл пришёл.
+            origin: String(letter.subject ?? '').trim() || 'Письмо',
             receivedAt: letter.received_at,
             /** Можно ли открыть: письмо ещё лежит в ящике и к нему есть доступ. */
             downloadable: Boolean(isImapConfigured() && letter.imap_uid),
