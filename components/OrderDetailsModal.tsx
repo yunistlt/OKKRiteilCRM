@@ -3480,6 +3480,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                             onTasksChanged={(done, total) => setTaskCount({ done, total })}
                             onMailUnread={setMailUnread}
                             onReload={() => void fetchDetails()}
+                            // Источник файла открывает переписку заказа: письмо,
+                            // из которого он приехал, лежит там.
+                            onOpenMail={() => setPanel('mail')}
                         />
                     </div>
                 )}

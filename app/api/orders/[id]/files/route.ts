@@ -26,10 +26,24 @@ export const dynamic = 'force-dynamic';
  * (`uploaded_by`), а у вложений писем — только темой самого письма. В списке
  * человек должен видеть одно понятное слово, а не служебную пометку.
  */
+/**
+ * Номер письма из пути хранения: `order-files/<заказ>/<письмо>/<файл>`.
+ *
+ * Так лежат вложения, которые мы забрали из своего ящика. По этому номеру
+ * колонка «Источник» открывает переписку заказа.
+ */
+function mailIdFromPath(storagePath: string | null): string | null {
+    const parts = String(storagePath ?? '').split('/');
+    return parts[0] === 'order-files' && parts.length >= 4 ? parts[2] : null;
+}
+
 function fileOrigin(note: string | null, uploadedBy: string | null): string {
     const mark = String(note ?? '').trim();
     const who = String(uploadedBy ?? '').trim();
 
+    // Письмо осталось в RetailCRM: у нас его нет, открывать нечего — так и
+    // пишем, чтобы подпись не выглядела сломанной ссылкой.
+    if (mark.startsWith('Вложение письма RetailCRM')) return 'Письмо в RetailCRM';
     if (mark.startsWith('Вложение письма')) return 'Письмо';
     if (mark.startsWith('Файл заказа из RetailCRM')) return 'Перенос из RetailCRM';
     if (mark.startsWith('из письма клиента')) return 'Письмо клиента';
@@ -69,7 +83,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
      */
     const { data: manual, error: manualError } = await supabase
         .from('order_files')
-        .select('id, file_name, content_type, size_bytes, note, uploaded_by, created_at, source_at')
+        .select('id, file_name, content_type, size_bytes, note, uploaded_by, created_at, source_at, storage_path')
         .eq('order_number', orderNumber)
         .is('deleted_at', null)
         // Архивные в рабочем списке не показываем: они остаются в разделе «Файлы».
@@ -93,6 +107,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         uploadedBy: row.uploaded_by ?? null,
         /** Откуда файл взялся — одной строкой, как в RetailCRM. */
         origin: fileOrigin(row.note, row.uploaded_by),
+        /**
+         * Письмо, из которого файл приехал, — чтобы источник открывался.
+         * У вложений, забранных из нашего ящика, номер письма зашит в пути
+         * хранения. У перенесённых из RetailCRM письма у нас нет вовсе, и
+         * открывать нечего — такие остаются просто подписью.
+         */
+        mailId: mailIdFromPath(row.storage_path),
         // У файла из письма показываем дату письма: иначе вложение
         // полугодовой давности выглядит сегодняшним (Андрей, 27.10.2026).
         receivedAt: row.source_at ?? row.created_at,
