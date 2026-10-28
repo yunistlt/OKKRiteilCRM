@@ -5,8 +5,9 @@ import { supabase } from '@/utils/supabase';
 import { resolveOrderRef } from '@/lib/own-crm/order-ref';
 import { PRODUCTION_STATUS } from '@/lib/payments/production';
 import { queueOrderForProduction } from '@/lib/own-crm/tseh-outbox';
-import { INN_GATE_MESSAGE, INN_REQUIRED_STATUSES, ensureInnTask, orderInn } from '@/lib/own-crm/inn-gate';
-import { editOrder } from '@/lib/own-crm/edit-order';
+import { INN_GATE_MESSAGE, INN_PURCHASE_NOTE, INN_REQUIRED_STATUSES, ensureInnTask, orderInn } from '@/lib/own-crm/inn-gate';
+import { appendOrderNote, editOrder } from '@/lib/own-crm/edit-order';
+import { getResolvedConfig } from '@/lib/salary/config';
 import { writeOwnHistory } from '@/lib/own-crm/history-write';
 import { findStatus, statusCodeOf, statusMatches } from '@/lib/own-crm/status-code';
 
@@ -230,6 +231,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         to as any,
         reason,
     );
+
+    /**
+     * Заказ стал покупкой, а ИНН нет — говорим об этом в комментарии заказа.
+     *
+     * ЗАКОН владельца 28.10.2026: ИНН обязателен для опознания повторной
+     * покупки. Переход не запрещаем — завод работу не останавливаем, — но
+     * пометка и задача остаются у менеджера, иначе клиент тихо считается
+     * новым (доработка №55, заказ 54744 ООО «ВологдаСкан»).
+     *
+     * Что считать покупкой — тот же список, что у зарплаты (salary_config).
+     */
+    try {
+        const { deal_statuses: dealStatuses } = await getResolvedConfig();
+        if (dealStatuses.includes(body.status) && !(await orderInn(Number((order as any).order_id ?? id)))) {
+            const who = [session.user.first_name, session.user.last_name].filter(Boolean).join(' ')
+                || session.user.email || session.user.role;
+            await appendOrderNote(Number((order as any).id), INN_PURCHASE_NOTE, 'Система');
+            await ensureInnTask(String((order as any).number ?? id), who);
+        }
+    } catch (err) {
+        // Пометка не встала — статус из-за этого не отменяем: заказ важнее.
+        console.error('[status] пометка про ИНН не записалась:', err);
+    }
 
     // Руками поставили «Передано в производство» — заказ так же встаёт в
     // очередь на отправку в ЦехУспех.
