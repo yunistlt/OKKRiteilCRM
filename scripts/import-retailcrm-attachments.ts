@@ -96,6 +96,13 @@ async function main() {
 
     /** Что уже лежит в заказах: пара «заказ + имя + размер». */
     const have = new Set<string>();
+
+    /**
+     * То же самое, но только по имени. Нужно для файлов, у которых RetailCRM
+     * отдаёт нулевой размер (таких в списке 4 758): сверить их по размеру не с
+     * чем, а качать повторно то, что уже принесла почта, незачем.
+     */
+    const byName = new Set<string>();
     const orders = [...new Set(rows.map((r) => String(r.order)))];
     for (let i = 0; i < orders.length; i += 500) {
         const { data } = await supabase
@@ -105,10 +112,16 @@ async function main() {
             .is('deleted_at', null);
         for (const row of (data ?? []) as any[]) {
             have.add(`${row.order_number}|${row.file_name}|${row.size_bytes}`);
+            byName.add(`${row.order_number}|${row.file_name}`);
         }
     }
 
-    const todo = rows.filter((r) => !have.has(`${r.order}|${r.name}|${r.size}`));
+    const todo = rows.filter((r) => (r.size
+        ? !have.has(`${r.order}|${r.name}|${r.size}`)
+        : !byName.has(`${r.order}|${r.name}`)));
+
+    // Размер в списке бывает нулевым — такие пропускаем по порогу уже на месте,
+    // когда файл скачан и настоящий вес известен.
     const heavy = todo.filter((r) => r.size > MAX_BYTES);
     const work = todo.filter((r) => r.size <= MAX_BYTES).slice(0, limit || undefined);
 
@@ -125,20 +138,25 @@ async function main() {
         return;
     }
 
-    /** Путь в бакете по содержимому: один файл на все заказы, где он встречается. */
-    const pathOf = (row: Row) => `retailcrm-files/${row.size}-${safeStorageSegment(row.name)}`;
+    /**
+     * Путь в бакете считаем от настоящего веса и имени, а не от размера из
+     * списка: у 4 758 строк RetailCRM отдаёт ноль, и по такому ключу разные
+     * файлы с одинаковым именем затирали бы друг друга. Настоящий вес знаем
+     * только после скачивания, поэтому путь вычисляется там же.
+     */
+    const pathOf = (row: Row, bytes: number) => `retailcrm-files/${bytes}-${safeStorageSegment(row.name)}`;
 
-    /** Что уже отправлено в бакет за этот прогон — чтобы не качать повторно. */
-    const uploaded = new Set<string>();
+    /** Ссылка → что про неё уже известно: один адрес качаем один раз за прогон. */
+    const done = new Map<string, { path: string; size: number }>();
 
     let added = 0;
     let skipped = 0;
     let failed = 0;
 
     for (const [index, row] of work.entries()) {
-        const path = pathOf(row);
+        let known = done.get(row.url);
 
-        if (!uploaded.has(path)) {
+        if (!known) {
             let body: ArrayBuffer | null = null;
 
             for (let attempt = 1; attempt <= TRIES && !body; attempt += 1) {
@@ -164,6 +182,13 @@ async function main() {
 
             if (!body) continue;
 
+            if (body.byteLength > MAX_BYTES) {
+                console.warn(`тяжелее 25 МБ, пропускаем: ${row.name}`);
+                skipped += 1;
+                continue;
+            }
+
+            const path = pathOf(row, body.byteLength);
             const upload = await supabase.storage.from(BUCKET).upload(path, new Uint8Array(body), {
                 contentType: 'application/octet-stream',
                 upsert: true,
@@ -175,15 +200,16 @@ async function main() {
                 continue;
             }
 
-            uploaded.add(path);
+            known = { path, size: body.byteLength };
+            done.set(row.url, known);
         }
 
         const written = await attachMailFileToOrder({
             orderNumber: String(row.order),
             fileName: row.name,
             contentType: null,
-            size: row.size,
-            path,
+            size: known.size,
+            path: known.path,
             fromName: 'RetailCRM',
             sourceAt: uploadedAt(row.url),
             note: 'Вложение письма RetailCRM',
