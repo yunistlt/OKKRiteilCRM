@@ -95,6 +95,8 @@ export async function attachMailFileToOrder(params: {
     fromName: string | null;
     /** Когда пришло письмо: в списке файлов показываем эту дату, а не момент записи. */
     sourceAt?: string | null;
+    /** Чем подписать источник в списке файлов. По умолчанию — вложение письма. */
+    note?: string;
 }): Promise<boolean> {
     const { data: already } = await supabase
         .from('order_files')
@@ -115,7 +117,7 @@ export async function attachMailFileToOrder(params: {
         size_bytes: params.size,
         storage_bucket: BUCKET,
         storage_path: params.path,
-        note: 'Вложение письма',
+        note: params.note ?? 'Вложение письма',
         uploaded_by: params.fromName || 'Письмо клиента',
         source_at: params.sourceAt ?? null,
     });
