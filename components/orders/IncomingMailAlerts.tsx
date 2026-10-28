@@ -36,7 +36,24 @@ type Alert = {
     /** Клиент заказа: имя и карточка. Имя кликабельно — просьба владельца 08.10.2026. */
     clientName?: string | null;
     clientId?: number | null;
+    /**
+     * Когда это случилось: письмо пришло, задачу поставили, звонок начался.
+     *
+     * Ирина Гордеева 23.10.2026: «можно поставить в оповещениях время, когда
+     * пришло письмо? это нужно, чтобы было понятно, новое или уже просмотрели,
+     * ответили». Окошко письма висит, пока его не закроют, и без времени
+     * непонятно, минуту назад оно или с утра.
+     */
+    at?: string | null;
 };
+
+/** Время события для шапки оповещения: «14:35», по Москве. */
+function timeOf(at: string | null | undefined): string {
+    if (!at) return '';
+    const stamp = new Date(at);
+    if (Number.isNaN(stamp.getTime())) return '';
+    return stamp.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
+}
 
 /** Как часто спрашиваем о новых письмах. Почта приезжает кроном раз в 5 минут. */
 const POLL_MS = 60_000;
@@ -86,6 +103,7 @@ export default function IncomingMailAlerts() {
                         note: letter.from,
                         clientName: letter.clientName ?? null,
                         clientId: letter.clientId ?? null,
+                        at: letter.receivedAt ?? null,
                     });
                 }
             }
@@ -104,6 +122,7 @@ export default function IncomingMailAlerts() {
                             .filter(Boolean).join(' · '),
                         clientName: task.clientName ?? null,
                         clientId: task.clientId ?? null,
+                        at: task.createdAt ?? null,
                     });
                 }
             }
@@ -127,6 +146,7 @@ export default function IncomingMailAlerts() {
                         // только номер карточки, чтобы заголовок вёл в неё.
                         clientName: call.orderNumber ? (call.clientName ?? null) : null,
                         clientId: call.clientId ?? null,
+                        at: call.startedAt ?? null,
                     });
                 }
             }
@@ -190,6 +210,12 @@ export default function IncomingMailAlerts() {
                     <div className={`flex items-center justify-between px-3 py-1.5 ${alert.kind === 'task' ? 'bg-amber-600' : alert.kind === 'call' ? 'bg-green-700' : 'bg-blue-600'}`}>
                         <span className="text-[10px] font-black uppercase tracking-widest text-white">
                             {alert.kind === 'task' ? 'Задача по заказу' : alert.kind === 'call' ? 'Входящий звонок' : 'Письмо по заказу'}
+                        </span>
+                        {/* Время события — рядом с заголовком: окошко висит,
+                            пока его не закроют, и без времени непонятно, когда
+                            письмо пришло (Ирина Гордеева 23.10.2026). */}
+                        <span className="ml-auto mr-2 text-[11px] font-semibold tabular-nums text-white/90">
+                            {timeOf(alert.at)}
                         </span>
                         <button
                             type="button"

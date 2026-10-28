@@ -37,6 +37,11 @@ export async function POST(request: Request) {
         available: catalogLinksConfigured(),
         // Картинка товара — чтобы состав заказа было видно глазами, а не
         // только читать названия (просьба Лены Парфёновой 05.10.2026).
-        links: Object.fromEntries(links.map((link) => [link.key, { url: link.url, name: link.name, image: link.image }])),
+        // Вес изделия — оттуда же: он нужен под доставку, а менеджер искал его
+        // на сайте по каждой позиции (Лена Парфёнова 22.10.2026).
+        links: Object.fromEntries(links.map((link) => [
+            link.key,
+            { url: link.url, name: link.name, image: link.image, weight: link.weight },
+        ])),
     });
 }

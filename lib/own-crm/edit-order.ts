@@ -7,6 +7,7 @@
 import { supabase } from '@/utils/supabase';
 import { editOwnOrder } from './own-orders';
 import { prependComment } from './comment-entries';
+import { resolveOrderRef } from './order-ref';
 
 export type EditableItem = {
     /** id позиции в RetailCRM. Пусто — позиция новая. */
@@ -111,33 +112,30 @@ export function validateItems(items: EditableItem[]): string[] {
 }
 
 /**
- * Заказ ищем и по номеру строки, и по идентификатору заказа: карточка заказа в
- * интерфейсе работает с одним, реестр — с другим.
+ * Заказ ищем через общий разборщик ссылки: карточка заказа в интерфейсе
+ * работает с номером, остальной код — с идентификатором.
+ *
+ * Своё было тут напрасно: карточка открывается по номеру (`/orders?order=N`),
+ * а искали сначала по `order_id`. У заказа RetailCRM номер и идентификатор
+ * совпадают, и это сходило с рук; у своего заказа номер 900352, а
+ * идентификатор 900000352 — сохранение отвечало «Заказ не найден» и теряло
+ * правку целиком (Ирина Гордеева, заказы 900328, 900352, 900356, 23.10.2026).
  */
-async function findOrder(orderKey: number) {
-    const byCrm = await supabase
-        .from('orders')
-        .select('id, order_id, number, site, is_own')
-        .eq('order_id', orderKey)
-        .maybeSingle();
-
-    if (byCrm.data) {
-        return byCrm.data as any;
+async function findOrder(orderKey: number | string) {
+    const ref = await resolveOrderRef(orderKey);
+    if (!ref) {
+        // Заказа нет у нас — значит нет нигде: заказы заводятся в ОКК, RetailCRM
+        // больше не спрашиваем.
+        return null;
     }
 
-    const byRow = await supabase
+    const { data } = await supabase
         .from('orders')
         .select('id, order_id, number, site, is_own')
-        .eq('id', orderKey)
+        .eq('id', ref.id)
         .maybeSingle();
 
-    if (byRow.data) {
-        return byRow.data as any;
-    }
-
-    // Заказа нет у нас — значит нет нигде: заказы заводятся в ОКК, RetailCRM
-    // больше не спрашиваем.
-    return null;
+    return (data as any) ?? null;
 }
 
 export async function editOrder(orderKey: number, edit: OrderEdit): Promise<EditResult> {

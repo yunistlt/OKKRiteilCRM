@@ -32,6 +32,14 @@ type Improvement = {
     clarifyBy?: string | null;
     /** Сборка, в которой правка уехала на прод: её видно под логотипом ОКК. */
     doneBuild: string | null;
+    /** Закреплённая запись стоит первой, пока её не открепят (доработка №31). */
+    pinnedAt?: string | null;
+    pinnedBy?: string | null;
+    /** Когда и кто переписал запись: просьбу нельзя менять молча. */
+    editedAt?: string | null;
+    editedBy?: string | null;
+    /** Своя запись — её можно переписать. */
+    mine?: boolean;
 };
 
 /**
@@ -182,6 +190,48 @@ export default function ImprovementsRegistry() {
         }
     };
 
+    /**
+     * Закрепить запись наверху или открепить обратно.
+     *
+     * Просьба Лены Парфёновой 21.10.2026 (доработка №31): главное должно быть
+     * видно первым, а не уезжать вниз по мере того, как пишут новое.
+     */
+    const pin = async (id: number, value: boolean) => {
+        try {
+            const res = await fetch('/api/improvements', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, action: value ? 'pin' : 'unpin' }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Запись не закрепилась');
+            setCard((current) => (current && current.id === id ? payload.improvement : current));
+            await load();
+        } catch (e: any) {
+            setError(e.message || 'Запись не закрепилась');
+        }
+    };
+
+    /** Переписать свою запись: пока доработку не закрыли, формулировку можно поправить. */
+    const rewrite = async (id: number, current: string) => {
+        const next = prompt('Перепишите запись — в реестре останется пометка, что её правили.', current);
+        if (next === null || !next.trim() || next.trim() === current.trim()) return;
+
+        try {
+            const res = await fetch('/api/improvements', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, action: 'edit', text: next.trim() }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Запись не сохранилась');
+            setCard((cur) => (cur && cur.id === id ? payload.improvement : cur));
+            await load();
+        } catch (e: any) {
+            setError(e.message || 'Запись не сохранилась');
+        }
+    };
+
     const mark = async (id: number, value: boolean, draftNote?: string | null) => {
         /**
          * Пояснение к отметке спрашиваем здесь же: оно и остаётся в реестре, и
@@ -249,8 +299,14 @@ export default function ImprovementsRegistry() {
                     {item.text}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                    {item.pinnedAt && (
+                        <span className="bg-gray-900 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-white">
+                            Закреплено
+                        </span>
+                    )}
                     <span>{item.author}</span>
                     <span>{when(item.createdAt)}</span>
+                    {item.editedAt && <span title={item.editedBy ?? undefined}>Правлено {when(item.editedAt)}</span>}
                     {item.section && <span className="text-gray-700">Раздел: {sectionName(item.section)}</span>}
                     {/* Номер заказа всегда ссылка в карточку заказа (ЗАКОН 02.10.2026):
                         щелчок по номеру уводит в заказ, а не открывает доработку. */}
@@ -286,6 +342,30 @@ export default function ImprovementsRegistry() {
                     </div>
                 )}
             </div>
+
+            {/* Закреп и правку просила Лена Парфёнова (доработка №31): закрепить
+                может любой, переписать — только автор своей записи. */}
+            {!closed && (
+                <button
+                    type="button"
+                    onClick={(event) => { event.stopPropagation(); void pin(item.id, !item.pinnedAt); }}
+                    className="shrink-0 border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-100"
+                    title={item.pinnedAt ? 'Вернуть запись в общий порядок' : 'Поставить запись первой в списке'}
+                >
+                    {item.pinnedAt ? 'Открепить' : 'Закрепить'}
+                </button>
+            )}
+
+            {!closed && item.mine && (
+                <button
+                    type="button"
+                    onClick={(event) => { event.stopPropagation(); void rewrite(item.id, item.text); }}
+                    className="shrink-0 border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-100"
+                    title="Поправить формулировку своей записи"
+                >
+                    Переписать
+                </button>
+            )}
 
             {canClose && !closed && (
                 <button
