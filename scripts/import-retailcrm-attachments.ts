@@ -90,6 +90,7 @@ async function main() {
     const { supabase } = await import('@/utils/supabase');
     const { attachMailFileToOrder } = await import('@/lib/email/attachments');
     const { safeStorageSegment } = await import('@/lib/storage-path');
+    const { fileContentType } = await import('@/lib/file-type');
 
     let rows: Row[] = JSON.parse(readFileSync(file, 'utf8'));
     if (only) rows = rows.filter((r) => String(r.order) === only);
@@ -147,7 +148,7 @@ async function main() {
     const pathOf = (row: Row, bytes: number) => `retailcrm-files/${bytes}-${safeStorageSegment(row.name)}`;
 
     /** Ссылка → что про неё уже известно: один адрес качаем один раз за прогон. */
-    const done = new Map<string, { path: string; size: number }>();
+    const done = new Map<string, { path: string; size: number; contentType: string }>();
 
     let added = 0;
     let skipped = 0;
@@ -188,9 +189,18 @@ async function main() {
                 continue;
             }
 
+            const bytes = new Uint8Array(body);
+
+            /**
+             * Чем является файл, RetailCRM не сообщает. Узнаём по его первым
+             * байтам и имени: без этого браузер скачивает даже счёт в PDF
+             * вместо того, чтобы показать его во вкладке.
+             */
+            const contentType = fileContentType(row.name, bytes);
+
             const path = pathOf(row, body.byteLength);
-            const upload = await supabase.storage.from(BUCKET).upload(path, new Uint8Array(body), {
-                contentType: 'application/octet-stream',
+            const upload = await supabase.storage.from(BUCKET).upload(path, bytes, {
+                contentType,
                 upsert: true,
             });
 
@@ -200,14 +210,14 @@ async function main() {
                 continue;
             }
 
-            known = { path, size: body.byteLength };
+            known = { path, size: body.byteLength, contentType };
             done.set(row.url, known);
         }
 
         const written = await attachMailFileToOrder({
             orderNumber: String(row.order),
             fileName: row.name,
-            contentType: null,
+            contentType: known.contentType,
             size: known.size,
             path: known.path,
             fromName: 'RetailCRM',
