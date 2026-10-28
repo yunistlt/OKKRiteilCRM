@@ -49,6 +49,44 @@ const BUCKET = 'okk-assets';
 /** Сколько раз пробуем скачать файл, прежде чем отложить его до следующего прохода. */
 const TRIES = 3;
 
+/** Картинка ли это — по расширению имени. */
+function isImageName(name: string): boolean {
+    return /\.(png|jpe?g|gif|bmp|webp|tiff?)$/i.test(String(name ?? ''));
+}
+
+/**
+ * Мусор из подписи письма, а не файл заказа.
+ *
+ * Каждое письмо тащит за собой картинки подписи: логотип, значки соцсетей,
+ * разделители. В RetailCRM они лежат такими же вложениями, как счёт, и в
+ * списке их пятая часть — люди видят «image001.png» вместо документов
+ * (требование владельца 28.10.2026: фавиконы и логотипы не качаем).
+ *
+ * Отсеиваем по двум признакам:
+ *   1. имя, которое выдаёт происхождение — `image001.png` от Outlook,
+ *      `~WRD0000.jpg` от Word, значки `.ico`;
+ *   2. картинка легче 20 КБ — столько весит значок, но не чертёж и не скан.
+ *
+ * Размер из списка RetailCRM бывает нулевым, поэтому вес проверяем дважды:
+ * здесь по списку и ниже по скачанному файлу. Слова «логотип» и «logo»
+ * считаем приметой только у картинок: в имени документа может стоять что
+ * угодно, а «Договор … печать подпись ЗМК» выбрасывать нельзя.
+ */
+const JUNK_IMAGE_BYTES = 20 * 1024;
+
+function isJunkAttachment(name: string, size: number): boolean {
+    const lower = String(name ?? '').trim().toLowerCase();
+
+    if (/^image\d{3,}\.(png|jpe?g|gif|bmp)$/.test(lower)) return true;
+    if (/^~wrd\d*\./.test(lower) || lower === 'oledata.mso') return true;
+    if (/\.(ico|emz|wmz)$/.test(lower)) return true;
+
+    if (!isImageName(lower)) return false;
+    if (/(favicon|logo|логотип|герб|banner|баннер)/.test(lower)) return true;
+
+    return size > 0 && size < JUNK_IMAGE_BYTES;
+}
+
 function arg(name: string): string | null {
     const i = process.argv.indexOf(`--${name}`);
     return i > -1 ? (process.argv[i + 1] ?? null) : null;
@@ -103,31 +141,64 @@ async function main() {
      */
     rows.sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')));
 
-    /** Что уже лежит в заказах: пара «заказ + имя + размер». */
-    const have = new Set<string>();
-
     /**
-     * То же самое, но только по имени. Нужно для файлов, у которых RetailCRM
-     * отдаёт нулевой размер (таких в списке 4 758): сверить их по размеру не с
-     * чем, а качать повторно то, что уже принесла почта, незачем.
+     * Сколько файлов с таким именем уже лежит в каждом заказе.
+     *
+     * Сверять по размеру нельзя: в списке RetailCRM он сплошь и рядом нулевой
+     * или не совпадает с настоящим весом файла, и сверка промахивалась —
+     * прогон 28.10.2026 собрался качать 19 717 строк, которые уже лежали в
+     * заказах. Поэтому считаем штуки: в заказе три «Счет ПОБТ» разных версий —
+     * значит и качать надо три, а четвёртый раз уже не надо.
      */
-    const byName = new Set<string>();
+    const have = new Map<string, number>();
+    const key = (order: string | number, name: string) =>
+        `${order}|${String(name ?? '').trim().toLowerCase()}`;
     const orders = [...new Set(rows.map((r) => String(r.order)))];
     for (let i = 0; i < orders.length; i += 500) {
-        const { data } = await supabase
-            .from('order_files')
-            .select('order_number, file_name, size_bytes')
-            .in('order_number', orders.slice(i, i + 500))
-            .is('deleted_at', null);
-        for (const row of (data ?? []) as any[]) {
-            have.add(`${row.order_number}|${row.file_name}|${row.size_bytes}`);
-            byName.add(`${row.order_number}|${row.file_name}`);
+        const batch = orders.slice(i, i + 500);
+
+        /**
+         * Читаем страницами: Supabase отдаёт не больше тысячи строк за запрос
+         * и молча обрезает остальное. Без этого половина уже залитых файлов
+         * выглядела отсутствующей, и прогон собирался качать их заново.
+         */
+        const PAGE = 1000;
+        for (let from = 0; ; from += PAGE) {
+            const { data, error } = await supabase
+                .from('order_files')
+                .select('order_number, file_name')
+                .in('order_number', batch)
+                .is('deleted_at', null)
+                .order('id', { ascending: true })
+                .range(from, from + PAGE - 1);
+
+            if (error) throw new Error(`не прочитать файлы заказов: ${error.message}`);
+
+            for (const row of (data ?? []) as any[]) {
+                const k = key(row.order_number, row.file_name);
+                have.set(k, (have.get(k) ?? 0) + 1);
+            }
+
+            if (!data || data.length < PAGE) break;
         }
     }
 
-    const todo = rows.filter((r) => (r.size
-        ? !have.has(`${r.order}|${r.name}|${r.size}`)
-        : !byName.has(`${r.order}|${r.name}`)));
+    const junk = rows.filter((r) => isJunkAttachment(r.name, r.size));
+
+    /**
+     * Берём только то, чего в заказе ещё нет: на каждое имя столько штук,
+     * сколько не хватает до списка RetailCRM.
+     */
+    const left = new Map(have);
+    const todo = rows.filter((r) => !isJunkAttachment(r.name, r.size)).filter((r) => {
+        const k = key(r.order, r.name);
+        const already = left.get(k) ?? 0;
+        if (already > 0) {
+            left.set(k, already - 1);
+            return false;
+        }
+        return true;
+    });
 
     // Размер в списке бывает нулевым — такие пропускаем по порогу уже на месте,
     // когда файл скачан и настоящий вес известен.
@@ -138,6 +209,7 @@ async function main() {
     const bytes = [...uniqueFiles].reduce((sum, key) => sum + Number(key.split('|').pop()), 0);
 
     console.log(`в списке: ${rows.length}`);
+    console.log(`мусор из подписей писем, не качаем: ${junk.length}`);
     console.log(`уже в ОКК: ${rows.length - todo.length}`);
     console.log(`к заливке: ${work.length} строк, ${uniqueFiles.size} файлов, ${(bytes / 1073741824).toFixed(2)} ГБ`);
     if (heavy.length) console.log(`тяжелее 25 МБ, пропускаем: ${heavy.length}`);
@@ -190,6 +262,12 @@ async function main() {
             }
 
             if (!body) continue;
+
+            if (isJunkAttachment(row.name, body.byteLength)) {
+                console.warn(`мусор из подписи письма, пропускаем: ${row.name}`);
+                skipped += 1;
+                continue;
+            }
 
             if (body.byteLength > MAX_BYTES) {
                 console.warn(`тяжелее 25 МБ, пропускаем: ${row.name}`);
