@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { TASK_DONE_RULE } from '@/lib/sales-rop/touch-rules';
 import { classifyCall } from '@/lib/sales-rop/call-review';
 
 // «Почему у меня двадцать, а не тридцать пять?»
@@ -135,7 +136,7 @@ export async function executeMyDayTool(name: string, args: any, managerId: numbe
                 дата: date,
                 всего_задач: rows.length,
                 отработано: rows.filter((r) => r.touched).length,
-                правило: 'Задача считается отработанной, если по заказу в этот день был комментарий, смена статуса, письмо или звонок',
+                правило: TASK_DONE_RULE,
                 задачи: rows.map((r) => ({
                     заказ: r.order_number,
                     клиент: r.client,
