@@ -51,6 +51,89 @@ export type Task = {
     weight: number;
 };
 
+/**
+ * Два блока дня (решение владельца 28.10.2026).
+ *
+ * Менеджер читает список сверху вниз и берётся за первое. Пока развитие
+ * клиента стояло вперемешку с живыми сделками, «напомнить о себе» оказывалось
+ * выше висящего счёта: вес развития — все прошлые покупки клиента, а это
+ * всегда больше одной текущей сделки. Поэтому порядок задаётся блоком, а не
+ * суммой: сначала то, что уже в работе, и только потом работа вдолгую.
+ */
+export type TaskBlock = 'active' | 'development';
+
+export const BLOCK_TITLE: Record<TaskBlock, string> = {
+    active: 'Текущие активные заявки',
+    development: 'Развитие клиента',
+};
+
+const BLOCK_OF: Record<Task['reasonCode'], TaskBlock> = {
+    cancel_unconfirmed: 'active',
+    mail_unanswered: 'active',
+    invoice_stale: 'active',
+    contact_overdue: 'active',
+    contact_today: 'active',
+    deal_stale: 'active',
+    big_silence: 'active',
+    cold: 'active',
+    development: 'development',
+    reactivation: 'development',
+    client_touch: 'development',
+};
+
+/**
+ * В какой блок идёт причина. Принимает и строку из базы: в `sales_rop_task`
+ * лежат те же коды, а экран и панель плана читают их оттуда.
+ */
+export function taskBlock(reasonCode: string): TaskBlock {
+    return BLOCK_OF[reasonCode as Task['reasonCode']] ?? 'active';
+}
+
+export const BLOCK_ORDER: Record<TaskBlock, number> = { active: 0, development: 1 };
+
+/**
+ * Порядок причин внутри блока.
+ *
+ * Просрочка вперёд денег: обещание, которое уже нарушено, дороже крупной
+ * суммы, до которой ещё никто ничего не обещал. Живёт здесь, а не внутри
+ * отбора, потому что тем же порядком список читают экран «Мой день» и панель
+ * плана: они берут причину из `sales_rop_task`.
+ */
+export const REASON_ORDER: Record<Task['reasonCode'], number> = {
+    // Закрытый без разговора — самый верх: это не новая работа, а
+    // недоделанная старая, и откладывать её значит согласиться, что
+    // клиента потеряли молча.
+    cancel_unconfirmed: -1,
+    // Письмо клиента без ответа — сразу за ним: клиент уже обратился
+    // сам, молчать в ответ хуже, чем не позвонить первым.
+    mail_unanswered: 0,
+    invoice_stale: 0,
+    contact_overdue: 1,
+    contact_today: 2,
+    deal_stale: 3,
+    big_silence: 4,
+    // Остывшие — всё ещё заявки в рабочих статусах, поэтому они закрывают
+    // первый блок, а не уходят за развитие.
+    cold: 5,
+    // ↓ второй блок: работа вдолгую. Ниже всего, что в работе сейчас.
+    development: 6,
+    reactivation: 7,
+    client_touch: 8,
+};
+
+/** Сравнение двух задач по блоку и причине: один порядок на все экраны. */
+export function compareByPriority(
+    a: { reasonCode: string; weight: number },
+    b: { reasonCode: string; weight: number },
+): number {
+    return (
+        BLOCK_ORDER[taskBlock(a.reasonCode)] - BLOCK_ORDER[taskBlock(b.reasonCode)] ||
+        (REASON_ORDER[a.reasonCode as Task['reasonCode']] ?? 99) -
+            (REASON_ORDER[b.reasonCode as Task['reasonCode']] ?? 99) ||
+        b.weight - a.weight
+    );
+}
+
 export type Thresholds = {
     invoiceStaleDays: number;
     /**
@@ -227,28 +310,7 @@ export function buildPlan(
     }
 
     for (const [managerId, list] of Array.from(byManager.entries())) {
-        // Просрочка вперёд денег: обещание, которое уже нарушено, дороже
-        // крупной суммы, до которой ещё никто ничего не обещал.
-        const rank: Record<Task['reasonCode'], number> = {
-            // Закрытый без разговора — самый верх: это не новая работа, а
-            // недоделанная старая, и откладывать её значит согласиться, что
-            // клиента потеряли молча.
-            cancel_unconfirmed: -1,
-            // Письмо клиента без ответа — сразу за ним: клиент уже обратился
-            // сам, молчать в ответ хуже, чем не позвонить первым.
-            mail_unanswered: 0,
-            invoice_stale: 0,
-            contact_overdue: 1,
-            contact_today: 2,
-            deal_stale: 3,
-            big_silence: 4,
-            development: 5,
-            cold: 6,
-            reactivation: 7,
-            // Ниже всего: сначала деньги в работе, потом отношения вдолгую.
-            client_touch: 8,
-        };
-        list.sort((a: Task, b: Task) => rank[a.reasonCode] - rank[b.reasonCode] || b.weight - a.weight);
+        list.sort(compareByPriority);
 
         // То, что менеджер сам назначил на сегодня, не режется лимитом никогда.
         // Это его собственный план из CRM, и если наш отбор его вытеснит, человек
@@ -308,7 +370,8 @@ export function buildPlan(
                       .sort((a: Task, b: Task) => b.amount - a.amount)
                       .slice(0, Math.max(t.coldPerDay, shortfall));
         // Свои плановые звонки идут первыми: это обещания, данные клиентам.
-        byManager.set(managerId, [...own, ...live, ...dev, ...cold]);
+        // Развитие — последним: оно и есть второй блок дня.
+        byManager.set(managerId, [...own, ...live, ...cold, ...dev]);
     }
 
     return byManager;

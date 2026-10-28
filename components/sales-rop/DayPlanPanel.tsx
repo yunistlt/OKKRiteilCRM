@@ -10,12 +10,18 @@
  *
  * Состав плана берём из того же `sales_rop_task`, что и письмо бота: два
  * источника правды разошлись бы в первый же день.
+ *
+ * Список идёт двумя блоками (решение владельца 28.10.2026): сначала текущие
+ * активные заявки, потом развитие клиента. Порядок задаёт API, панель его не
+ * пересортировывает.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { formatRub } from '@/lib/format';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
 
 export type PlanTask = {
+    /** Блок дня: деньги в работе или работа вдолгую. */
+    block: 'active' | 'development';
     orderId: number;
     orderNumber: string;
     client: string;
@@ -38,6 +44,12 @@ type Plan = {
     rule: string;
     note?: string;
 };
+
+/** Шапки блоков — те же слова, что в письме бота и на экране «Мой день». */
+const BLOCKS: Array<{ key: PlanTask['block']; title: string }> = [
+    { key: 'active', title: 'Текущие активные заявки' },
+    { key: 'development', title: 'Развитие клиента' },
+];
 
 export default function DayPlanPanel({ onClose }: { onClose?: () => void }) {
     const [plan, setPlan] = useState<Plan | null>(null);
@@ -68,6 +80,9 @@ export default function DayPlanPanel({ onClose }: { onClose?: () => void }) {
     const tasks: PlanTask[] = plan?.scope === 'department'
         ? (plan.managers ?? []).flatMap((m) => m.tasks.map((t) => ({ ...t, managerName: m.name })))
         : (plan?.tasks ?? []);
+
+    // Оба блока в плане — значит их надо разделить шапками.
+    const splitBlocks = new Set(tasks.map((task) => task.block ?? 'active')).size > 1;
 
     return (
         <section
@@ -123,55 +138,73 @@ export default function DayPlanPanel({ onClose }: { onClose?: () => void }) {
                     </p>
                 ) : (
                     <ul className="divide-y divide-gray-100">
-                        {tasks.map((task) => (
-                            <li
-                                key={`${task.managerName ?? ''}-${task.orderNumber}`}
-                                className={`px-3 py-2 ${task.done ? 'bg-green-50/60' : ''}`}
-                            >
-                                <div className="flex items-baseline justify-between gap-2">
-                                    {/* Номер заказа — ссылка в карточку, одним общим
-                                        способом (закон владельца 02.10.2026). Раньше
-                                        адрес собирался из `orderId`, а у своих заказов
-                                        это не номер (900000260 против 900260), и ссылка
-                                        никуда не вела. У касания по клиенту номера может
-                                        не быть вовсе: последний заказ ведёт другой
-                                        менеджер, и чужой номер мы не называем. */}
-                                    {task.orderNumber ? (
-                                        <OrderNumberLink
-                                            number={task.orderNumber}
-                                            from="my-day"
-                                            className={`text-sm font-bold ${task.done ? 'text-gray-400 line-through' : 'text-blue-700 hover:underline'}`}
-                                        />
-                                    ) : (
-                                        <span className="text-sm font-bold text-gray-700">По клиенту</span>
+                        {BLOCKS.map((block) => {
+                            const blockTasks = tasks.filter((task) => (task.block ?? 'active') === block.key);
+                            if (blockTasks.length === 0) return null;
+
+                            return (
+                                <li key={block.key}>
+                                    {/* Шапку показываем только когда блоков два:
+                                        делить один блок нечем. */}
+                                    {splitBlocks && (
+                                        <p className="border-y border-gray-200 bg-gray-50 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-gray-700">
+                                            {block.title} · {blockTasks.length}
+                                        </p>
                                     )}
-                                    <span className="shrink-0 text-xs tabular-nums text-gray-600">{formatRub(task.amount)}</span>
-                                </div>
-                                <p className={`truncate text-xs ${task.done ? 'text-gray-400' : 'text-gray-800'}`} title={task.client}>
-                                    {task.client}
-                                </p>
-                                {task.managerName && (
-                                    <p className="text-[11px] font-semibold text-gray-500">{task.managerName}</p>
-                                )}
-                                {task.reason && (
-                                    <p className="mt-0.5 text-[11px] leading-snug text-gray-500">{task.reason}</p>
-                                )}
-                                {task.done && (
-                                    /* Перенос даты без объяснения — не работа, а нарушение:
-                                       им можно бесконечно отодвигать клиента (закон владельца
-                                       05.10.2026). Красим иначе и называем честно. */
-                                    task.doneBy === 'перенос даты без причины' ? (
-                                        <p className="mt-0.5 text-[11px] font-semibold text-red-700">
-                                            Нарушение: дату перенесли без причины
-                                        </p>
-                                    ) : (
-                                        <p className="mt-0.5 text-[11px] font-semibold text-green-700">
-                                            Отработан{task.doneBy ? `: ${task.doneBy}` : ''}
-                                        </p>
-                                    )
-                                )}
-                            </li>
-                        ))}
+                                    <ul className="divide-y divide-gray-100">
+                                        {blockTasks.map((task) => (
+                                            <li
+                                                key={`${task.managerName ?? ''}-${task.orderNumber}`}
+                                                className={`px-3 py-2 ${task.done ? 'bg-green-50/60' : ''}`}
+                                            >
+                                                <div className="flex items-baseline justify-between gap-2">
+                                                    {/* Номер заказа — ссылка в карточку, одним общим
+                                                        способом (закон владельца 02.10.2026). Раньше
+                                                        адрес собирался из `orderId`, а у своих заказов
+                                                        это не номер (900000260 против 900260), и ссылка
+                                                        никуда не вела. У касания по клиенту номера может
+                                                        не быть вовсе: последний заказ ведёт другой
+                                                        менеджер, и чужой номер мы не называем. */}
+                                                    {task.orderNumber ? (
+                                                        <OrderNumberLink
+                                                            number={task.orderNumber}
+                                                            from="my-day"
+                                                            className={`text-sm font-bold ${task.done ? 'text-gray-400 line-through' : 'text-blue-700 hover:underline'}`}
+                                                        />
+                                                    ) : (
+                                                        <span className="text-sm font-bold text-gray-700">По клиенту</span>
+                                                    )}
+                                                    <span className="shrink-0 text-xs tabular-nums text-gray-600">{formatRub(task.amount)}</span>
+                                                </div>
+                                                <p className={`truncate text-xs ${task.done ? 'text-gray-400' : 'text-gray-800'}`} title={task.client}>
+                                                    {task.client}
+                                                </p>
+                                                {task.managerName && (
+                                                    <p className="text-[11px] font-semibold text-gray-500">{task.managerName}</p>
+                                                )}
+                                                {task.reason && (
+                                                    <p className="mt-0.5 text-[11px] leading-snug text-gray-500">{task.reason}</p>
+                                                )}
+                                                {task.done && (
+                                                    /* Перенос даты без объяснения — не работа, а нарушение:
+                                                       им можно бесконечно отодвигать клиента (закон владельца
+                                                       05.10.2026). Красим иначе и называем честно. */
+                                                    task.doneBy === 'перенос даты без причины' ? (
+                                                        <p className="mt-0.5 text-[11px] font-semibold text-red-700">
+                                                            Нарушение: дату перенесли без причины
+                                                        </p>
+                                                    ) : (
+                                                        <p className="mt-0.5 text-[11px] font-semibold text-green-700">
+                                                            Отработан{task.doneBy ? `: ${task.doneBy}` : ''}
+                                                        </p>
+                                                    )
+                                                )}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </li>
+                            );
+                        })}
                     </ul>
                 )}
             </div>

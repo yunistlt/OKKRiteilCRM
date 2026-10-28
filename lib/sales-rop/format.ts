@@ -1,5 +1,6 @@
 import type { Task } from '@/lib/sales-rop/rules';
-import { days, plural } from '@/lib/sales-rop/rules';
+import { BLOCK_TITLE, days, plural, taskBlock } from '@/lib/sales-rop/rules';
+import type { TaskBlock } from '@/lib/sales-rop/rules';
 
 // Тексты бота-РОПа. Живут отдельно от правил, потому что правится тут чаще
 // всего, и потому что форму сообщения согласовывает человек, а не тест.
@@ -123,8 +124,22 @@ export function formatMorning(
             : `${who}, на сегодня срочного нет — разобрать архив:`;
     const lines: string[] = hello ? [hello, '', head] : [head];
 
+    // Сообщение идёт двумя блоками: сначала всё, что уже в работе, потом
+    // развитие клиента (решение владельца 28.10.2026). Внутри блока — те же
+    // смысловые заголовки по причинам, что и раньше.
+    //
+    // Когда блок в сообщении один, его шапку не рисуем: разделять нечего, а
+    // лишняя строка в коротком списке — шум.
+    const splitBlocks = new Set(plan.tasks.map((t: Task) => taskBlock(t.reasonCode))).size > 1;
+    let lastBlock: TaskBlock | null = null;
     let lastReason: string | null = null;
     for (const t of plan.tasks) {
+        const block = taskBlock(t.reasonCode);
+        if (splitBlocks && block !== lastBlock) {
+            lines.push('', `━━━ ${BLOCK_TITLE[block].toUpperCase()} ━━━`);
+            lastBlock = block;
+            lastReason = null;
+        }
         if (t.reasonCode !== lastReason) {
             lines.push('', REASON_TITLE[t.reasonCode]);
             lastReason = t.reasonCode;
