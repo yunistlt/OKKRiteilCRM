@@ -10,11 +10,36 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { fetchEmailContentByUid, isImapConfigured } from '@/lib/email/imap';
+import { fileContentType, isViewableInBrowser } from '@/lib/file-type';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const BUCKET = 'okk-assets';
+
+/**
+ * Заголовки показа файла.
+ *
+ * Тип считаем по самому файлу, а не по записи в базе: у вложений, долитых из
+ * RetailCRM, тип не был известен и лёг «просто байтами», с которыми браузер
+ * всегда скачивает, даже когда мы просим `inline`. Что показать во вкладке, а
+ * что отдать на сохранение, решает уже тип: картинку и PDF человек хочет
+ * увидеть, таблицу — открыть у себя.
+ */
+function fileHeaders(fileName: string, bytes: Uint8Array, storedType?: string | null): HeadersInit {
+    const known = String(storedType ?? '').trim();
+    const contentType = known && known !== 'application/octet-stream'
+        ? known
+        : fileContentType(fileName, bytes);
+
+    const how = isViewableInBrowser(contentType) ? 'inline' : 'attachment';
+
+    return {
+        'Content-Type': contentType,
+        'Content-Disposition': `${how}; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        'Cache-Control': 'private, max-age=600',
+    };
+}
 
 /** Путь в хранилище: заказ → письмо → файл. Латиницу имени не трогаем, остальное чистим. */
 function storagePath(orderNumber: string, emailId: string, filename: string): string {
@@ -56,13 +81,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             return NextResponse.json({ error: 'Файл не нашёлся в хранилище' }, { status: 404 });
         }
 
-        const buffer = Buffer.from(await stored.data.arrayBuffer());
-        return new NextResponse(new Uint8Array(buffer), {
-            headers: {
-                'Content-Type': file.content_type || stored.data.type || 'application/octet-stream',
-                'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(file.file_name)}`,
-                'Cache-Control': 'private, max-age=600',
-            },
+        const bytes = new Uint8Array(await stored.data.arrayBuffer());
+        return new NextResponse(bytes, {
+            headers: fileHeaders(file.file_name, bytes, file.content_type || stored.data.type),
         });
     }
 
@@ -103,13 +124,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     // 1) Уже скачивали — отдаём из хранилища.
     const cached = await supabase.storage.from(BUCKET).download(path);
     if (cached.data) {
-        const buffer = Buffer.from(await cached.data.arrayBuffer());
-        return new NextResponse(new Uint8Array(buffer), {
-            headers: {
-                'Content-Type': cached.data.type || 'application/octet-stream',
-                'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(filename)}`,
-                'Cache-Control': 'private, max-age=600',
-            },
+        const bytes = new Uint8Array(await cached.data.arrayBuffer());
+        return new NextResponse(bytes, {
+            headers: fileHeaders(filename, bytes, cached.data.type),
         });
     }
 
@@ -170,12 +187,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             });
         }
 
-        return new NextResponse(new Uint8Array(attachment.content), {
-            headers: {
-                'Content-Type': contentType,
-                'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(filename)}`,
-                'Cache-Control': 'private, max-age=600',
-            },
+        const bytes = new Uint8Array(attachment.content);
+        return new NextResponse(bytes, {
+            headers: fileHeaders(filename, bytes, contentType),
         });
     } catch (e: any) {
         console.error('[order-files/download] не смог забрать вложение:', e.message);

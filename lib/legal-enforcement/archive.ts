@@ -7,20 +7,14 @@
 import { supabase } from '@/utils/supabase';
 import { unpackArchive } from '@/lib/archive/unpack';
 import { ENFORCEMENT_ARCHIVE_ENTRY_RE, ENFORCEMENT_BUCKET, sanitizeEnforcementFileName } from './types';
+import { fileContentType } from '@/lib/file-type';
 
 const MAX_ENTRIES = 50;
 const MAX_ENTRY_BYTES = 25 * 1024 * 1024;
 
+/** Пачка от приставов — это сканы, поэтому незнакомое имя считаем снимком. */
 function contentTypeByName(name: string): string {
-  const lower = name.toLowerCase();
-  if (lower.endsWith('.pdf')) return 'application/pdf';
-  if (lower.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-  if (lower.endsWith('.doc')) return 'application/msword';
-  if (lower.endsWith('.txt')) return 'text/plain';
-  if (lower.endsWith('.png')) return 'image/png';
-  if (lower.endsWith('.webp')) return 'image/webp';
-  if (/\.tiff?$/.test(lower)) return 'image/tiff';
-  return 'image/jpeg';
+  return fileContentType(name, null, 'image/jpeg');
 }
 
 export type UnpackResult = {
