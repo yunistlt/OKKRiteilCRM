@@ -123,3 +123,23 @@ export function isViewableInBrowser(contentType: string): boolean {
         || type.startsWith('video/')
         || type === 'application/pdf';
 }
+
+/**
+ * Короткая метка типа для списка файлов: PDF, JPG, DOC.
+ *
+ * В RetailCRM у каждой строки стоит значок формата, и человек с одного взгляда
+ * отличает счёт от фотографии. Берём расширение имени, а когда его нет (в
+ * RetailCRM таких вложений целая пачка) — выводим из типа.
+ */
+export function fileKindLabel(fileName: string, contentType?: string | null): string {
+    const extension = /\.([a-z0-9]{1,5})$/i.exec(String(fileName ?? '').trim());
+    if (extension) return extension[1].toUpperCase();
+
+    const type = String(contentType ?? '').toLowerCase();
+    if (type === 'application/pdf') return 'PDF';
+    if (type === 'application/msword') return 'DOC';
+    if (type.startsWith('image/')) return type.slice(6, 10).toUpperCase();
+    if (type.startsWith('text/')) return 'TXT';
+
+    return 'ФАЙЛ';
+}
