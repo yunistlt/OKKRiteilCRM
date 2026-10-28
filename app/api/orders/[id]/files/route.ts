@@ -38,8 +38,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         return NextResponse.json({ error: 'read_failed' }, { status: 500 });
     }
 
-    // Приложенные руками — отдельной выборкой: это наши файлы, а не почтовые.
-    const { data: manual } = await supabase
+    /**
+     * Приложенные руками — отдельной выборкой: это наши файлы, а не почтовые.
+     *
+     * Ошибку этой выборки раньше выбрасывали молча, и список приходил пустым —
+     * композер писал «В заказе нет файлов», хотя в заказе 900160 их два десятка
+     * (Ирина Гордеева 23.10.2026). «Нет файлов» и «файлы не прочитались» —
+     * разные вещи, и человеку надо говорить, какая из них.
+     */
+    const { data: manual, error: manualError } = await supabase
         .from('order_files')
         .select('id, file_name, content_type, size_bytes, note, uploaded_by, created_at, source_at')
         .eq('order_number', orderNumber)
@@ -47,6 +54,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         // Архивные в рабочем списке не показываем: они остаются в разделе «Файлы».
         .is('archived_at', null)
         .order('created_at', { ascending: false });
+
+    if (manualError) {
+        console.error('[order-files] файлы заказа не прочитались:', manualError);
+        return NextResponse.json({ error: 'Файлы заказа не прочитались' }, { status: 500 });
+    }
 
     const manualFiles = ((manual as any[]) ?? []).map((row) => ({
         source: 'manual' as const,

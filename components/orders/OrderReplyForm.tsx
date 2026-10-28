@@ -5,6 +5,7 @@ import { uploadOrderFile } from '@/lib/orders/upload-order-file';
 import { useEffect, useRef, useState } from 'react';
 import { Loader, Send } from 'lucide-react';
 import { stripOrderThreadTag } from '@/lib/email-subject';
+import { fetchJsonRetry } from '@/lib/fetch-json';
 
 interface OrderReplyFormProps {
     orderNumber: string;
@@ -57,20 +58,25 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
     const [attachedFileIds, setAttachedFileIds] = useState<number[]>([]);
     const [orderFiles, setOrderFiles] = useState<Array<{ id: number; name: string; size: number | null; note: string | null }> | null>(null);
     const [filesPicker, setFilesPicker] = useState(false);
+    /** Список файлов не прочитался — это не «файлов нет». */
+    const [orderFilesFailed, setOrderFilesFailed] = useState(false);
 
     const loadOrderFiles = async () => {
         setFilesPicker((open) => !open);
         if (orderFiles !== null) return;
         try {
-            const res = await fetch(`/api/orders/${encodeURIComponent(orderNumber)}/files`);
-            const payload = await res.json();
+            const payload: any = await fetchJsonRetry(`/api/orders/${encodeURIComponent(orderNumber)}/files`);
             // Отправить письмом можно только то, что лежит у нас файлом:
             // у почтовых вложений своего номера в заказе нет.
             setOrderFiles(((payload.files || []) as any[])
                 .filter((f) => f.fileId)
                 .map((f) => ({ id: Number(f.fileId), name: String(f.filename), size: f.size ?? null, note: f.note ?? null })));
+            setOrderFilesFailed(false);
         } catch {
+            // «Файлы не прочитались» — не то же самое, что «файлов нет»
+            // (Ирина Гордеева 23.10.2026 по заказу 900160).
             setOrderFiles([]);
+            setOrderFilesFailed(true);
         }
     };
 
@@ -767,7 +773,11 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                     <p className="mb-1 text-[10px] font-black uppercase text-gray-400">Что приложить из заказа</p>
                     {orderFiles === null && <p className="text-xs text-gray-500">Смотрим файлы заказа…</p>}
                     {orderFiles !== null && !orderFiles.length && (
-                        <p className="text-xs text-gray-500">В заказе нет файлов — приложите с компьютера.</p>
+                        <p className="text-xs text-gray-500">
+                            {orderFilesFailed
+                                ? 'Файлы заказа не прочитались — это сбой, а не пустой заказ. Закройте и откройте список ещё раз.'
+                                : 'В заказе нет файлов — приложите с компьютера.'}
+                        </p>
                     )}
                     <ul className="max-h-48 space-y-1 overflow-y-auto">
                         {(orderFiles ?? []).map((file) => (
