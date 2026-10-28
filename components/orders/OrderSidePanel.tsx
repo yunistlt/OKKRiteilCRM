@@ -7,6 +7,7 @@ import { openPickerOnClick } from '@/components/ui/openPickerOnClick';
 import OrderMailPanel from '@/components/orders/OrderMailPanel';
 import { orderFileHref } from '@/lib/orders/file-href';
 import { fileKindLabel } from '@/lib/file-type';
+import FilePreviewModal, { type PreviewFile } from '@/components/ui/FilePreviewModal';
 
 export type PanelKind = 'history' | 'files' | 'tasks' | 'mail';
 
@@ -33,6 +34,8 @@ interface OrderSidePanelProps {
     onMailUnread?: (count: number) => void;
     /** Перечитать карточку — после того, как историю дотянули из RetailCRM. */
     onReload?: () => void;
+    /** Открыть переписку заказа: по нажатию на источник файла. */
+    onOpenMail?: (emailId?: string) => void;
 }
 
 const TITLES: Record<PanelKind, string> = {
@@ -42,7 +45,7 @@ const TITLES: Record<PanelKind, string> = {
     mail: 'Переписка',
 };
 
-export default function OrderSidePanel({ kind, orderNumber, history, statusPalette, onClose, onTasksChanged, onMailUnread, onReload }: OrderSidePanelProps) {
+export default function OrderSidePanel({ kind, orderNumber, history, statusPalette, onClose, onTasksChanged, onMailUnread, onReload, onOpenMail }: OrderSidePanelProps) {
     return (
         <div className="border border-gray-300 bg-white">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-900 px-3 py-2">
@@ -52,7 +55,7 @@ export default function OrderSidePanel({ kind, orderNumber, history, statusPalet
 
             <div className={kind === 'mail' ? 'p-0' : 'max-h-[420px] overflow-y-auto p-3'}>
                 {kind === 'history' && <HistoryList items={history || []} palette={statusPalette || {}} orderNumber={orderNumber} onReload={onReload} />}
-                {kind === 'files' && <FilesList orderNumber={orderNumber} />}
+                {kind === 'files' && <FilesList orderNumber={orderNumber} onOpenMail={onOpenMail} />}
                 {kind === 'tasks' && <TasksList orderNumber={orderNumber} onChanged={onTasksChanged} />}
                 {kind === 'mail' && <OrderMailPanel orderNumber={orderNumber} onUnread={onMailUnread} />}
             </div>
@@ -224,7 +227,9 @@ function readableOn(hex: string): string {
     return luminance > 0.6 ? '#111827' : '#ffffff';
 }
 
-function FilesList({ orderNumber }: { orderNumber: string }) {
+function FilesList({ orderNumber, onOpenMail }: { orderNumber: string; onOpenMail?: (emailId?: string) => void }) {
+    /** Какой файл сейчас смотрим во всплывающем окне. */
+    const [preview, setPreview] = useState<PreviewFile | null>(null);
     const [files, setFiles] = useState<any[] | null>(null);
     // Приложить файл руками (просьба Евгении 02.10.2026: счёт выставлен в
     // RetailCRM, а нужен при заказе в ОКК).
@@ -411,15 +416,17 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
                         <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto">
                             {found.map((file) => (
                                 <li key={file.id} className="flex items-baseline justify-between gap-2 text-xs">
-                                    <a
-                                        href={orderFileHref({ orderNumber: file.orderNumber, fileId: file.id })}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="truncate font-semibold text-blue-700 hover:underline"
+                                    <button
+                                        onClick={() => setPreview({
+                                            href: orderFileHref({ orderNumber: file.orderNumber, fileId: file.id }),
+                                            name: file.name,
+                                            origin: `Заказ ${file.orderNumber}`,
+                                        })}
+                                        className="truncate text-left font-semibold text-blue-700 hover:underline"
                                         title={file.name}
                                     >
                                         {file.name}
-                                    </a>
+                                    </button>
                                     <span className="shrink-0 text-gray-500">
                                         заказ {file.orderNumber}
                                         {' · '}
@@ -476,15 +483,13 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
                                                 {fileKindLabel(f.filename, f.contentType)}
                                             </span>
                                             {openable ? (
-                                                <a
-                                                    href={href}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="truncate font-semibold text-blue-700 hover:underline"
+                                                <button
+                                                    onClick={() => setPreview({ href, name: f.filename, contentType: f.contentType, origin: f.origin })}
+                                                    className="truncate text-left font-semibold text-blue-700 hover:underline"
                                                     title={f.filename}
                                                 >
                                                     {f.filename}
-                                                </a>
+                                                </button>
                                             ) : (
                                                 <span className="truncate font-semibold text-gray-900" title={f.filename}>
                                                     {f.filename}
@@ -497,7 +502,20 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
                                         )}
                                     </td>
                                     <td className="py-2 pr-2 text-xs text-gray-600">
-                                        <span className="block truncate" title={f.origin || ''}>{f.origin || '—'}</span>
+                                        {/* Источник открывает переписку заказа — там то самое
+                                            письмо. У файлов, перенесённых из RetailCRM, письма
+                                            у нас нет, и открывать нечего: остаётся подписью. */}
+                                        {onOpenMail && (f.source === 'email' || f.mailId) ? (
+                                            <button
+                                                onClick={() => onOpenMail(f.source === 'email' ? String(f.emailId) : String(f.mailId))}
+                                                className="block max-w-full truncate text-left font-semibold text-blue-700 hover:underline"
+                                                title={`Открыть переписку: ${f.origin || ''}`}
+                                            >
+                                                {f.origin || 'Письмо'}
+                                            </button>
+                                        ) : (
+                                            <span className="block truncate" title={f.origin || ''}>{f.origin || '—'}</span>
+                                        )}
                                     </td>
                                     <td className="py-2 text-xs text-gray-600">
                                         <div className="flex items-baseline justify-between gap-2">
@@ -524,6 +542,8 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
                     </tbody>
                 </table>
             )}
+
+            <FilePreviewModal file={preview} onClose={() => setPreview(null)} />
         </>
     );
 }
