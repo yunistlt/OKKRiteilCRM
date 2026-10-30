@@ -595,7 +595,37 @@ export default function OrdersClient() {
                             {loading ? (
                                 <tr><td colSpan={columns.length + 1} className="px-4 py-8 text-gray-500">Загружаем заказы…</td></tr>
                             ) : orders.length === 0 ? (
-                                <tr><td colSpan={columns.length + 1} className="px-4 py-8 text-gray-500">Под этот фильтр заказов нет.</td></tr>
+                                <tr>
+                                    <td colSpan={columns.length + 1} className="px-4 py-8 text-gray-500">
+                                        {/*
+                                          Искали обозначение изделия и не нашли — говорим об этом прямо и
+                                          даём разобрать его на части одним нажатием. Поиск по обозначению
+                                          частей не ищет (доработка №71), и без этой подписи пустой экран
+                                          читается как поломка.
+                                        */}
+                                        {filter.itemName.trim() && !filter.itemName.trim().includes(' ') ? (
+                                            <>
+                                                Заказов с обозначением «{filter.itemName.trim()}» нет.{' '}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const loose = filter.itemName.trim().replace(/[^a-zа-яё0-9]+/gi, ' ').trim();
+                                                        const next = { ...draftRef.current, itemName: loose };
+                                                        draftRef.current = next;
+                                                        setFilter(next);
+                                                        setPage(1);
+                                                    }}
+                                                    className="font-semibold text-blue-700 hover:underline"
+                                                >
+                                                    Искать по частям
+                                                </button>{' '}
+                                                — найдёт и похожие изделия.
+                                            </>
+                                        ) : (
+                                            'Под этот фильтр заказов нет.'
+                                        )}
+                                    </td>
+                                </tr>
                             ) : (
                                 orders.map((order) => (
                                     <tr
