@@ -129,6 +129,22 @@ function KeyEditor({ configKey, value, onChange, dicts }: { configKey: string; v
             </div>
         );
     }
+    // Дубль заявки: кодов у статуса может быть несколько — он переименовывался
+    // при переезде на свою доску, и в одном месяце встречаются оба. Выбираем
+    // списком и по именам, кодов в интерфейсе нет (закон).
+    if (configKey === 'request_duplicate_rule') {
+        const dup: string[] = Array.isArray(value?.duplicate_statuses)
+            ? value.duplicate_statuses
+            : typeof value?.duplicate_status === 'string'
+              ? [value.duplicate_status]
+              : [];
+        return (
+            <div>
+                <label className="text-[11px] text-muted-foreground">Статусы «Дубль заявки»</label>
+                <MultiSelectByName options={dicts.statuses} selected={dup} onChange={(v) => onChange({ duplicate_statuses: v })} empty="статусы не выбраны" />
+            </div>
+        );
+    }
     // Смета: статусы, где правило работает, + причины отмены (самодостаточны) +
     // текстовые маркеры в комментариях (требуют подтверждения по диалогу).
     if (configKey === 'estimate_rule') {

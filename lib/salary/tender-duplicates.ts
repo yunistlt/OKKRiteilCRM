@@ -322,12 +322,12 @@ export function evaluateDuplicate(
 }
 
 export interface RequestDuplicateRule {
-    duplicate_status: string;
+    duplicate_statuses: string[];
 }
 
 /**
  * Правомочность «Дубля заявки» (email+бот дубли). Исключается из числителя и
- * знаменателя конверсии, только если: статус = duplicate_status, в комментарии
+ * знаменателя конверсии, только если: статус из duplicate_statuses, в комментарии
  * указан номер СУЩЕСТВУЮЩЕГО заказа-эталона и есть пояснительный текст (причина).
  * `refExists` — найден ли эталон по извлечённому номеру. Зеркалит SQL в миграции.
  */
@@ -336,7 +336,7 @@ export function evaluateRequestDuplicate(
     refExists: boolean,
     rule: RequestDuplicateRule,
 ): DuplicateVerdict {
-    if (order.status !== rule.duplicate_status) {
+    if (!rule.duplicate_statuses.includes(order.status)) {
         return { isDuplicate: false, excluded: false, referencedNumber: null, reason: null };
     }
     const num = extractReferencedNumber(order.managerComment);

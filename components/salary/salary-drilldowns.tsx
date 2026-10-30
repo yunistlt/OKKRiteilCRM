@@ -186,6 +186,7 @@ export function ConversionOrdersTable({
                             <th className="px-2 py-1.5">Клиент</th>
                             <th className="px-2 py-1.5">Источник</th>
                             <th className="px-2 py-1.5">Поступил</th>
+                            <th className="px-2 py-1.5">Статус заявки</th>
                             <th className="px-2 py-1.5 text-right">Сумма</th>
                             <th className="px-2 py-1.5 text-center">Продан</th>
                             <th className="px-2 py-1.5">Примечание</th>
@@ -207,6 +208,7 @@ export function ConversionOrdersTable({
                                     <td className="px-2 py-1.5">{o.clientName || '—'}</td>
                                     <td className="px-2 py-1.5">{o.source || '—'}</td>
                                     <td className="px-2 py-1.5">{fmtDate(o.createdAt)}</td>
+                                    <td className="px-2 py-1.5">{o.statusName || '—'}</td>
                                     <td className="px-2 py-1.5 text-right">{rub(o.sum)}</td>
                                     <td className="px-2 py-1.5 text-center">
                                         {o.sold ? <Check className="mx-auto h-3.5 w-3.5 text-green-600" /> : <span className="text-muted-foreground">—</span>}
