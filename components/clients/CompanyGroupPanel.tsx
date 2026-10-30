@@ -30,6 +30,16 @@ export interface CompanyGroup {
     members: GroupMember[];
 }
 
+/** Склонение существительного при числе: 1 юрлицо, 2 юрлица, 5 юрлиц. */
+function plural(n: number, one: string, few: string, many: string): string {
+    const abs = Math.abs(n) % 100;
+    const last = abs % 10;
+    if (abs > 10 && abs < 20) return many;
+    if (last > 1 && last < 5) return few;
+    if (last === 1) return one;
+    return many;
+}
+
 export default function CompanyGroupPanel({
     clientId,
     clientName,
@@ -110,9 +120,23 @@ export default function CompanyGroupPanel({
                     <div className="px-4 py-3">
                         <div className="font-semibold text-gray-900">{group.name}</div>
                         <div className="text-[11px] text-gray-500">
-                            {group.members.length} юрлиц · {totalDeals} сделок на группу
+                            {group.members.length} {plural(group.members.length, 'юрлицо', 'юрлица', 'юрлиц')} ·{' '}
+                            {totalDeals} {plural(totalDeals, 'сделка', 'сделки', 'сделок')} на группу
                         </div>
                     </div>
+                    {/*
+                      Группа из одной карточки ничего не складывает: покупатель у неё
+                      тот же, что и без группы. Завести такую легко — достаточно нажать
+                      «Создать группу», не отметив компании, — и человек уходит в
+                      уверенности, что дело сделано. Так ООО «КВАДРО» осталось в группе
+                      из одного и не попало к ООО «МОСОБРТЕХ» (доработка №67).
+                    */}
+                    {group.members.length < 2 && (
+                        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-[11px] text-amber-900">
+                            В группе только эта карточка — покупки пока не складываются.
+                            Добавьте остальные юрлица покупателя.
+                        </div>
+                    )}
                     {group.members.map((m) => (
                         <div
                             key={m.clientId}
