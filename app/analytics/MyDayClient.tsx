@@ -17,6 +17,7 @@
  * экран его только показывает: второй сортировки здесь нет.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { openTaskNote } from '@/lib/sales-rop/touch-rules';
 import Link from 'next/link';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import { Phone, Mail, ArrowRight, Flame, Clock, Lightbulb } from 'lucide-react';
@@ -216,6 +217,10 @@ function NowCard({ action }: { action: Action | null }) {
                 <div className="min-w-0">
                     <p className="truncate text-lg font-bold text-gray-900" title={action.client}>{action.client}</p>
                     <p className="mt-0.5 text-sm text-gray-700">{action.reason}</p>
+                    {/* Почему задача ещё здесь, хотя с заказом сегодня работали. */}
+                    {!action.done && openTaskNote(action.doneBy) && (
+                        <p className="mt-1 text-sm font-semibold text-red-700">{openTaskNote(action.doneBy)}</p>
+                    )}
                     {action.statusName && (
                         <span className="mt-2 inline-block bg-white px-2 py-0.5 text-[11px] font-semibold text-gray-700">
                             {action.statusName}
@@ -436,9 +441,13 @@ function TaskTable({
                                         <td className="whitespace-nowrap px-3 py-2 tabular-nums text-gray-900">{formatRub(action.amount)}</td>
                                         <td className="px-3 py-2 font-semibold text-gray-900">{action.action}</td>
                                         <td className="px-3 py-2 text-gray-600">
-                                            {action.done && action.doneBy
-                                                ? <span className="text-green-700">сделано сегодня: {action.doneBy}</span>
-                                                : action.reason}
+                                            {action.done && action.doneBy ? (
+                                                <span className="text-green-700">сделано сегодня: {action.doneBy}</span>
+                                            ) : openTaskNote(action.doneBy) ? (
+                                                <span className="text-red-700">{openTaskNote(action.doneBy)}</span>
+                                            ) : (
+                                                action.reason
+                                            )}
                                         </td>
                                         <td className="px-3 py-2 text-right">
                                             <Link
