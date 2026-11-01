@@ -11,22 +11,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
-
-type Item = {
-    id: string;
-    kind: 'mail' | 'task' | 'call';
-    at: string;
-    text: string;
-    note: string | null;
-    orderNumber: string | null;
-    read: boolean;
-};
-
-const KIND_LABEL: Record<Item['kind'], string> = {
-    mail: 'Письмо',
-    task: 'Задача',
-    call: 'Звонок',
-};
+import { itemAccent, itemLabel, type NotificationItem as Item } from '@/lib/notifications/items';
 
 /** Как часто обновляем ленту. Чаще не нужно: всплывашки работают сами. */
 const POLL_MS = 120_000;
@@ -131,10 +116,10 @@ export default function NotificationBell() {
                                 <div
                                     key={item.id}
                                     onClick={() => !item.read && markRead([item.id])}
-                                    className={`cursor-pointer border-b border-gray-100 px-4 py-3 ${item.read ? 'bg-white' : 'bg-blue-50'}`}
+                                    className={`cursor-pointer border-b border-gray-100 px-4 py-3 ${item.read ? 'bg-white' : 'bg-blue-50'} ${itemAccent(item)}`}
                                 >
                                     <div className="flex items-baseline justify-between gap-2 text-[11px] text-gray-500">
-                                        <span>{KIND_LABEL[item.kind]}</span>
+                                        <span className={item.taskSource === 'mine' ? 'font-semibold text-amber-700' : ''}>{itemLabel(item)}</span>
                                         <span>{new Date(item.at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}</span>
                                     </div>
                                     <div className="mt-0.5 text-sm text-gray-900">{item.text}</div>

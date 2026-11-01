@@ -77,8 +77,12 @@ export const INN_PURCHASE_NOTE =
 /**
  * Ставит менеджеру задачу уточнить ИНН. Повторно не задваивает: одна открытая
  * задача на заказ — иначе список задач завалило бы одинаковыми строками.
+ *
+ * Задача помечается системной. Раньше она подписывалась именем того, кто в этот
+ * момент двигал статус, и в списке выглядела так, будто человек поставил её
+ * себе сам.
  */
-export async function ensureInnTask(orderNumber: string, author: string): Promise<boolean> {
+export async function ensureInnTask(orderNumber: string): Promise<boolean> {
     const title = 'Уточнить у клиента ИНН и внести в карточку';
 
     const { data: exists } = await supabase
@@ -93,7 +97,8 @@ export async function ensureInnTask(orderNumber: string, author: string): Promis
     const { error } = await supabase.from('order_tasks').insert({
         order_number: orderNumber,
         title,
-        created_by: author,
+        source: 'system',
+        created_by: 'Система',
     });
     if (error) {
         console.error('[inn-gate] задача не создалась:', orderNumber, error.message);

@@ -15,23 +15,12 @@ import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { phoneTail } from '@/lib/orders-filter';
+import { taskSourceOf, type NotificationItem } from '@/lib/notifications/items';
 
 export const dynamic = 'force-dynamic';
 
 /** За сколько дней показываем ленту. Глубже человек уходит в сами разделы. */
 const DAYS = 7;
-
-export type NotificationItem = {
-    id: string;
-    kind: 'mail' | 'task' | 'call';
-    at: string;
-    /** Главная строка: о чём оповещение. */
-    text: string;
-    /** Кто или что рядом: отправитель, срок, номер. */
-    note: string | null;
-    orderNumber: string | null;
-    read: boolean;
-};
 
 export async function GET() {
     const session = await getSession();
@@ -52,7 +41,7 @@ export async function GET() {
             .limit(100),
         supabase
             .from('order_tasks')
-            .select('id, order_number, title, due_date, due_time, created_by, created_at')
+            .select('id, order_number, title, due_date, due_time, created_by, created_by_user_id, source, created_at')
             .gt('created_at', since)
             .order('created_at', { ascending: false })
             .limit(100),
@@ -105,6 +94,7 @@ export async function GET() {
     for (const task of ((tasks.data ?? []) as any[])) {
         const number = task.order_number ? String(task.order_number) : null;
         if (!mine(number)) continue;
+        const source = taskSourceOf(task, session.user);
         items.push({
             id: `task-${task.id}`,
             kind: 'task',
@@ -114,10 +104,13 @@ export async function GET() {
                 task.due_date
                     ? `срок ${new Date(task.due_date).toLocaleDateString('ru-RU')}${task.due_time ? ` в ${String(task.due_time).slice(0, 5)}` : ''}`
                     : null,
-                task.created_by ? `поставил ${task.created_by}` : null,
+                // У своей задачи подпись не нужна — она и так помечена; у
+                // системной называем систему, а не того, кто двигал статус.
+                source === 'colleague' && task.created_by ? `поставил ${task.created_by}` : null,
             ].filter(Boolean).join(' · ') || null,
             orderNumber: number,
             read: readIds.has(`task-${task.id}`),
+            taskSource: source,
         });
     }
 

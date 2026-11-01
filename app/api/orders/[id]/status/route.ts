@@ -205,9 +205,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if ((INN_REQUIRED_STATUSES as readonly string[]).includes(body.status)) {
         const inn = await orderInn(Number((order as any).order_id ?? id));
         if (!inn) {
-            const who = [session.user.first_name, session.user.last_name].filter(Boolean).join(' ')
-                || session.user.email || session.user.role;
-            const taskAdded = await ensureInnTask(String((order as any).number ?? id), who);
+            const taskAdded = await ensureInnTask(String((order as any).number ?? id));
             return NextResponse.json(
                 {
                     error: 'inn_required',
@@ -245,10 +243,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     try {
         const { deal_statuses: dealStatuses } = await getResolvedConfig();
         if (dealStatuses.includes(body.status) && !(await orderInn(Number((order as any).order_id ?? id)))) {
-            const who = [session.user.first_name, session.user.last_name].filter(Boolean).join(' ')
-                || session.user.email || session.user.role;
             await appendOrderNote(Number((order as any).id), INN_PURCHASE_NOTE, 'Система');
-            await ensureInnTask(String((order as any).number ?? id), who);
+            await ensureInnTask(String((order as any).number ?? id));
         }
     } catch (err) {
         // Пометка не встала — статус из-за этого не отменяем: заказ важнее.
