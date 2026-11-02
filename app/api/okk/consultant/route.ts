@@ -200,27 +200,6 @@ async function persistConversation(params: {
     return traceId;
 }
 
-function needsOrderContext(message: string, criterionKey: string | null): boolean {
-    const lower = message.toLowerCase();
-
-    if (isViolationsReferenceQuestion(lower)) {
-        return false;
-    }
-
-    return Boolean(
-        criterionKey ||
-        lower.includes('почему') ||
-        lower.includes('крест') ||
-        lower.includes('галоч') ||
-        lower.includes('балл') ||
-        lower.includes('рейтинг') ||
-        lower.includes('процент') ||
-        lower.includes('откуда') ||
-        lower.includes('исправ') ||
-        lower.includes('заказ')
-    );
-}
-
 function normalizeSectionKey(rawSectionKey: unknown) {
     return getConsultantSectionConfig(typeof rawSectionKey === 'string' ? rawSectionKey : null).key;
 }
@@ -233,22 +212,6 @@ function isReferenceQuestion(lower: string): boolean {
         || lower.includes('для чего')
         || lower.includes('как работает')
         || lower.includes('что показывает');
-}
-
-function isDirectQualityAnalysisRequest(message: string): boolean {
-    const lower = message.toLowerCase();
-
-    return lower.includes('по этому заказу')
-        || lower.includes('этот заказ')
-        || lower.includes('эта сделка')
-        || lower.includes('конкретный заказ')
-        || lower.includes('разбери заказ')
-        || lower.includes('проанализируй заказ')
-        || lower.includes('проверь заказ')
-        || lower.includes('почему здесь')
-        || lower.includes('что нужно исправить менеджеру')
-        || lower.includes('покажи доказательства по заказу')
-        || lower.includes('какие звонки попали в оценку');
 }
 
 function isViolationsReferenceQuestion(message: string): boolean {
@@ -380,6 +343,9 @@ async function buildGlobalKnowledgeAnswer(
     contextHint: string | null = null,
     /** Готовая статья справочника раздела, если она нашлась по словам вопроса. */
     sectionArticle: string | null = null,
+    /** Кто спрашивает: его именем подписывается поставленная задача. */
+    actorName: string | null = null,
+    actorUserId: string | null = null,
 ): Promise<{ reply: string | null; promptKey: string | null; knowledgeHits: Array<{ slug: string; subsystem: string | null; similarity: number }>; toolCalls: Array<{ name: string }> }> {
     if (!process.env.OPENAI_API_KEY) {
         return { reply: null, promptKey: null, knowledgeHits: [], toolCalls: [] };
@@ -416,37 +382,31 @@ async function buildGlobalKnowledgeAnswer(
     });
 
     const now = new Date();
-    const toolCtx: ConsultantToolContext = { retailCrmManagerId, userRole, defaultYear: now.getFullYear(), defaultMonth: now.getMonth() + 1 };
+    const toolCtx: ConsultantToolContext = {
+        retailCrmManagerId,
+        userRole,
+        defaultYear: now.getFullYear(),
+        defaultMonth: now.getMonth() + 1,
+        // Задачу ставит человек, Семён только записывает — подпись и автор его.
+        actorName,
+        actorUserId,
+    };
     const tools = buildConsultantTools(toolCtx);
 
     let systemContent = `${mainPrompt.systemPrompt}\n\n${stylePrompt.systemPrompt}\n\nТекущий раздел: ${section.title}.`;
     if (contextHint) {
         systemContent += `\n\nПользователь сейчас находится на экране: «${contextHint}». Если вопрос задан без явного указания раздела, считай, что он про этот экран, и ищи ответ в соответствующей теме.`;
     }
-    // Два источника и правило выбора между ними. Без него модель берёт тот, что
-    // подвернулся: наша копия наполняется кроном и к утру отстаёт, а CRM не
-    // помнит истории — она отдаёт состояние, а не путь.
-    systemContent += '\n\nУ тебя ДВА источника данных, и путать их нельзя. ' +
-        'Наша база (orders_aggregate, знания, оценки, звонки) — это ИСТОРИЯ: как было, что говорили в звонках, как менялось, почему. Она наполняется выгрузкой и к утру может отставать на часы, а в выходные — с вечера пятницы. ' +
-        'RetailCRM (crm_order_now, crm_status_now) — это СЕЙЧАС: в каком статусе заказ прямо в эту минуту, кто ответственный, какая дата следующего контакта. ' +
-        'Вопрос про текущее положение дел — иди в CRM. Вопрос про историю, динамику, разговоры и причины — иди в нашу базу. ' +
-        'Если ответ зависит от свежести (перешёл ли заказ, оплачен ли счёт) — проверь в CRM, даже если только что смотрел нашу базу, и скажи, на какой момент данные.';
+    // Источник учёта один — наша база. RetailCRM отвязали 09.10.2026, и она
+    // больше не пополняется: спрашивать у неё «что сейчас» значит отвечать
+    // позапрошлым месяцем.
+    systemContent += '\n\nВсе данные бери из нашей базы: заказы, клиенты, оплаты, звонки, оценки и зарплата живут только у нас. RetailCRM — архив на чтение, он не пополняется с 09.10.2026, и в ответах на него не ссылайся.';
 
-    // Что спрашивают чаще всего: как работать в системе, что за клиент, что с
-    // заказом. На каждый из трёх вопросов есть свой источник — без этого модель
-    // пересказывает документацию разработчика вместо ответа по делу.
-    // Модель не знает сегодняшнего числа и берёт его из своих представлений: на
-    // «по итогам октября у кого какой грейд» она пошла смотреть октябрь 2023
-    // года (02.11.2026). Дату говорим прямо.
-    const monthNames = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
-    systemContent += `\n\nСегодня ${now.getDate()} ${monthNames[now.getMonth()]} ${now.getFullYear()} года. Когда человек называет месяц без года («за октябрь», «по итогам сентября»), он имеет в виду ближайший прошедший такой месяц этого года, а не прошлые годы. Текущий незакрытый период — ${monthNames[now.getMonth()]} ${now.getFullYear()}.`;
-
-    // Порядок работы: сначала понять, откуда берётся ответ, и только потом
-    // отвечать (решение владельца 02.11.2026). Иначе модель пересказывает
-    // первое, что подвернулось под руку, — обычно статью справочника.
     systemContent += '\n\nПорядок работы. Сначала реши, ОТКУДА брать ответ, и только потом отвечай. Вопрос про конкретные цифры, людей, заказы, клиентов или период («у кого», «сколько», «за октябрь», «покажи») — это ДАННЫЕ: бери их инструментами, статьёй справочника такой вопрос не закрывается. Вопрос «что это», «как считается», «почему так устроено» — это ЗНАНИЯ: отвечай по инструкциям и статьям. Вопрос «как именно работает фича» и в знаниях ответа нет — смотри код. Нужны и знания, и цифры — возьми и то и другое. Если данных нет или инструмент вернул пусто, так и скажи и объясни, почему: выдуманное число хуже честного «нет данных».';
 
     systemContent += '\n\nВ знаниях у тебя два пласта. ИНСТРУКЦИИ ДЛЯ СОТРУДНИКОВ — как человек работает в системе: где нажать, почему так считается, что означает отметка. На вопросы «как», «почему у меня», «где посмотреть» отвечай по ним и словами инструкции. ДОКУМЕНТАЦИЯ ПРОЕКТА — как система устроена внутри; бери её, когда спрашивают про устройство, или когда в инструкциях ответа нет. Если ответа нет нигде — так и скажи, не придумывай.';
+
+    systemContent += '\n\nТы не только объясняешь — ты помогаешь делать. Просят найти заказ — ищи orders_find по номеру, клиенту или статусу. Просят разобрать день — бери day_plan: там видно, что уже отработано, а что нет, и почему заказ попал в план. Просят поставить задачу или напомнить — ставь create_order_task и скажи, по какому заказу и на какой срок поставил. Задачу ставь только по прямой просьбе, не по своей догадке. Письма ты пока не отправляешь: составь текст в ответе, отправит человек.';
 
     systemContent += '\n\nПро клиента спрашивают так же часто, как про заказ: «что за клиент», «чей он», «сколько покупал», «есть ли другие юрлица». На это есть client_dossier — он ищет по названию, ИНН или номеру карточки и отдаёт карточку, ответственного менеджера, группу компаний и последние заказы. Нашлось несколько карточек одного покупателя — скажи об этом человеку, не выбирай за него.';
 
@@ -725,32 +685,15 @@ export async function POST(req: Request) {
             });
         }
 
-        if (effectiveSectionKey === 'quality-dashboard' && !sectionReply && !glossaryTerm && !referenceQuestion && isDirectQualityAnalysisRequest(message)) {
-            return respond({
-                reply: 'Семён в этом чате не разбирает конкретные заказы, правила или отмены. Он объясняет, как устроен ОКК: что значат поля, откуда берутся данные, как работают критерии и как проходит анализ в системе.',
-                suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.order,
-                replyKind: 'section',
-                sectionKey: effectiveSectionKey,
-            });
-        }
+        // Отказ «не разбираю конкретные заказы» снят 02.11.2026. Он писался,
+        // когда у Семёна не было доступа к данным: спросить было нечем.
+        // Теперь есть order_dossier по номеру заказа и client_dossier по
+        // названию или ИНН, и владелец решил, что Семён отвечает и по
+        // заказам, и по клиентам. Чего не знает — скажет сам.
 
-        if (!orderId && !glossaryTerm && !sectionReply && !referenceQuestion && isOrderAnalysisSection(effectiveSectionKey) && needsOrderContext(message, criterionKey)) {
-            if (effectiveSectionKey === 'quality-dashboard') {
-                return respond({
-                    reply: 'Семён работает здесь как консультант по методологии ОКК. Он может объяснить общую логику расчёта, смысл критериев, полей, нарушений и источников данных, но не разбирает конкретную сделку.',
-                    suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.order,
-                    replyKind: 'section',
-                    sectionKey: effectiveSectionKey,
-                });
-            }
-
-            return respond({
-                reply: 'Для такого вопроса мне нужен выбранный заказ. Выберите сделку в таблице ОКК, и я смогу объяснить балл, причины крестиков, источники данных и действия для исправления.',
-                suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
-                replyKind: 'meta',
-                sectionKey: effectiveSectionKey,
-            });
-        }
+        // Просьба «выберите заказ в таблице» тоже снята: номер заказа чаще
+        // всего назван прямо в вопросе, а по нему Семён поднимает досье сам.
+        // Если номера нет, он спросит его словами — это лучше, чем отказ.
 
         if (!orderId) {
             if (violationsReferenceQuestion) {
@@ -803,7 +746,17 @@ export async function POST(req: Request) {
 
             // Project-wide RAG + salary tools: answer methodology questions and personal salary
             // calculations across all sections. Salary tools are bound to the session user.
-            const globalKnowledge = await buildGlobalKnowledgeAnswer(message, effectiveSectionKey, history, userRole, retailCrmManagerId, contextHint, sectionReply);
+            const globalKnowledge = await buildGlobalKnowledgeAnswer(
+                message,
+                effectiveSectionKey,
+                history,
+                userRole,
+                retailCrmManagerId,
+                contextHint,
+                sectionReply,
+                [session.user.last_name, session.user.first_name].filter(Boolean).join(' ') || username,
+                userId,
+            );
             if (globalKnowledge.reply) {
                 return respond({
                     reply: globalKnowledge.reply,

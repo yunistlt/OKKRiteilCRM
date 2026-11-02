@@ -1,6 +1,5 @@
 import { supabase } from '@/utils/supabase';
 import { loadStatusDirectory } from '@/lib/own-crm/status-code';
-import { getCrmConfig } from '@/lib/retailcrm/leads';
 
 // Досье по одному заказу: всё, что о нём известно.
 //
@@ -32,16 +31,20 @@ export type OrderDossier = {
 };
 
 export async function orderDossier(orderNumber: string): Promise<OrderDossier | null> {
-    const { url, key } = await getCrmConfig();
+    // Заказ берём из нашей базы. До 02.11.2026 досье ходило в RetailCRM, и
+    // после отвязки 09.10.2026 это стало враньём: по заказу 41989 оно отдавало
+    // «ТД Карусель, Отложено», когда у нас он у «ООО Дети наше будущее» и уже
+    // в производстве. RetailCRM — архив, он не пополняется.
+    const { data: o, error } = await supabase
+        .from('orders')
+        .select('order_id, number, status, totalsumm, customer, createdAt, managerComment, raw_payload')
+        .eq('number', orderNumber)
+        .is('crm_deleted_at', null)
+        .maybeSingle();
 
-    const res = await fetch(`${url}/api/v5/orders?filter[numbers][]=${encodeURIComponent(orderNumber)}&limit=20`, {
-        headers: { 'X-API-KEY': key },
-    });
-    const data = await res.json();
-    const o = (data.orders ?? [])[0];
-    if (!o) return null;
+    if (error || !o) return null;
 
-    const orderId = Number(o.id);
+    const orderId = Number((o as any).order_id);
 
     const [{ data: historyRows }, statusRows, { data: callRows }] = await Promise.all([
         supabase.rpc('sales_order_full_history', { p_order_id: orderId }),
@@ -57,15 +60,19 @@ export async function orderDossier(orderNumber: string): Promise<OrderDossier | 
         detail: String(r.detail ?? ''),
     }));
 
+    const order = o as any;
+
     return {
-        number: String(o.number),
+        number: String(order.number),
         orderId,
-        status: nameByCode.get(o.status) || o.status,
-        amount: Number(o.totalSumm ?? 0),
-        customer: o.customer?.nickName ?? null,
-        createdAt: String(o.createdAt ?? '').slice(0, 10),
-        nextContactDate: o.customFields?.data_kontakta ?? null,
-        managerComment: String(o.managerComment ?? ''),
+        status: nameByCode.get(order.status) || order.status,
+        amount: Number(order.totalsumm ?? 0),
+        customer: order.customer?.nickName
+            ?? order.raw_payload?.contragent?.legalName
+            ?? null,
+        createdAt: String(order.createdAt ?? '').slice(0, 10),
+        nextContactDate: order.raw_payload?.customFields?.data_kontakta ?? null,
+        managerComment: String(order.managerComment ?? ''),
         history,
         calls: ((callRows ?? []) as any[]).map((r) => ({
             date: String(r.started_at).slice(0, 10),

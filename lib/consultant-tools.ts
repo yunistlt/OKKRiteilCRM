@@ -1,13 +1,13 @@
 import { SALARY_TOOLS, executeSalaryTool, type SalaryToolContext } from '@/lib/salary/consultant-tools';
 import { RATING_TOOLS, executeRatingTool } from '@/lib/okk-consultant-rating-tools';
 import { ORDERS_TOOLS, executeOrdersTool } from '@/lib/okk-consultant-orders-tools';
-import { CRM_LIVE_TOOLS, CRM_LIVE_TOOL_NAMES, executeCrmLiveTool } from '@/lib/okk-consultant-crm-live';
 import { ORDER_DOSSIER_TOOL, executeOrderDossierTool } from '@/lib/okk-consultant-order-dossier';
 import { CLIENT_DOSSIER_TOOL, CLIENT_DOSSIER_TOOL_NAME, executeClientDossierTool } from '@/lib/okk-consultant-client-dossier';
 // Те же инструменты кода, что у Тамары: снимок один, читателей двое —
 // заводить Семёну собственный значило бы держать две разные правды о коде.
 import { CODE_TOOLS, CODE_TOOL_NAMES, executeCodeTool } from '@/lib/shtab/tamara-code-tools';
 import { GRADE_TOOLS, GRADE_TOOL_NAMES, executeGradeTool } from '@/lib/okk-consultant-grade-tools';
+import { ASSISTANT_TOOLS, ASSISTANT_TOOL_NAMES, executeAssistantTool } from '@/lib/okk-consultant-assistant-tools';
 import { MY_DAY_TOOLS, MY_DAY_TOOL_NAMES, executeMyDayTool } from '@/lib/sales-rop/my-day-tools';
 
 // Aggregates the consultant's analytical tools (OpenAI function calling):
@@ -18,7 +18,12 @@ import { MY_DAY_TOOLS, MY_DAY_TOOL_NAMES, executeMyDayTool } from '@/lib/sales-r
 // calc и orders_aggregate доступны всегда (orders сам ограничивает область по роли);
 // salary/rating tools привязаны к менеджеру сессии.
 
-export type ConsultantToolContext = SalaryToolContext & { userRole?: string };
+export type ConsultantToolContext = SalaryToolContext & {
+    userRole?: string;
+    /** Кто просит: этим именем подписывается поставленная задача. */
+    actorName?: string | null;
+    actorUserId?: string | null;
+};
 
 // ── Safe arithmetic evaluator (recursive descent, no eval/Function) ──────────
 
@@ -155,7 +160,12 @@ export function buildConsultantTools(ctx: ConsultantToolContext) {
     // Два источника: наша база знает историю и звонки, CRM — сегодняшнее утро.
     // Код сервиса: «почему так считается» и «как работает эта кнопка» честно
     // отвечаются только по самому коду (решение владельца 02.11.2026).
-    const tools: any[] = [CALC_TOOL, ...ORDERS_TOOLS, ...CRM_LIVE_TOOLS, ORDER_DOSSIER_TOOL, CLIENT_DOSSIER_TOOL, ...CODE_TOOLS, ...GRADE_TOOLS];
+    // RetailCRM из набора убрана 02.11.2026. Она была вторым источником, «что
+    // происходит прямо сейчас», — но после отвязки 09.10.2026 это архив на
+    // чтение, который больше не пополняется. Семён на вопрос про заказ 41989
+    // отвечал по ней «ТД Карусель, Отложено, не оплачен», хотя у нас он в
+    // производстве и оплачен. Один источник учёта — наша база.
+    const tools: any[] = [CALC_TOOL, ...ORDERS_TOOLS, ORDER_DOSSIER_TOOL, CLIENT_DOSSIER_TOOL, ...CODE_TOOLS, ...GRADE_TOOLS, ...ASSISTANT_TOOLS];
 
     // Разбор собственного дня по строкам. Любая цифра, названная человеку,
     // должна раскладываться до исходных данных: звонок с длительностью, заказ с
@@ -171,11 +181,11 @@ export function buildConsultantTools(ctx: ConsultantToolContext) {
 export async function executeConsultantTool(name: string, args: any, ctx: ConsultantToolContext): Promise<any> {
     if (name === 'calc') return executeCalc(args);
     if (ORDERS_NAMES.has(name)) return executeOrdersTool(name, args, ctx);
-    if (CRM_LIVE_TOOL_NAMES.has(name)) return executeCrmLiveTool(name, args);
     if (name === 'order_dossier') return executeOrderDossierTool(args);
     if (name === CLIENT_DOSSIER_TOOL_NAME) return executeClientDossierTool(args);
     if (CODE_TOOL_NAMES.has(name)) return executeCodeTool(name, args);
     if (GRADE_TOOL_NAMES.has(name)) return executeGradeTool(name, args, ctx);
+    if (ASSISTANT_TOOL_NAMES.has(name)) return executeAssistantTool(name, args, ctx);
     if (MY_DAY_TOOL_NAMES.has(name)) return executeMyDayTool(name, args, ctx.retailCrmManagerId ?? null);
     if (SALARY_NAMES.has(name)) return executeSalaryTool(name, args, ctx);
     if (RATING_NAMES.has(name)) return executeRatingTool(name, args, ctx);
