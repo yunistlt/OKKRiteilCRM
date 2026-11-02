@@ -265,9 +265,12 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply, 
                         )}
                         {/* Наименование товара: ищем по составу заказа. Просьба
                             Евгении Матвеевой 06.10.2026 — иначе дубль заявки по
-                            одному изделию не найти. */}
+                            одному изделию не найти.
+                            Подсказка называет оба способа: обозначение без
+                            пробелов ищется целиком, слова через пробел — по
+                            частям (доработка №71). */}
                         {show('itemName') && (
-                            <Field label="Наименование товара"><Text value={draft.itemName} onChange={(v) => set({ itemName: v })} placeholder="Часть названия, например «стеллаж»" /></Field>
+                            <Field label="Наименование товара"><Text value={draft.itemName} onChange={(v) => set({ itemName: v })} placeholder="«РШС-15-120-18» целиком или «стеллаж» по частям" /></Field>
                         )}
                         {show('customerComment') && (
                             <Field label="Комментарий клиента"><Text value={draft.customerComment} onChange={(v) => set({ customerComment: v })} /></Field>
