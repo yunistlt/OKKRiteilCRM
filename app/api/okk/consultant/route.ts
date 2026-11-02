@@ -477,10 +477,12 @@ async function buildGlobalKnowledgeAnswer(
                 model: mainPrompt.model,
                 maxTokens,
                 temperature: mainPrompt.temperature,
-                // Семён обязан сначала решить, откуда брать ответ, и только
-                // потом отвечать: на рассуждающей модели это и есть тот самый
-                // шаг, ради которого её ставили.
-                reasoningEffort: 'low',
+                // Рассуждение здесь просить нельзя: gpt-5.5 в /v1/chat/completions
+                // отвечает 400 на связку «инструменты + reasoning_effort», а без
+                // инструментов Семён не ответит ни про заказы, ни про клиентов
+                // (проверено на боевой модели 02.11.2026). Порядок рассуждения
+                // задан промптом, а глубину даёт сама модель.
+                reasoningEffort: 'none',
             }),
             messages,
             tools,
