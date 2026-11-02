@@ -64,6 +64,24 @@ export async function executeGradeTool(
         if (!current.has(id)) current.set(id, row);
     }
 
+    // Грейдов на эту дату нет вовсе — скорее всего спросили про год, когда
+    // грейдов ещё не вели. Молчаливая пустота читается как «данных нет»,
+    // поэтому говорим, с какого момента они есть.
+    if (current.size === 0) {
+        const { data: earliest } = await supabase
+            .from('salary_grade')
+            .select('effective_from')
+            .order('effective_from', { ascending: true })
+            .limit(1);
+        const from = (earliest ?? [])[0]?.effective_from ?? null;
+        return {
+            available: false,
+            reason: from
+                ? `На ${year && month ? `начало ${String(month).padStart(2, '0')}.${year}` : 'эту дату'} грейдов не было: их ведут с ${String(from).slice(0, 10)}. Спроси про более поздний период.`
+                : 'Грейды в системе ещё не заводили.',
+        };
+    }
+
     let managerIds = Array.from(current.keys());
     if (!seesWholeTeam(ctx.userRole)) {
         const mine = ctx.retailCrmManagerId ? Number(ctx.retailCrmManagerId) : null;
