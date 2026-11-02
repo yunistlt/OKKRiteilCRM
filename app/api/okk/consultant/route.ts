@@ -350,8 +350,12 @@ async function buildFallbackAnswer(
 function buildGlobalKnowledgeContext(
     instructions: Awaited<ReturnType<typeof searchConsultantKnowledge>>,
     docs: Awaited<ReturnType<typeof searchProjectKnowledge>>,
+    sectionArticle: string | null = null,
 ): string {
     const parts: string[] = [];
+    if (sectionArticle) {
+        parts.push(`СТАТЬЯ СПРАВОЧНИКА, подобранная по словам вопроса. Она объясняет тему, но может не отвечать на заданный вопрос: если спрашивают про конкретные цифры, людей или период — иди за данными, а статью используй как объяснение:\n${sectionArticle}`);
+    }
     if (instructions.length > 0) {
         parts.push(`ИНСТРУКЦИИ ДЛЯ СОТРУДНИКОВ — как человек работает в системе. Отвечай по ним в первую очередь:\n${formatConsultantKnowledgeContext(instructions)}`);
     }
@@ -368,6 +372,8 @@ async function buildGlobalKnowledgeAnswer(
     userRole: string,
     retailCrmManagerId: number | null,
     contextHint: string | null = null,
+    /** Готовая статья справочника раздела, если она нашлась по словам вопроса. */
+    sectionArticle: string | null = null,
 ): Promise<{ reply: string | null; promptKey: string | null; knowledgeHits: Array<{ slug: string; subsystem: string | null; similarity: number }>; toolCalls: Array<{ name: string }> }> {
     if (!process.env.OPENAI_API_KEY) {
         return { reply: null, promptKey: null, knowledgeHits: [], toolCalls: [] };
@@ -399,7 +405,7 @@ async function buildGlobalKnowledgeAnswer(
     const userPrompt = renderConsultantTemplate(mainPrompt.userPromptTemplate, {
         question,
         section_title: section.title,
-        knowledge_context: buildGlobalKnowledgeContext(instructionHits, docHits),
+        knowledge_context: buildGlobalKnowledgeContext(instructionHits, docHits, sectionArticle),
         history_context: summarizeHistoryForPrompt(history),
     });
 
@@ -423,6 +429,11 @@ async function buildGlobalKnowledgeAnswer(
     // Что спрашивают чаще всего: как работать в системе, что за клиент, что с
     // заказом. На каждый из трёх вопросов есть свой источник — без этого модель
     // пересказывает документацию разработчика вместо ответа по делу.
+    // Порядок работы: сначала понять, откуда берётся ответ, и только потом
+    // отвечать (решение владельца 02.11.2026). Иначе модель пересказывает
+    // первое, что подвернулось под руку, — обычно статью справочника.
+    systemContent += '\n\nПорядок работы. Сначала реши, ОТКУДА брать ответ, и только потом отвечай. Вопрос про конкретные цифры, людей, заказы, клиентов или период («у кого», «сколько», «за октябрь», «покажи») — это ДАННЫЕ: бери их инструментами, статьёй справочника такой вопрос не закрывается. Вопрос «что это», «как считается», «почему так устроено» — это ЗНАНИЯ: отвечай по инструкциям и статьям. Вопрос «как именно работает фича» и в знаниях ответа нет — смотри код. Нужны и знания, и цифры — возьми и то и другое. Если данных нет или инструмент вернул пусто, так и скажи и объясни, почему: выдуманное число хуже честного «нет данных».';
+
     systemContent += '\n\nВ знаниях у тебя два пласта. ИНСТРУКЦИИ ДЛЯ СОТРУДНИКОВ — как человек работает в системе: где нажать, почему так считается, что означает отметка. На вопросы «как», «почему у меня», «где посмотреть» отвечай по ним и словами инструкции. ДОКУМЕНТАЦИЯ ПРОЕКТА — как система устроена внутри; бери её, когда спрашивают про устройство, или когда в инструкциях ответа нет. Если ответа нет нигде — так и скажи, не придумывай.';
 
     systemContent += '\n\nПро клиента спрашивают так же часто, как про заказ: «что за клиент», «чей он», «сколько покупал», «есть ли другие юрлица». На это есть client_dossier — он ищет по названию, ИНН или номеру карточки и отдаёт карточку, ответственного менеджера, группу компаний и последние заказы. Нашлось несколько карточек одного покупателя — скажи об этом человеку, не выбирай за него.';
@@ -655,11 +666,36 @@ export async function POST(req: Request) {
         const retailCrmManagerId = session.user.retail_crm_manager_id ? Number(session.user.retail_crm_manager_id) : null;
         const userId = String(session.user.id);
         const username = String(session.user.username || 'user');
+
+        /**
+         * Отвечаем и пишем разговор в журнал.
+         *
+         * Раньше в журнал попадали только ответы модели, а готовые ответы
+         * справочника — нет. Из-за этого случай «спросил про грейды за
+         * октябрь — получил статью про грейды» (02.11.2026) не было видно
+         * никому, кроме самого спросившего.
+         */
+        const respond: typeof buildSuccessResponse = (params) => {
+            if ((params.answerSource ?? 'deterministic') !== 'ai_generated') {
+                void logAssistantDialog({
+                    channel: 'web',
+                    question: message,
+                    answer: params.reply,
+                    intent: params.replyKind,
+                    userId,
+                    username,
+                    managerId: retailCrmManagerId,
+                    orderId: orderId ?? undefined,
+                    threadId: params.threadId ?? undefined,
+                });
+            }
+            return buildSuccessResponse(params);
+        };
         const violationsReferenceQuestion = isViolationsReferenceQuestion(message);
         const sectionReply = buildSectionAnswer(effectiveSectionKey, message, selectionContext);
 
         if (isConsultantMetaQuestion(message)) {
-            return buildSuccessResponse({
+            return respond({
                 reply: buildConsultantMetaAnswer(getConsultantSectionConfig(effectiveSectionKey).title),
                 suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
                 replyKind: 'meta',
@@ -668,7 +704,7 @@ export async function POST(req: Request) {
         }
 
         if (effectiveSectionKey === 'quality-dashboard' && !sectionReply && !glossaryTerm && !referenceQuestion && isDirectQualityAnalysisRequest(message)) {
-            return buildSuccessResponse({
+            return respond({
                 reply: 'Семён в этом чате не разбирает конкретные заказы, правила или отмены. Он объясняет, как устроен ОКК: что значат поля, откуда берутся данные, как работают критерии и как проходит анализ в системе.',
                 suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.order,
                 replyKind: 'section',
@@ -678,7 +714,7 @@ export async function POST(req: Request) {
 
         if (!orderId && !glossaryTerm && !sectionReply && !referenceQuestion && isOrderAnalysisSection(effectiveSectionKey) && needsOrderContext(message, criterionKey)) {
             if (effectiveSectionKey === 'quality-dashboard') {
-                return buildSuccessResponse({
+                return respond({
                     reply: 'Семён работает здесь как консультант по методологии ОКК. Он может объяснить общую логику расчёта, смысл критериев, полей, нарушений и источников данных, но не разбирает конкретную сделку.',
                     suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.order,
                     replyKind: 'section',
@@ -686,7 +722,7 @@ export async function POST(req: Request) {
                 });
             }
 
-            return buildSuccessResponse({
+            return respond({
                 reply: 'Для такого вопроса мне нужен выбранный заказ. Выберите сделку в таблице ОКК, и я смогу объяснить балл, причины крестиков, источники данных и действия для исправления.',
                 suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
                 replyKind: 'meta',
@@ -696,7 +732,7 @@ export async function POST(req: Request) {
 
         if (!orderId) {
             if (violationsReferenceQuestion) {
-                return buildSuccessResponse({
+                return respond({
                     reply: buildViolationsReferenceAnswer(null),
                     suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
                     replyKind: 'violations-reference',
@@ -705,7 +741,7 @@ export async function POST(req: Request) {
             }
 
             if (formulaKey && isFormulaQuestion(message)) {
-                return buildSuccessResponse({
+                return respond({
                     reply: getCachedReferenceAnswer(`formula:${formulaKey}`, () => buildFormulaExplanation(formulaKey)),
                     suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
                     replyKind: 'formula',
@@ -714,7 +750,7 @@ export async function POST(req: Request) {
             }
 
             if (glossaryTerm && isGlossaryQuestion(message)) {
-                return buildSuccessResponse({
+                return respond({
                     reply: getCachedReferenceAnswer(`glossary:${glossaryTerm.key}`, () => buildGlossaryAnswer(glossaryTerm)),
                     suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
                     replyKind: 'glossary',
@@ -723,7 +759,7 @@ export async function POST(req: Request) {
             }
 
             if (criterionKey) {
-                return buildSuccessResponse({
+                return respond({
                     reply: getCachedReferenceAnswer(`criterion:${criterionKey}:general`, () => buildCriterionExplanation({
                         order: { order_id: 0, score_breakdown: null },
                         criterionKey,
@@ -735,20 +771,19 @@ export async function POST(req: Request) {
                 });
             }
 
-            if (sectionReply) {
-                return buildSuccessResponse({
-                    reply: sectionReply,
-                    suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
-                    replyKind: 'section',
-                    sectionKey: effectiveSectionKey,
-                });
-            }
+            // Статья справочника раздела больше не отдаётся как готовый ответ.
+            // Она совпадала по слову-триггеру и не смотрела, о чём спросили: на
+            // «по итогам октября у кого какой грейд» человек получал статью
+            // «что такое грейд» — мимо модели и мимо данных (02.11.2026).
+            // Теперь решает модель: статья идёт ей подсказкой, рядом с данными,
+            // знаниями и кодом (решение владельца — «сначала рассуждать,
+            // откуда брать ответ, потом отвечать»).
 
             // Project-wide RAG + salary tools: answer methodology questions and personal salary
             // calculations across all sections. Salary tools are bound to the session user.
-            const globalKnowledge = await buildGlobalKnowledgeAnswer(message, effectiveSectionKey, history, userRole, retailCrmManagerId, contextHint);
+            const globalKnowledge = await buildGlobalKnowledgeAnswer(message, effectiveSectionKey, history, userRole, retailCrmManagerId, contextHint, sectionReply);
             if (globalKnowledge.reply) {
-                return buildSuccessResponse({
+                return respond({
                     reply: globalKnowledge.reply,
                     suggestions: isOrderAnalysisSection(effectiveSectionKey) ? OKK_CONSULTANT_QUICK_QUESTIONS.global : [],
                     replyKind: 'fallback',
@@ -765,7 +800,7 @@ export async function POST(req: Request) {
 
             // No docs hit. For OKK keep the deterministic rating explanation; elsewhere say so honestly.
             if (isOrderAnalysisSection(effectiveSectionKey)) {
-                return buildSuccessResponse({
+                return respond({
                     reply: getCachedReferenceAnswer('general:rating', () => buildGeneralRatingExplanation()),
                     suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
                     replyKind: 'score',
@@ -773,7 +808,7 @@ export async function POST(req: Request) {
                 });
             }
 
-            return buildSuccessResponse({
+            return respond({
                 reply: 'Я пока не нашёл ответ на этот вопрос в базе знаний проекта. Попробуйте переформулировать или уточнить, о каком разделе речь.',
                 suggestions: [],
                 replyKind: 'section',
@@ -929,7 +964,7 @@ export async function POST(req: Request) {
             }
         }
 
-        return buildSuccessResponse({
+        return respond({
             reply: formattedReply,
             cards,
             suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.order,

@@ -7,6 +7,7 @@ import { CLIENT_DOSSIER_TOOL, CLIENT_DOSSIER_TOOL_NAME, executeClientDossierTool
 // Те же инструменты кода, что у Тамары: снимок один, читателей двое —
 // заводить Семёну собственный значило бы держать две разные правды о коде.
 import { CODE_TOOLS, CODE_TOOL_NAMES, executeCodeTool } from '@/lib/shtab/tamara-code-tools';
+import { GRADE_TOOLS, GRADE_TOOL_NAMES, executeGradeTool } from '@/lib/okk-consultant-grade-tools';
 import { MY_DAY_TOOLS, MY_DAY_TOOL_NAMES, executeMyDayTool } from '@/lib/sales-rop/my-day-tools';
 
 // Aggregates the consultant's analytical tools (OpenAI function calling):
@@ -154,7 +155,7 @@ export function buildConsultantTools(ctx: ConsultantToolContext) {
     // Два источника: наша база знает историю и звонки, CRM — сегодняшнее утро.
     // Код сервиса: «почему так считается» и «как работает эта кнопка» честно
     // отвечаются только по самому коду (решение владельца 02.11.2026).
-    const tools: any[] = [CALC_TOOL, ...ORDERS_TOOLS, ...CRM_LIVE_TOOLS, ORDER_DOSSIER_TOOL, CLIENT_DOSSIER_TOOL, ...CODE_TOOLS];
+    const tools: any[] = [CALC_TOOL, ...ORDERS_TOOLS, ...CRM_LIVE_TOOLS, ORDER_DOSSIER_TOOL, CLIENT_DOSSIER_TOOL, ...CODE_TOOLS, ...GRADE_TOOLS];
 
     // Разбор собственного дня по строкам. Любая цифра, названная человеку,
     // должна раскладываться до исходных данных: звонок с длительностью, заказ с
@@ -174,6 +175,7 @@ export async function executeConsultantTool(name: string, args: any, ctx: Consul
     if (name === 'order_dossier') return executeOrderDossierTool(args);
     if (name === CLIENT_DOSSIER_TOOL_NAME) return executeClientDossierTool(args);
     if (CODE_TOOL_NAMES.has(name)) return executeCodeTool(name, args);
+    if (GRADE_TOOL_NAMES.has(name)) return executeGradeTool(name, args, ctx);
     if (MY_DAY_TOOL_NAMES.has(name)) return executeMyDayTool(name, args, ctx.retailCrmManagerId ?? null);
     if (SALARY_NAMES.has(name)) return executeSalaryTool(name, args, ctx);
     if (RATING_NAMES.has(name)) return executeRatingTool(name, args, ctx);
