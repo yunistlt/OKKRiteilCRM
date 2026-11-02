@@ -12,6 +12,7 @@
  * ответят на один вопрос по-разному.
  */
 import { supabase } from '@/utils/supabase';
+import { formatRub } from '@/lib/format';
 
 /** Сколько карточек отдаём на нечёткий запрос: список для выбора, а не простыня. */
 const MAX_CARDS = 5;
@@ -172,6 +173,9 @@ async function cardDossier(card: ClientRow): Promise<any> {
             number: o.number,
             status: statusNames.get(String(o.status)) ?? o.status,
             amount: o.totalsumm,
+            // Готовая строка с разрядами: модель перескажет её как есть, а
+            // «835751.05» человеку читать нельзя (ЗАКОН о разделителях).
+            amountText: formatRub(o.totalsumm),
             createdAt: o.created_at,
             paid: paidIds.has(Number(o.id)),
         })),
