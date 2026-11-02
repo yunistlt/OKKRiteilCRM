@@ -92,7 +92,7 @@ async function findOrders(args: any, ctx: AssistantToolContext): Promise<any> {
 
     let query = supabase
         .from('orders')
-        .select('number, status, totalsumm, customer, manager_id, createdAt, raw_payload')
+        .select('number, status, totalsumm, customer, customer_id, manager_id, createdAt, raw_payload')
         .is('crm_deleted_at', null)
         .order('createdAt', { ascending: false })
         .limit(MAX_ORDERS);
@@ -126,6 +126,22 @@ async function findOrders(args: any, ctx: AssistantToolContext): Promise<any> {
     if (error) return { available: false, reason: error.message };
 
     const nameByCode = new Map(statuses.map((row) => [row.code, row.name]));
+
+    // Почта и телефон: без них нельзя ни написать письмо, ни позвонить, а
+    // Семён шёл сюда именно за этим и упирался в «не хватает email».
+    const clientIds = Array.from(new Set(((data ?? []) as any[]).map((o) => o.customer_id).filter(Boolean)));
+    const contactById = new Map<number, { email: string | null; phone: string | null }>();
+    if (clientIds.length > 0) {
+        const { data: cards } = await supabase.from('clients').select('id, email, phones').in('id', clientIds);
+        for (const row of (cards ?? []) as any[]) {
+            const phones = row.phones;
+            contactById.set(Number(row.id), {
+                email: row.email ?? null,
+                phone: Array.isArray(phones) ? phones[0]?.number ?? phones[0] ?? null : null,
+            });
+        }
+    }
+
     const managerIds = Array.from(new Set(((data ?? []) as any[]).map((o) => o.manager_id).filter(Boolean)));
     const managerById = new Map<number, string>();
     if (managerIds.length > 0) {
@@ -142,6 +158,8 @@ async function findOrders(args: any, ctx: AssistantToolContext): Promise<any> {
         amount: Number(o.totalsumm ?? 0),
         amountText: formatRub(o.totalsumm),
         manager: o.manager_id ? managerById.get(Number(o.manager_id)) ?? null : null,
+        email: o.raw_payload?.email ?? contactById.get(Number(o.customer_id))?.email ?? null,
+        phone: contactById.get(Number(o.customer_id))?.phone ?? null,
         createdAt: String(o.createdAt ?? '').slice(0, 10),
         nextContactDate: o.raw_payload?.customFields?.data_kontakta ?? null,
     }));

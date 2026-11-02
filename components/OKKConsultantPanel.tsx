@@ -2,6 +2,7 @@
 
 import { FormEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import PendingActions from '@/components/assistant/PendingActions';
 import { getConsultantSectionByPath } from '@/lib/okk-consultant';
 import { useConsultantScreen } from '@/components/consultant/ConsultantScreenContext';
 
@@ -491,6 +492,13 @@ export default function OKKConsultantPanel({
 
                 <div ref={messagesEndRef} />
             </div>
+
+            {/* Письмо и звонок Семён готовит, а отправляет человек. Карточка с
+                кнопкой стоит прямо над полем ввода: раньше её можно было найти
+                только в телефонной панели, и подготовленное письмо висело
+                незамеченным (решение владельца 02.11.2026 — подтверждает тот,
+                кто просил написать). */}
+            <PendingActions />
 
             <form onSubmit={handleSubmit} className="border-t border-slate-800 bg-[#111b21] px-2 py-2">
                 <div className="flex items-end gap-2">

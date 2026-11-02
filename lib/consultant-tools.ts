@@ -8,6 +8,14 @@ import { CLIENT_DOSSIER_TOOL, CLIENT_DOSSIER_TOOL_NAME, executeClientDossierTool
 import { CODE_TOOLS, CODE_TOOL_NAMES, executeCodeTool } from '@/lib/shtab/tamara-code-tools';
 import { GRADE_TOOLS, GRADE_TOOL_NAMES, executeGradeTool } from '@/lib/okk-consultant-grade-tools';
 import { ASSISTANT_TOOLS, ASSISTANT_TOOL_NAMES, executeAssistantTool } from '@/lib/okk-consultant-assistant-tools';
+// Письмо и звонок клиенту готовятся, но не отправляются: их подтверждает
+// нажатием тот, кто просил (решение владельца 02.11.2026). Механизм уже
+// работает у бота-РОПа — берём его же, а не заводим второй.
+import {
+    ASSISTANT_ACTION_TOOLS,
+    ASSISTANT_ACTION_TOOL_NAMES,
+    executeAssistantActionTool,
+} from '@/lib/assistant/action-tools';
 import { MY_DAY_TOOLS, MY_DAY_TOOL_NAMES, executeMyDayTool } from '@/lib/sales-rop/my-day-tools';
 
 // Aggregates the consultant's analytical tools (OpenAI function calling):
@@ -172,6 +180,9 @@ export function buildConsultantTools(ctx: ConsultantToolContext) {
     // отметкой касания. Цифра, которую нельзя проверить, — это повод для спора,
     // а не для работы.
     if (ctx.retailCrmManagerId != null) tools.push(...MY_DAY_TOOLS);
+    // Действовать можно только от имени менеджера: письмо уйдёт с его почты,
+    // звонок поднимет его аппарат. Нет номера — нет и кнопки подтверждения.
+    if (ctx.retailCrmManagerId != null) tools.push(...ASSISTANT_ACTION_TOOLS);
     if (ctx.retailCrmManagerId != null) {
         tools.push(...SALARY_TOOLS, ...RATING_TOOLS);
     }
@@ -186,6 +197,12 @@ export async function executeConsultantTool(name: string, args: any, ctx: Consul
     if (CODE_TOOL_NAMES.has(name)) return executeCodeTool(name, args);
     if (GRADE_TOOL_NAMES.has(name)) return executeGradeTool(name, args, ctx);
     if (ASSISTANT_TOOL_NAMES.has(name)) return executeAssistantTool(name, args, ctx);
+    if (ASSISTANT_ACTION_TOOL_NAMES.includes(name)) {
+        if (ctx.retailCrmManagerId == null) {
+            return 'Действие готовить не от кого: у учётной записи нет номера менеджера.';
+        }
+        return executeAssistantActionTool(name, args, { managerId: Number(ctx.retailCrmManagerId) });
+    }
     if (MY_DAY_TOOL_NAMES.has(name)) return executeMyDayTool(name, args, ctx.retailCrmManagerId ?? null);
     if (SALARY_NAMES.has(name)) return executeSalaryTool(name, args, ctx);
     if (RATING_NAMES.has(name)) return executeRatingTool(name, args, ctx);

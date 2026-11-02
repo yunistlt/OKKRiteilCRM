@@ -19,6 +19,9 @@ export type OrderDossier = {
     status: string;
     amount: number;
     customer: string | null;
+    /** Куда писать и кому звонить: без этого письмо не составить. */
+    email: string | null;
+    phone: string | null;
     createdAt: string;
     nextContactDate: string | null;
     /** Комментарий из карточки — там менеджер ведёт хронику переговоров. */
@@ -37,7 +40,7 @@ export async function orderDossier(orderNumber: string): Promise<OrderDossier | 
     // в производстве. RetailCRM — архив, он не пополняется.
     const { data: o, error } = await supabase
         .from('orders')
-        .select('order_id, number, status, totalsumm, customer, createdAt, managerComment, raw_payload')
+        .select('order_id, number, status, totalsumm, customer, customer_id, contact, createdAt, managerComment, raw_payload')
         .eq('number', orderNumber)
         .is('crm_deleted_at', null)
         .maybeSingle();
@@ -62,6 +65,27 @@ export async function orderDossier(orderNumber: string): Promise<OrderDossier | 
 
     const order = o as any;
 
+    // Почта заказа, иначе почта карточки клиента. Телефон — так же: в заказе
+    // он бывает контактного лица, в карточке — самой компании.
+    let email = order.raw_payload?.email
+        ?? order.customer?.email
+        ?? order.contact?.email
+        ?? null;
+    let phone = order.raw_payload?.phone
+        ?? order.contact?.phones?.[0]?.number
+        ?? null;
+
+    if ((!email || !phone) && order.customer_id) {
+        const { data: card } = await supabase
+            .from('clients')
+            .select('email, phones')
+            .eq('id', order.customer_id)
+            .maybeSingle();
+        const cardPhones = (card as any)?.phones;
+        email = email ?? (card as any)?.email ?? null;
+        phone = phone ?? (Array.isArray(cardPhones) ? cardPhones[0]?.number ?? cardPhones[0] ?? null : null);
+    }
+
     return {
         number: String(order.number),
         orderId,
@@ -70,6 +94,8 @@ export async function orderDossier(orderNumber: string): Promise<OrderDossier | 
         customer: order.customer?.nickName
             ?? order.raw_payload?.contragent?.legalName
             ?? null,
+        email: typeof email === 'string' ? email : null,
+        phone: typeof phone === 'string' ? phone : null,
         createdAt: String(order.createdAt ?? '').slice(0, 10),
         nextContactDate: order.raw_payload?.customFields?.data_kontakta ?? null,
         managerComment: String(order.managerComment ?? ''),

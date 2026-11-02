@@ -406,6 +406,8 @@ async function buildGlobalKnowledgeAnswer(
 
     systemContent += '\n\nВ знаниях у тебя два пласта. ИНСТРУКЦИИ ДЛЯ СОТРУДНИКОВ — как человек работает в системе: где нажать, почему так считается, что означает отметка. На вопросы «как», «почему у меня», «где посмотреть» отвечай по ним и словами инструкции. ДОКУМЕНТАЦИЯ ПРОЕКТА — как система устроена внутри; бери её, когда спрашивают про устройство, или когда в инструкциях ответа нет. Если ответа нет нигде — так и скажи, не придумывай.';
 
+    systemContent += '\n\nПисьмо клиенту ты готовишь, но не отправляешь: вызови draft_client_email, приведи в ответе тему и текст целиком и скажи, что письмо уйдёт после нажатия «Отправить» — подтверждает тот, кто просил его написать. Пиши готовый текст, без пропусков вида «[укажите срок]»: не хватает данных — сначала спроси. Так же со звонком: call_client только готовит набор.';
+
     systemContent += '\n\nТы не только объясняешь — ты помогаешь делать. Просят найти заказ — ищи orders_find по номеру, клиенту или статусу. Просят разобрать день — бери day_plan: там видно, что уже отработано, а что нет, и почему заказ попал в план. Просят поставить задачу или напомнить — ставь create_order_task и скажи, по какому заказу и на какой срок поставил. Задачу ставь только по прямой просьбе, не по своей догадке. Письма ты пока не отправляешь: составь текст в ответе, отправит человек.';
 
     systemContent += '\n\nПро клиента спрашивают так же часто, как про заказ: «что за клиент», «чей он», «сколько покупал», «есть ли другие юрлица». На это есть client_dossier — он ищет по названию, ИНН или номеру карточки и отдаёт карточку, ответственного менеджера, группу компаний и последние заказы. Нашлось несколько карточек одного покупателя — скажи об этом человеку, не выбирай за него.';
@@ -696,45 +698,29 @@ export async function POST(req: Request) {
         // Если номера нет, он спросит его словами — это лучше, чем отказ.
 
         if (!orderId) {
-            if (violationsReferenceQuestion) {
-                return respond({
-                    reply: buildViolationsReferenceAnswer(null),
-                    suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
-                    replyKind: 'violations-reference',
-                    sectionKey: effectiveSectionKey,
-                });
-            }
-
-            if (formulaKey && isFormulaQuestion(message)) {
-                return respond({
-                    reply: getCachedReferenceAnswer(`formula:${formulaKey}`, () => buildFormulaExplanation(formulaKey)),
-                    suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
-                    replyKind: 'formula',
-                    sectionKey: effectiveSectionKey,
-                });
-            }
-
-            if (glossaryTerm && isGlossaryQuestion(message)) {
-                return respond({
-                    reply: getCachedReferenceAnswer(`glossary:${glossaryTerm.key}`, () => buildGlossaryAnswer(glossaryTerm)),
-                    suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
-                    replyKind: 'glossary',
-                    sectionKey: effectiveSectionKey,
-                });
-            }
-
-            if (criterionKey) {
-                return respond({
-                    reply: getCachedReferenceAnswer(`criterion:${criterionKey}:general`, () => buildCriterionExplanation({
+            // Справки — нарушения, формула, термин, критерий ОКК — больше не
+            // отвечают за Семёна. Они совпадали по словам и перебивали просьбу:
+            // на «напиши клиенту письмо по заказу 41989» он выдавал описание
+            // критерия «При отсутствии ответа клиенту отправлено письмо»
+            // (02.11.2026). Теперь всё найденное уходит модели подсказкой, а
+            // решает она — так же, как со статьёй раздела.
+            const referenceNotes = [
+                violationsReferenceQuestion ? buildViolationsReferenceAnswer(null) : null,
+                formulaKey && isFormulaQuestion(message)
+                    ? getCachedReferenceAnswer(`formula:${formulaKey}`, () => buildFormulaExplanation(formulaKey))
+                    : null,
+                glossaryTerm && isGlossaryQuestion(message)
+                    ? getCachedReferenceAnswer(`glossary:${glossaryTerm.key}`, () => buildGlossaryAnswer(glossaryTerm))
+                    : null,
+                criterionKey
+                    ? getCachedReferenceAnswer(`criterion:${criterionKey}:general`, () => buildCriterionExplanation({
                         order: { order_id: 0, score_breakdown: null },
                         criterionKey,
                         mode: 'general',
-                    })),
-                    suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
-                    replyKind: 'criterion',
-                    sectionKey: effectiveSectionKey,
-                });
-            }
+                    }))
+                    : null,
+                sectionReply,
+            ].filter((x): x is string => Boolean(x));
 
             // Статья справочника раздела больше не отдаётся как готовый ответ.
             // Она совпадала по слову-триггеру и не смотрела, о чём спросили: на
@@ -753,7 +739,7 @@ export async function POST(req: Request) {
                 userRole,
                 retailCrmManagerId,
                 contextHint,
-                sectionReply,
+                referenceNotes.length > 0 ? referenceNotes.join('\n\n---\n\n') : null,
                 [session.user.last_name, session.user.first_name].filter(Boolean).join(' ') || username,
                 userId,
             );
