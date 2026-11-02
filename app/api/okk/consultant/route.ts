@@ -51,7 +51,7 @@ import { buildConsultantTools, executeConsultantTool, type ConsultantToolContext
 import { getOpenAIClient } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
-import { modelTuning } from '@/lib/ai/model-compat';
+import { isReasoningModel, modelTuning } from '@/lib/ai/model-compat';
 import { logAssistantDialog } from '@/lib/assistant/dialog-log';
 
 export const dynamic = 'force-dynamic';
@@ -317,8 +317,14 @@ async function buildFallbackAnswer(
     });
     const completion = await openai.chat.completions.create({
         model: mainPrompt.model,
-        temperature: mainPrompt.temperature,
-        max_tokens: mainPrompt.maxTokens,
+        // Новые модели требуют другой набор параметров — см. lib/ai/model-compat.
+        // Без этого смена модели в настройках роняет ветку с 400.
+        ...modelTuning({
+            model: mainPrompt.model,
+            maxTokens: mainPrompt.maxTokens,
+            temperature: mainPrompt.temperature,
+            reasoningEffort: 'low',
+        }),
         messages: [
             {
                 role: 'system',
@@ -453,7 +459,11 @@ async function buildGlobalKnowledgeAnswer(
         { role: 'user', content: userPrompt },
     ];
     const usedTools: Array<{ name: string }> = [];
-    const maxTokens = Math.max(mainPrompt.maxTokens, 600);
+    // У рассуждающих моделей размышление тратится из того же лимита, что и
+    // ответ: с прежними 420 токенами на сам ответ не осталось бы ничего.
+    const maxTokens = isReasoningModel(mainPrompt.model)
+        ? Math.max(mainPrompt.maxTokens, 2500)
+        : Math.max(mainPrompt.maxTokens, 600);
 
     // Кругов работы инструментами столько же, сколько у Тамары: на вопрос, который
     // требует трёх-четырёх запросов подряд, пяти не хватало — Семён обрывался на
@@ -467,6 +477,10 @@ async function buildGlobalKnowledgeAnswer(
                 model: mainPrompt.model,
                 maxTokens,
                 temperature: mainPrompt.temperature,
+                // Семён обязан сначала решить, откуда брать ответ, и только
+                // потом отвечать: на рассуждающей модели это и есть тот самый
+                // шаг, ради которого её ставили.
+                reasoningEffort: 'low',
             }),
             messages,
             tools,
