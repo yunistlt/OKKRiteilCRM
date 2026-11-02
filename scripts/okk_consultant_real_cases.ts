@@ -106,7 +106,10 @@ async function loadCandidateRows() {
         FROM recent_scores s
         LEFT JOIN public.orders o ON o.order_id = s.order_id
         LEFT JOIN public.managers m ON m.id = COALESCE(o.manager_id, s.manager_id)
-        LEFT JOIN public.statuses st ON st.code = o.status
+        -- Название статуса берём с нашей доски: прежняя таблица statuses
+        -- переименована под удаление, и ворота качества Семёна падали на ней
+        -- ещё до правки порога (02.11.2026).
+        LEFT JOIN public.crm_statuses st ON st.code = o.status
         ORDER BY s.updated_at DESC NULLS LAST
     `;
 }

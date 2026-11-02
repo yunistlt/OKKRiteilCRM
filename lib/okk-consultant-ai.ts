@@ -143,11 +143,25 @@ export function renderConsultantTemplate(template: string, values: Record<string
     return template.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_, key: string) => values[key] || '—');
 }
 
+/**
+ * Насколько близко кусок знаний должен подходить вопросу, чтобы пойти в ответ.
+ *
+ * Было 0.58, и разговорный вопрос до порога не дотягивал: «поиск не находит
+ * нужный шкаф» давало 0.56, «как отличить свою задачу от системной» — 0.54,
+ * «что за задача про ИНН, я её не ставила» — 0.45. Нужный раздел при этом
+ * всегда стоял первым: дело было не в знаниях, а в отсечке — Семён молчал,
+ * имея ответ под рукой (замер и решение владельца 02.11.2026).
+ *
+ * Порог один на всех, кто спрашивает базу знаний: и чат Семёна, и помощник
+ * бота-РОПа, и ответы по товару.
+ */
+export const CONSULTANT_KNOWLEDGE_THRESHOLD = 0.5;
+
 export async function searchConsultantKnowledge(
     query: string,
     sectionKey?: ConsultantSectionKey | string | null,
     matchCount: number = 4,
-    threshold: number = 0.58,
+    threshold: number = CONSULTANT_KNOWLEDGE_THRESHOLD,
 ): Promise<ConsultantKnowledgeHit[]> {
     if (!query.trim()) return [];
 
@@ -171,7 +185,7 @@ export async function searchConsultantKnowledge(
 // --- Product FAQ knowledge retrieval ---
 // Если intent 'product_faq', ищем ответ в базе знаний
 export async function getProductFaqAnswer(question: string): Promise<string | null> {
-  const hits = await searchConsultantKnowledge(question, null, 3, 0.58);
+  const hits = await searchConsultantKnowledge(question, null, 3);
   if (hits.length === 0) {
     return 'Извините, по вашему вопросу пока нет ответа в базе знаний. Ваш запрос будет передан для доработки.';
   }
