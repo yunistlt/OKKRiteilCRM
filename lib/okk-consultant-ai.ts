@@ -27,6 +27,19 @@ export type ConsultantKnowledgeHit = {
     similarity: number;
 };
 
+/**
+ * Настройки по умолчанию. Боевые значения живут в таблице `ai_prompts`, но
+ * скрипт засева (`npm run okk:consultant-seed-kb`) переписывает их отсюда —
+ * поэтому модель меняем в обоих местах, иначе следующий засев тихо вернёт
+ * прежнюю.
+ *
+ * Модель: до 02.11.2026 Семён работал на gpt-4o-mini с потолком ответа в 420
+ * токенов. Он не связывал вопрос с данными, путал годы и пересказывал первое
+ * подвернувшееся. Переведён на рассуждающую модель по решению владельца —
+ * сначала думает, откуда брать ответ, потом отвечает. Вызов дороже примерно в
+ * полсотни раз; при нынешних двух-трёх десятках вопросов в день это доллары в
+ * месяц, а не десятки.
+ */
 export const DEFAULT_CONSULTANT_PROMPTS: Record<ConsultantPromptKey, ConsultantPromptConfig> = {
     okk_consultant_main_chat: {
         key: 'okk_consultant_main_chat',
@@ -57,9 +70,9 @@ export const DEFAULT_CONSULTANT_PROMPTS: Record<ConsultantPromptKey, ConsultantP
             'Контекст заказа:',
             '{{order_context}}',
         ].join('\n'),
-        model: 'gpt-4o-mini',
+        model: 'gpt-5.5',
         temperature: 0.05,
-        maxTokens: 420,
+        maxTokens: 2500,
         metadata: { owner: 'okk_consultant', stage: 'production' },
     },
     okk_consultant_style_guardrail: {
@@ -99,9 +112,9 @@ export const DEFAULT_CONSULTANT_PROMPTS: Record<ConsultantPromptKey, ConsultantP
             'История диалога:',
             '{{history_context}}',
         ].join('\n'),
-        model: 'gpt-4o-mini',
+        model: 'gpt-5.5',
         temperature: 0.05,
-        maxTokens: 420,
+        maxTokens: 2500,
         metadata: { owner: 'okk_consultant', stage: 'production', scope: 'project-wide' },
     },
 };
