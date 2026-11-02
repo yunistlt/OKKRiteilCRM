@@ -68,6 +68,16 @@ const MAX_GLOBAL_KNOWLEDGE_HITS = 5;
 // genuinely relevant (unlike the okk catalog KB, whose content mirrors question phrasing).
 // Keep this low; the prompt instructs the model to ignore irrelevant context and say so.
 const GLOBAL_KNOWLEDGE_THRESHOLD = 0.33;
+/**
+ * Сколько инструкций для сотрудников подмешиваем в глобальный ответ.
+ *
+ * До 02.11.2026 в глобальном чате их не было вовсе: Семён искал только в
+ * документации репозитория и на вопрос «как отличить свою задачу от
+ * системной» рассказывал про устройство ИИ-команды. Инструкции написаны
+ * словами человека, поэтому идут первыми, а документация остаётся — по ней
+ * он отвечает, как система устроена внутри.
+ */
+const MAX_GLOBAL_INSTRUCTION_HITS = 4;
 
 const referenceAnswerCache = new Map<string, { reply: string; cachedAt: number }>();
 
@@ -333,6 +343,24 @@ async function buildFallbackAnswer(
     };
 }
 
+/**
+ * Контекст глобального ответа: сначала инструкции для сотрудников, потом
+ * документация проекта. Порядок — часть ответа: модель берёт верхнее.
+ */
+function buildGlobalKnowledgeContext(
+    instructions: Awaited<ReturnType<typeof searchConsultantKnowledge>>,
+    docs: Awaited<ReturnType<typeof searchProjectKnowledge>>,
+): string {
+    const parts: string[] = [];
+    if (instructions.length > 0) {
+        parts.push(`ИНСТРУКЦИИ ДЛЯ СОТРУДНИКОВ — как человек работает в системе. Отвечай по ним в первую очередь:\n${formatConsultantKnowledgeContext(instructions)}`);
+    }
+    if (docs.length > 0) {
+        parts.push(`ДОКУМЕНТАЦИЯ ПРОЕКТА — как система устроена внутри. Бери её, когда спрашивают об устройстве, а не о работе:\n${formatProjectKnowledgeContext(docs)}`);
+    }
+    return parts.length > 0 ? parts.join('\n\n') : 'Подходящие записи в базе знаний не найдены.';
+}
+
 async function buildGlobalKnowledgeAnswer(
     question: string,
     sectionKey: string,
@@ -347,7 +375,16 @@ async function buildGlobalKnowledgeAnswer(
 
     // Экран пользователя подмешиваем в поисковый запрос — смещаем выдачу к теме активной вкладки.
     const searchQuery = contextHint ? `${question}\n\n(Экран пользователя: ${contextHint})` : question;
-    const hits = await searchProjectKnowledge(searchQuery, audiencesForRole(userRole), MAX_GLOBAL_KNOWLEDGE_HITS, GLOBAL_KNOWLEDGE_THRESHOLD);
+    // Две базы: инструкции для сотрудников (та же, что открывается «Справкой»)
+    // и документация проекта. Раньше спрашивали только вторую.
+    const [docHits, instructionHits] = await Promise.all([
+        searchProjectKnowledge(searchQuery, audiencesForRole(userRole), MAX_GLOBAL_KNOWLEDGE_HITS, GLOBAL_KNOWLEDGE_THRESHOLD),
+        searchConsultantKnowledge(searchQuery, null, MAX_GLOBAL_INSTRUCTION_HITS),
+    ]);
+    const hits = [
+        ...instructionHits.map((hit) => ({ slug: hit.slug, subsystem: 'инструкция', similarity: hit.similarity })),
+        ...docHits.map((hit) => ({ slug: hit.slug, subsystem: hit.subsystem, similarity: hit.similarity })),
+    ];
 
     // Раньше тут был ранний выход при отсутствии знаний и менеджера. Теперь у консультанта
     // всегда есть инструмент данных (orders_aggregate), поэтому tool-loop запускаем и без hits —
@@ -362,7 +399,7 @@ async function buildGlobalKnowledgeAnswer(
     const userPrompt = renderConsultantTemplate(mainPrompt.userPromptTemplate, {
         question,
         section_title: section.title,
-        knowledge_context: formatProjectKnowledgeContext(hits),
+        knowledge_context: buildGlobalKnowledgeContext(instructionHits, docHits),
         history_context: summarizeHistoryForPrompt(history),
     });
 
@@ -382,6 +419,15 @@ async function buildGlobalKnowledgeAnswer(
         'RetailCRM (crm_order_now, crm_status_now) — это СЕЙЧАС: в каком статусе заказ прямо в эту минуту, кто ответственный, какая дата следующего контакта. ' +
         'Вопрос про текущее положение дел — иди в CRM. Вопрос про историю, динамику, разговоры и причины — иди в нашу базу. ' +
         'Если ответ зависит от свежести (перешёл ли заказ, оплачен ли счёт) — проверь в CRM, даже если только что смотрел нашу базу, и скажи, на какой момент данные.';
+
+    // Что спрашивают чаще всего: как работать в системе, что за клиент, что с
+    // заказом. На каждый из трёх вопросов есть свой источник — без этого модель
+    // пересказывает документацию разработчика вместо ответа по делу.
+    systemContent += '\n\nВ знаниях у тебя два пласта. ИНСТРУКЦИИ ДЛЯ СОТРУДНИКОВ — как человек работает в системе: где нажать, почему так считается, что означает отметка. На вопросы «как», «почему у меня», «где посмотреть» отвечай по ним и словами инструкции. ДОКУМЕНТАЦИЯ ПРОЕКТА — как система устроена внутри; бери её, когда спрашивают про устройство, или когда в инструкциях ответа нет. Если ответа нет нигде — так и скажи, не придумывай.';
+
+    systemContent += '\n\nПро клиента спрашивают так же часто, как про заказ: «что за клиент», «чей он», «сколько покупал», «есть ли другие юрлица». На это есть client_dossier — он ищет по названию, ИНН или номеру карточки и отдаёт карточку, ответственного менеджера, группу компаний и последние заказы. Нашлось несколько карточек одного покупателя — скажи об этом человеку, не выбирай за него.';
+
+    systemContent += '\n\nЕсли ни инструкции, ни документация не объясняют, КАК работает фича, смотри сам код: code_search найдёт место по имени настройки, таблицы или функции, code_read прочитает файл, code_files покажет, где что лежит. Отвечай словами человека, а не листингом: что происходит, от чего зависит, где это настраивается. Код приводи только если спросили прямо. Снимок кода снимается не каждый день — называй его дату, когда ответ опирается на код.';
 
     systemContent += '\n\nДля ЛЮБЫХ числовых вопросов (зарплата, рейтинг ОКК, метрики по заказам, «что если», сравнения сценариев) ВЫЗЫВАЙ инструменты и опирайся только на их результат — не считай в уме и не выдумывай числа. orders_aggregate — для метрик по заказам/заявкам (средний чек, количество, сумма): для «успешных / переданных в производство / завершённых за период» вызывай с date_basis="production" (считается по дате перехода в производство), для метрик по дате создания/текущему статусу — date_basis="created"; simulate_salary — для зарплатных «что если»; get_my_rating/how_to_improve_my_rating — для рейтинга; calc — для произвольной арифметики. Озвучивай, какие фильтры (статусы/период) были применены. Если инструмент вернул available:false — честно скажи, что данных нет.';
 

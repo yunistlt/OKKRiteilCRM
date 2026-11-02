@@ -3,6 +3,10 @@ import { RATING_TOOLS, executeRatingTool } from '@/lib/okk-consultant-rating-too
 import { ORDERS_TOOLS, executeOrdersTool } from '@/lib/okk-consultant-orders-tools';
 import { CRM_LIVE_TOOLS, CRM_LIVE_TOOL_NAMES, executeCrmLiveTool } from '@/lib/okk-consultant-crm-live';
 import { ORDER_DOSSIER_TOOL, executeOrderDossierTool } from '@/lib/okk-consultant-order-dossier';
+import { CLIENT_DOSSIER_TOOL, CLIENT_DOSSIER_TOOL_NAME, executeClientDossierTool } from '@/lib/okk-consultant-client-dossier';
+// Те же инструменты кода, что у Тамары: снимок один, читателей двое —
+// заводить Семёну собственный значило бы держать две разные правды о коде.
+import { CODE_TOOLS, CODE_TOOL_NAMES, executeCodeTool } from '@/lib/shtab/tamara-code-tools';
 import { MY_DAY_TOOLS, MY_DAY_TOOL_NAMES, executeMyDayTool } from '@/lib/sales-rop/my-day-tools';
 
 // Aggregates the consultant's analytical tools (OpenAI function calling):
@@ -148,7 +152,9 @@ const ORDERS_NAMES = new Set(ORDERS_TOOLS.map((t) => t.function.name));
 /** Набор инструментов для tool-loop. calc и orders_aggregate — всегда; зарплата/рейтинг — при наличии менеджера. */
 export function buildConsultantTools(ctx: ConsultantToolContext) {
     // Два источника: наша база знает историю и звонки, CRM — сегодняшнее утро.
-    const tools: any[] = [CALC_TOOL, ...ORDERS_TOOLS, ...CRM_LIVE_TOOLS, ORDER_DOSSIER_TOOL];
+    // Код сервиса: «почему так считается» и «как работает эта кнопка» честно
+    // отвечаются только по самому коду (решение владельца 02.11.2026).
+    const tools: any[] = [CALC_TOOL, ...ORDERS_TOOLS, ...CRM_LIVE_TOOLS, ORDER_DOSSIER_TOOL, CLIENT_DOSSIER_TOOL, ...CODE_TOOLS];
 
     // Разбор собственного дня по строкам. Любая цифра, названная человеку,
     // должна раскладываться до исходных данных: звонок с длительностью, заказ с
@@ -166,6 +172,8 @@ export async function executeConsultantTool(name: string, args: any, ctx: Consul
     if (ORDERS_NAMES.has(name)) return executeOrdersTool(name, args, ctx);
     if (CRM_LIVE_TOOL_NAMES.has(name)) return executeCrmLiveTool(name, args);
     if (name === 'order_dossier') return executeOrderDossierTool(args);
+    if (name === CLIENT_DOSSIER_TOOL_NAME) return executeClientDossierTool(args);
+    if (CODE_TOOL_NAMES.has(name)) return executeCodeTool(name, args);
     if (MY_DAY_TOOL_NAMES.has(name)) return executeMyDayTool(name, args, ctx.retailCrmManagerId ?? null);
     if (SALARY_NAMES.has(name)) return executeSalaryTool(name, args, ctx);
     if (RATING_NAMES.has(name)) return executeRatingTool(name, args, ctx);

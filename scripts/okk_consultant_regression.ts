@@ -1,5 +1,13 @@
 // CLI-скрипт для регрессионного тестирования ответов Семёна по базе знаний
-import { getProductFaqAnswer } from '../lib/okk-consultant-ai';
+//
+// Окружение грузим сами: без ключа Supabase поиск по базе знаний молча
+// отваливается, и тест падает не потому, что ответ плохой, а потому что
+// спрашивать было некого.
+import { config } from 'dotenv';
+
+config({ path: '.env.local', quiet: true });
+
+
 
 const testCases = [
     {
@@ -10,6 +18,9 @@ const testCases = [
 ];
 
 async function main() {
+    // Модуль грузим ПОСЛЕ чтения .env.local: обычный импорт поднимается наверх
+    // и выполнился бы раньше config(), то есть без ключа Supabase.
+    const { getProductFaqAnswer } = await import('../lib/okk-consultant-ai');
     let passed = 0;
     for (const test of testCases) {
         const answer = await getProductFaqAnswer(test.question);
