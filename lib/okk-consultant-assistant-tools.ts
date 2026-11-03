@@ -13,6 +13,7 @@
  * прежнему решению владельца их готовит помощник, а отправляет человек.
  */
 import { supabase } from '@/utils/supabase';
+import { loadClientCards, orderContactFrom } from '@/lib/own-crm/order-contact';
 import { formatRub } from '@/lib/format';
 import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 
@@ -82,6 +83,11 @@ export interface AssistantToolContext {
     actorUserId?: string | null;
 }
 
+/** Ё и Е — одна буква: люди пишут «в просчёте», на доске «В просчете». */
+export function plainLetters(value: string): string {
+    return String(value).trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
+}
+
 /** Менеджер работает только со своими заказами; ОКК, РОП и владелец видят весь отдел. */
 function seesWholeTeam(role?: string | null): boolean {
     return role === 'admin' || role === 'okk' || role === 'rop';
@@ -103,9 +109,12 @@ async function findOrders(args: any, ctx: AssistantToolContext): Promise<any> {
     if (args?.created_to) query = query.lte('createdAt', `${String(args.created_to)}T23:59:59`);
 
     if (args?.status) {
-        const wanted = String(args.status).trim().toLowerCase();
-        const match = statuses.find((row) => row.name.toLowerCase() === wanted)
-            ?? statuses.find((row) => row.name.toLowerCase().includes(wanted));
+        // Человек пишет «в просчёте», на доске статус назван «В просчете»:
+        // сравнение в лоб не находило ничего, и Семён отвечал «такого статуса
+        // нет». Ё и Е при сравнении — одна буква (та же грабля, что в правилах).
+        const wanted = plainLetters(args.status);
+        const match = statuses.find((row) => plainLetters(row.name) === wanted)
+            ?? statuses.find((row) => plainLetters(row.name).includes(wanted));
         if (!match) {
             return {
                 available: false,
@@ -129,18 +138,7 @@ async function findOrders(args: any, ctx: AssistantToolContext): Promise<any> {
 
     // Почта и телефон: без них нельзя ни написать письмо, ни позвонить, а
     // Семён шёл сюда именно за этим и упирался в «не хватает email».
-    const clientIds = Array.from(new Set(((data ?? []) as any[]).map((o) => o.customer_id).filter(Boolean)));
-    const contactById = new Map<number, { email: string | null; phone: string | null }>();
-    if (clientIds.length > 0) {
-        const { data: cards } = await supabase.from('clients').select('id, email, phones').in('id', clientIds);
-        for (const row of (cards ?? []) as any[]) {
-            const phones = row.phones;
-            contactById.set(Number(row.id), {
-                email: row.email ?? null,
-                phone: Array.isArray(phones) ? phones[0]?.number ?? phones[0] ?? null : null,
-            });
-        }
-    }
+    const cardById = await loadClientCards(((data ?? []) as any[]).map((o) => o.customer_id));
 
     const managerIds = Array.from(new Set(((data ?? []) as any[]).map((o) => o.manager_id).filter(Boolean)));
     const managerById = new Map<number, string>();
@@ -158,8 +156,7 @@ async function findOrders(args: any, ctx: AssistantToolContext): Promise<any> {
         amount: Number(o.totalsumm ?? 0),
         amountText: formatRub(o.totalsumm),
         manager: o.manager_id ? managerById.get(Number(o.manager_id)) ?? null : null,
-        email: o.raw_payload?.email ?? contactById.get(Number(o.customer_id))?.email ?? null,
-        phone: contactById.get(Number(o.customer_id))?.phone ?? null,
+        ...orderContactFrom(o, cardById.get(Number(o.customer_id))),
         createdAt: String(o.createdAt ?? '').slice(0, 10),
         nextContactDate: o.raw_payload?.customFields?.data_kontakta ?? null,
     }));

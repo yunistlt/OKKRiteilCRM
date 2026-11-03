@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { loadOrderContact } from '@/lib/own-crm/order-contact';
 
 /**
  * Инструменты действий помощника менеджера: письмо клиенту и звонок.
@@ -28,7 +29,7 @@ export const ASSISTANT_ACTION_TOOLS = [
                     },
                     to: {
                         type: 'string',
-                        description: 'Почта получателя. Если не назвали — возьми из заказа, а не придумывай.',
+                        description: 'Почта получателя — только если её назвал человек. Не назвали — не передавай: адрес возьмётся из заказа и карточки клиента.',
                     },
                     subject: {
                         type: 'string',
@@ -39,7 +40,7 @@ export const ASSISTANT_ACTION_TOOLS = [
                         description: 'Текст письма целиком, готовый к отправке. Обычный текст, абзацы переводом строки.',
                     },
                 },
-                required: ['orderNumber', 'to', 'subject', 'body'],
+                required: ['orderNumber', 'subject', 'body'],
             },
         },
     },
@@ -54,7 +55,7 @@ export const ASSISTANT_ACTION_TOOLS = [
                 properties: {
                     phone: {
                         type: 'string',
-                        description: 'Телефон клиента. Если не назвали — возьми из заказа, номер не выдумывай.',
+                        description: 'Телефон клиента — только если его назвал человек. Не назвали — не передавай: номер возьмётся из заказа и карточки клиента.',
                     },
                     orderNumber: {
                         type: 'string',
@@ -65,7 +66,7 @@ export const ASSISTANT_ACTION_TOOLS = [
                         description: 'Зачем звоним — одной строкой, чтобы менеджер понимал, что подтверждает.',
                     },
                 },
-                required: ['phone'],
+                required: [],
             },
         },
     },
@@ -87,9 +88,17 @@ export async function executeAssistantActionTool(
     ctx: ActionContext
 ): Promise<string> {
     if (name === 'draft_client_email') {
-        const { orderNumber, to, subject, body } = args || {};
-        if (!orderNumber || !to || !subject || !body) {
-            return 'Не хватает данных для письма: нужны номер заказа, адрес, тема и текст.';
+        const { orderNumber, subject, body } = args || {};
+        if (!orderNumber || !subject || !body) {
+            return 'Не хватает данных для письма: нужны номер заказа, тема и текст.';
+        }
+
+        // Адрес ищем сами. Требовать его от модели было ошибкой: на «напиши
+        // клиенту по заказу 41989» она отвечала «уточните email», хотя адрес
+        // лежал в карточке клиента (прод, 03.11.2026).
+        const to = args?.to || (await loadOrderContact(String(orderNumber)))?.email;
+        if (!to) {
+            return `Письмо не подготовлено: по заказу ${orderNumber} не нашлось почты ни в заказе, ни в карточке клиента. Скажи менеджеру, что адрес нужно внести в карточку заказчика или назвать прямо в просьбе.`;
         }
 
         const preview = `Письмо на ${to} по заказу ${orderNumber}\nТема: ${subject}\n\n${body}`;
@@ -115,8 +124,13 @@ export async function executeAssistantActionTool(
     }
 
     if (name === 'call_client') {
-        const { phone, orderNumber, reason } = args || {};
-        if (!phone) return 'Не хватает номера телефона для звонка.';
+        const { orderNumber, reason } = args || {};
+        const phone = args?.phone || (orderNumber ? (await loadOrderContact(String(orderNumber)))?.phone : null);
+        if (!phone) {
+            return orderNumber
+                ? `Звонок не подготовлен: по заказу ${orderNumber} не нашлось телефона ни в заказе, ни в карточке клиента. Скажи менеджеру, что номер нужно внести в карточку заказчика или назвать прямо в просьбе.`
+                : 'Звонок не подготовлен: не назван ни номер, ни заказ, по которому его искать.';
+        }
 
         const preview = [
             `Звонок клиенту ${phone}`,

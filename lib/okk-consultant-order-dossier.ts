@@ -1,5 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { loadStatusDirectory } from '@/lib/own-crm/status-code';
+import { loadClientCards, orderContactFrom } from '@/lib/own-crm/order-contact';
 
 // Досье по одному заказу: всё, что о нём известно.
 //
@@ -65,26 +66,9 @@ export async function orderDossier(orderNumber: string): Promise<OrderDossier | 
 
     const order = o as any;
 
-    // Почта заказа, иначе почта карточки клиента. Телефон — так же: в заказе
-    // он бывает контактного лица, в карточке — самой компании.
-    let email = order.raw_payload?.email
-        ?? order.customer?.email
-        ?? order.contact?.email
-        ?? null;
-    let phone = order.raw_payload?.phone
-        ?? order.contact?.phones?.[0]?.number
-        ?? null;
-
-    if ((!email || !phone) && order.customer_id) {
-        const { data: card } = await supabase
-            .from('clients')
-            .select('email, phones')
-            .eq('id', order.customer_id)
-            .maybeSingle();
-        const cardPhones = (card as any)?.phones;
-        email = email ?? (card as any)?.email ?? null;
-        phone = phone ?? (Array.isArray(cardPhones) ? cardPhones[0]?.number ?? cardPhones[0] ?? null : null);
-    }
+    // Куда писать и куда звонить — у одного читателя (`order-contact`).
+    const cardById = await loadClientCards([order.customer_id]);
+    const { email, phone } = orderContactFrom(order, cardById.get(Number(order.customer_id)));
 
     return {
         number: String(order.number),
@@ -94,8 +78,8 @@ export async function orderDossier(orderNumber: string): Promise<OrderDossier | 
         customer: order.customer?.nickName
             ?? order.raw_payload?.contragent?.legalName
             ?? null,
-        email: typeof email === 'string' ? email : null,
-        phone: typeof phone === 'string' ? phone : null,
+        email,
+        phone,
         createdAt: String(order.createdAt ?? '').slice(0, 10),
         nextContactDate: order.raw_payload?.customFields?.data_kontakta ?? null,
         managerComment: String(order.managerComment ?? ''),
