@@ -66,7 +66,6 @@ export const ASSISTANT_ACTION_TOOLS = [
                         description: 'Зачем звоним — одной строкой, чтобы менеджер понимал, что подтверждает.',
                     },
                 },
-                required: [],
             },
         },
     },
