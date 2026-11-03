@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { phoneTail } from '@/lib/orders-filter';
+import { findOrdersByPhones } from '@/lib/orders-by-phone';
 import { taskSourceOf, type NotificationItem } from '@/lib/notifications/items';
 
 export const dynamic = 'force-dynamic';
@@ -130,15 +131,16 @@ export async function GET() {
     const byTail = new Map<string, { number: string; manager: number | null }>();
     const uniqueTails = Array.from(new Set(tails.values()));
     if (uniqueTails.length) {
-        const { data } = await supabase
-            .from('orders')
-            .select('number, phone, manager_id')
-            .is('crm_deleted_at', null)
-            .or(uniqueTails.map((tail) => `phone.ilike.%${tail}%`).join(','))
-            .order('createdAt', { ascending: false })
-            .limit(500);
+        // Поиск общий на всю систему (`lib/orders-by-phone.ts`): по хвосту из
+        // семи цифр. Здесь он раньше был свой и искал подстрокой по записи
+        // номера — у заказа с телефоном «+7(909)355-31-61» звонок оставался
+        // без номера заказа.
+        const data = await findOrdersByPhones(
+            Array.from(new Set(callRows.map((c) => c.from_number_normalized || c.from_number || ''))),
+            { columns: 'number, phone, manager_id', limit: 500, orderBy: 'createdAt' },
+        ).catch(() => []);
 
-        for (const row of ((data ?? []) as any[])) {
+        for (const row of (data as any[])) {
             const tail = phoneTail(String(row.phone ?? ''));
             // Берём первый — заказы отсортированы от свежих к старым.
             if (tail && !byTail.has(tail)) {

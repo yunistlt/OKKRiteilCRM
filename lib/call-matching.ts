@@ -1,6 +1,7 @@
 // ОТВЕТСТВЕННЫЙ: СЕМЁН (Архивариус) — Матчинг звонков из телефонии с заказами в CRM.
 import { supabase } from '@/utils/supabase';
 import { normalizePhone, phonesMatch, phonesPartialMatch } from './phone-utils';
+import { findOrdersByPhone } from './orders-by-phone';
 
 /**
  * Типы для матчинга
@@ -44,12 +45,7 @@ export interface MatchResult {
  * Находит кандидатов заказов по номеру телефона
  * Использует денормализованные поля для быстрого поиска
  */
-export async function findOrderCandidatesByPhone(phone: string): Promise<OrderCandidate[]> {
-    const normalized = normalizePhone(phone);
-    if (!normalized) return [];
-
-    const suffix = normalized.slice(-7); // Последние 7 цифр
-
+export async function findOrderCandidatesByPhone(phone: string, limit = 50): Promise<OrderCandidate[]> {
     const candidatesMap = new Map<number, OrderCandidate>();
 
     // Кандидаты берём из ORDERS: денормализованных телефонов (phone_normalized и
@@ -57,25 +53,30 @@ export async function findOrderCandidatesByPhone(phone: string): Promise<OrderCa
     // отключённый fallback-синк, и с апреля 2026 та таблица заморожена
     // (см. lib/order-events.ts). В order_history_log телефонов нет вовсе, так
     // что единственный живой источник — сам заказ.
-    // Суффикс из 7 цифр (%suffix%) переживает добавочные («...1234567-ext»).
-    const { data: orders } = await supabase
-        .from('orders')
-        .select('id, phone, customer_phones, manager_id, created_at, raw_payload')
-        .or(`phone.ilike.%${suffix}%,raw_payload->>additionalPhone.ilike.%${suffix}%`)
-        .order('created_at', { ascending: false })
-        .limit(10);
+    //
+    // Сам поиск — общий на всю систему (`lib/orders-by-phone.ts`): по хвосту из
+    // семи цифр, а не подстрокой по записи номера. Своего условия здесь больше
+    // нет; до 03.11.2026 оно было своим и не находило заказы с телефоном вида
+    // «+7(909)355-31-61» — каждый третий открытый заказ.
+    //
+    // Берём пятьдесят, а не десять: автопривязка срабатывает только когда у
+    // клиента РОВНО ОДИН открытый заказ, и обрезанный список делает это
+    // условие ложным — второй открытый заказ оставался за краем, и звонок
+    // привязывался к одному из двух наугад.
+    const orders = await findOrdersByPhone(phone, {
+        columns: 'id, phone, customer_phones, manager_id, created_at, raw_payload',
+        limit,
+    });
 
-    if (orders) {
-        for (const o of orders) {
-            if (!candidatesMap.has(o.id)) {
-                candidatesMap.set(o.id, {
-                    retailcrm_order_id: o.id,
-                    phone: o.phone || (o.customer_phones?.[0] || null),
-                    additional_phone: o.raw_payload?.additionalPhone || null,
-                    manager_id: o.manager_id,
-                    last_event_at: o.created_at // Use creation time as event time
-                });
-            }
+    for (const o of orders) {
+        if (!candidatesMap.has(o.id)) {
+            candidatesMap.set(o.id, {
+                retailcrm_order_id: o.id,
+                phone: o.phone || (o.customer_phones?.[0] || null),
+                additional_phone: o.raw_payload?.additionalPhone || null,
+                manager_id: o.manager_id,
+                last_event_at: o.created_at // Use creation time as event time
+            });
         }
     }
 

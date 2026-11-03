@@ -75,6 +75,19 @@ describe('что попадает в план', () => {
         expect(taskFor(order({ contactDate: '2026-09-10' }), TODAY, T)).toBeNull();
     });
 
+    it('счёт на оплате с созвоном в будущем — тоже не трогаем', () => {
+        // Доработка №77: созвон назначен на пятницу, а задача по заказу 54013
+        // приходила каждое утро — охрана будущей даты стояла ниже правила
+        // «счёт выставлен, оплаты нет».
+        expect(
+            taskFor(
+                order({ statusCode: 'prepayed', lastTouchAt: '2026-08-20', contactDate: '2026-09-10' }),
+                TODAY,
+                T,
+            ),
+        ).toBeNull();
+    });
+
     it('согласование, стоящее дольше порога', () => {
         const t = taskFor(
             order({ statusCode: 'na-soglasovanii', statusName: 'Согласование параметров заказа', lastTouchAt: '2026-08-25' }),

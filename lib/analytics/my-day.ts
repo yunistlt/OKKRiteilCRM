@@ -132,6 +132,40 @@ function weigh(params: { amount: number; kind: ActionKind; slaLeftMinutes: numbe
     return Math.round(moneyWeight + kindWeight + slaWeight + silenceWeight);
 }
 
+/**
+ * Зависший заказ: сколько дней по нему нет движения.
+ *
+ * null — заказ в план не идёт: либо его трогали недавно, либо он ждёт
+ * назначенного клиенту срока.
+ *
+ * Ирина Гордеева 03.11.2026 (доработка №76): «Указано, что нет движения
+ * 6 дней, дозвон был вчера т.е 02.11 и стоит созвон на пятницу 06.11». Здесь
+ * было две ошибки, и обе в одном месте:
+ *
+ *   1. Молчание считалось по времени в статусе (`status_since`). Звонок,
+ *      письмо и комментарий статус не меняют — работа по заказу счётчик не
+ *      сбрасывала. Считаем по последнему касанию, как бот-РОП.
+ *   2. Дата следующего контакта не смотрелась вовсе, хотя по закону она
+ *      неприкосновенна: заказ с созвоном в пятницу не зависший, он ждёт срока,
+ *      и в план дня до пятницы не попадает.
+ */
+export function staleSilence(params: {
+    lastTouchAt: string | null | undefined;
+    contactDate: string | null | undefined;
+    today: Date;
+    staleDays: number;
+}): number | null {
+    // Дата контакта в будущем — решение человека, заказ до неё не трогаем.
+    if (params.contactDate) {
+        const contact = new Date(`${String(params.contactDate).slice(0, 10)}T23:59:59`);
+        if (Number.isFinite(contact.getTime()) && contact.getTime() > params.today.getTime()) return null;
+    }
+
+    if (!params.lastTouchAt) return null;
+    const silent = daysBetween(params.lastTouchAt, params.today);
+    return silent >= params.staleDays ? silent : null;
+}
+
 function daysBetween(from: string | null | undefined, to = new Date()): number {
     if (!from) return 0;
     const start = new Date(from).getTime();
@@ -375,6 +409,11 @@ async function loadQueue(managerId: number, today: Date): Promise<NextAction[]> 
 
     // Зависшие деньги: сделка в работе, а движения нет. Отдельной аналитики для
     // этого не нужно — это такие же действия в общей очереди.
+    //
+    // Время в статусе здесь только предварительный отбор, и он честный: смена
+    // статуса — тоже касание, поэтому заказ, который трогали за последние
+    // STALE_DAYS, в статусе столько не стоит. Зависший он или нет, решает
+    // последнее касание — ниже, после `orders_last_touch`.
     const { data: stale } = await supabase
         .from('orders')
         .select('order_id, number, totalsumm, status, status_since, raw_payload')
@@ -385,13 +424,33 @@ async function loadQueue(managerId: number, today: Date): Promise<NextAction[]> 
         .order('totalsumm', { ascending: false })
         .limit(50);
 
-    for (const row of ((stale ?? []) as any[])) {
-        const orderId = Number(row.order_id);
-        if (seen.has(orderId)) continue;
-        seen.add(orderId);
+    const staleRows = ((stale ?? []) as any[]).filter((row) => !seen.has(Number(row.order_id)));
 
-        const silent = daysBetween(row.status_since, today);
+    // Когда эти заказы последний раз трогали — одной выборкой и одним
+    // определением касания на систему (`orders_last_touch`).
+    const touchAt = new Map<number, string>();
+    if (staleRows.length) {
+        const { data: touches } = await supabase.rpc('orders_last_touch', {
+            p_order_ids: staleRows.map((row) => Number(row.order_id)),
+        });
+        for (const row of ((touches ?? []) as any[])) {
+            if (row.last_touch_at) touchAt.set(Number(row.order_id), String(row.last_touch_at));
+        }
+    }
+
+    for (const row of staleRows) {
+        const orderId = Number(row.order_id);
         const payload = row.raw_payload ?? {};
+
+        const silent = staleSilence({
+            lastTouchAt: touchAt.get(orderId) ?? row.status_since,
+            contactDate: payload?.customFields?.[CUSTOM_FIELD_CODES.nextContact],
+            today,
+            staleDays: STALE_DAYS,
+        });
+        if (silent === null) continue;
+
+        seen.add(orderId);
 
         actions.push({
             orderId,
