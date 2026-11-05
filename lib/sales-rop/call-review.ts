@@ -20,6 +20,8 @@ export type DayCall = {
     durationSec: number;
     phone: string | null;
     orderNumber: string | null;
+    /** Номер заказа угадан по телефону клиента, привязки разговора к заказу нет. */
+    orderGuessed: boolean;
     /** Чей это заказ. Может отличаться от того, кто говорил: замена, отпуск,
      *  клиент набрал напрямую, обратный звонок с сайта поднял сосед по очереди. */
     orderManagerName: string | null;
@@ -100,6 +102,7 @@ export async function loadDayCalls(date: string, managerRcId: string): Promise<D
         durationSec: Number(r.duration_sec ?? 0),
         phone: r.phone ?? null,
         orderNumber: r.order_number ?? null,
+        orderGuessed: String(r.order_source ?? '') === 'telefon',
         orderManagerName: r.order_manager_name ?? null,
         transcript: r.transcript ?? null,
     }));
@@ -124,8 +127,13 @@ export function renderDayCalls(calls: DayCall[], managerName = '', utcOffsetHour
             c.orderManagerName && managerName && c.orderManagerName !== managerName
                 ? `, заказ ведёт ${c.orderManagerName}`
                 : '';
+        // Номер, найденный по телефону, помечаем: иначе разбор утверждает про
+        // заказ то, чего система не устанавливала.
+        const order = c.orderNumber
+            ? `, заказ №${c.orderNumber}${c.orderGuessed ? ' (по телефону клиента, привязки нет)' : ''}`
+            : '';
         lines.push(
-            `[${hhmm(c.at)}, ${c.direction}, ${c.durationSec} сек${c.orderNumber ? `, заказ №${c.orderNumber}` : ''}${foreign}]`,
+            `[${hhmm(c.at)}, ${c.direction}, ${c.durationSec} сек${order}${foreign}]`,
             c.transcript ?? '(расшифровки нет)',
             '',
         );
