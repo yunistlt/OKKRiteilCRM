@@ -27,6 +27,7 @@ import { editOrder } from '@/lib/own-crm/edit-order';
 import { analyzeClient } from '@/lib/sales-rop/analyst';
 import { appendRopNote } from '@/lib/sales-rop/crm-note';
 import { reviewCallDay } from '@/lib/sales-rop/call-review';
+import { applyRefusals, formatRefusals } from '@/lib/sales-rop/refusal';
 import { generateGreeting } from '@/lib/sales-rop/greeting';
 import type { EveningRow } from '@/lib/sales-rop/format';
 
@@ -71,6 +72,11 @@ export type Settings = Thresholds & {
     summaryToGroup: boolean;
     /** Разбирать ли расшифровки звонков в вечернем отчёте. */
     reviewCalls: boolean;
+    /** Откладывать ли клиента, когда в разговоре прозвучал отказ. */
+    refusalRule: boolean;
+    /** На сколько откладываем «сейчас не нужно» и «в этом году не нужно». */
+    refusalSeasonDays: number;
+    refusalYearDays: number;
     /** Личный чат владельца и выключатель его отчёта. */
     ownerChatId: string;
     /** Слать ли владельцу копию каждого утреннего плана. */
@@ -152,6 +158,9 @@ export async function loadSettings(): Promise<Settings> {
         deliverPlansToDm: String(map.get('deliver_plans_to_dm') ?? 'true') === 'true',
         summaryToGroup: String(map.get('summary_to_group') ?? 'true') === 'true',
         reviewCalls: String(map.get('review_calls') ?? 'true') === 'true',
+        refusalRule: String(map.get('refusal_rule') ?? 'true') === 'true',
+        refusalSeasonDays: num('refusal_season_days', 120),
+        refusalYearDays: num('refusal_year_days', 365),
         ownerChatId: String(map.get('owner_chat_id') || ''),
         // Копия утренних планов владельцу. По умолчанию включена: реагировать
         // на слабый план надо утром, а не вечером по отчёту, когда день прошёл.
@@ -1630,6 +1639,20 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         const review =
             managerId === null ? null : await reviewCallDay(today, String(managerId), w.name).catch(() => null);
 
+        // Клиент сказал, что потребности нет: РОП сам ставит дату следующего
+        // контакта, иначе задача по нему вернётся завтра утром (доработка №77).
+        const refusalText = formatRefusals(
+            settings.refusalRule && review?.refusals?.length
+                ? await applyRefusals({
+                      refusals: review.refusals,
+                      today,
+                      seasonDays: settings.refusalSeasonDays,
+                      yearDays: settings.refusalYearDays,
+                      dryRun: opts.dryRun,
+                  }).catch(() => [])
+                : [],
+        );
+
         if (call) {
             ownerRows.push({
                 managerName: w.name,
@@ -1666,8 +1689,8 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
                       avgMinutes: base ? Number(base.avg_minutes) : null,
                       targetMinutes: settings.talkMinutesTarget,
                       targetTalks: settings.talksTarget,
-                  })}${review?.text ? `\n\n${review.text}` : ''}${contactsText ? `\n\n${contactsText}` : ''}`
-                : `${own}${contactsText ? `\n\n${contactsText}` : ''}`,
+                  })}${review?.text ? `\n\n${review.text}` : ''}${refusalText ? `\n\n${refusalText}` : ''}${contactsText ? `\n\n${contactsText}` : ''}`
+                : `${own}${refusalText ? `\n\n${refusalText}` : ''}${contactsText ? `\n\n${contactsText}` : ''}`,
             ),
         );
     }
@@ -1708,6 +1731,18 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         const review = settings.reviewCalls
             ? await reviewCallDay(today, String(managerId), name).catch(() => null)
             : null;
+
+        // Личного сообщения такому менеджеру не идёт (задач из плана у него не
+        // было), но услышанный отказ всё равно должен снять клиента с ритма.
+        if (settings.refusalRule && review?.refusals?.length) {
+            await applyRefusals({
+                refusals: review.refusals,
+                today,
+                seasonDays: settings.refusalSeasonDays,
+                yearDays: settings.refusalYearDays,
+                dryRun: opts.dryRun,
+            }).catch(() => []);
+        }
         ownerRows.push({
             managerName: name,
             tasksTotal: 0,

@@ -1,6 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { AiAgent, recordAiUsage } from '@/lib/ai-usage';
+import { parseRefusals, type Refusal } from '@/lib/sales-rop/refusal';
 
 // Разбор дня по расшифровкам звонков.
 //
@@ -136,6 +137,8 @@ export function renderDayCalls(calls: DayCall[], managerName = '', utcOffsetHour
 
 export type CallReview = {
     text: string;
+    /** Клиенты, сказавшие в разговоре, что потребности нет. Решение — за РОПом. */
+    refusals: Refusal[];
     totalCalls: number;
     realTalks: number;
     emptyCalls: number;
@@ -165,9 +168,9 @@ export async function reviewCallDay(
 
     // Разбирать нечего: считать это ошибкой не надо, но и звать модель незачем.
     if (real.length === 0) {
-        return { ...stats, text: `За день ${calls.length} звонков, и ни один не дошёл до разговора.` };
+        return { ...stats, refusals: [], text: `За день ${calls.length} звонков, и ни один не дошёл до разговора.` };
     }
-    if (!isOpenAIConfigured()) return { ...stats, text: '' };
+    if (!isOpenAIConfigured()) return { ...stats, refusals: [], text: '' };
 
     const { data: prompt } = await supabase
         .from('ai_prompts')
@@ -175,7 +178,7 @@ export async function reviewCallDay(
         .eq('key', 'sales_call_day_review')
         .eq('is_active', true)
         .maybeSingle();
-    if (!prompt) return { ...stats, text: '' };
+    if (!prompt) return { ...stats, refusals: [], text: '' };
 
     try {
         const openai = getOpenAIClient();
@@ -196,10 +199,13 @@ export async function reviewCallDay(
             purpose: 'sales_call_day_review',
         }).catch(() => null);
 
-        return { ...stats, text: (completion.choices[0]?.message?.content || '').trim() };
+        // Разбор для человека и решения для кода приезжают одним ответом:
+        // машинная строка отрезается и в отчёт не попадает.
+        const { text, refusals } = parseRefusals(completion.choices[0]?.message?.content || '');
+        return { ...stats, text, refusals };
     } catch {
         // Разбор — добавка к цифрам, а не замена им: сбой модели не должен
         // отменять вечерний отчёт.
-        return { ...stats, text: '' };
+        return { ...stats, refusals: [], text: '' };
     }
 }
