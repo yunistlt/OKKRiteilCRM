@@ -84,6 +84,7 @@ export async function executeMyDayTool(name: string, args: any, managerId: numbe
                 durationSec: Number(r.duration_sec ?? 0),
                 phone: r.phone ?? null,
                 orderNumber: r.order_number ?? null,
+                orderGuessed: String(r.order_source ?? '') === 'telefon',
                 orderManagerName: r.order_manager_name ?? null,
                 transcript: r.transcript ?? null,
             }));
@@ -105,6 +106,13 @@ export async function executeMyDayTool(name: string, args: any, managerId: numbe
                     длительность: `${c.durationSec} сек`,
                     телефон: c.phone,
                     заказ: c.orderNumber,
+                    // Привязка или догадка по номеру: человек спросит «почему
+                    // этот заказ», и ответ должен быть готов.
+                    'заказ определён': c.orderNumber
+                        ? c.orderGuessed
+                            ? 'по телефону клиента, привязки нет'
+                            : 'привязка разговора'
+                        : null,
                     'заказ ведёт': c.orderManagerName,
                     зачтён: verdict === 'talk',
                     почему: verdict === 'talk' ? null : WHY[verdict],

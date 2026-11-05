@@ -60,7 +60,23 @@ type MyDay = {
         soldOrders: number;
     };
     funnel: Array<{ name: string; color: string | null; count: number; amount: number }>;
-    metrics: { callsToday: number; talksToday: number; ordersMonth: number; revenueMonth: number };
+    metrics: {
+        callsToday: number;
+        talksToday: number;
+        ordersMonth: number;
+        revenueMonth: number;
+        /** Разговоры, из которых сложилось «Звонков сегодня». */
+        calls: Array<{
+            at: string;
+            direction: string;
+            durationSec: number;
+            phone: string | null;
+            orderNumber: string | null;
+            /** Номер заказа угадан по телефону клиента, привязки нет. */
+            orderGuessed: boolean;
+            answered: boolean;
+        }>;
+    };
 };
 
 const KIND_LABEL: Record<Action['kind'], string> = {
@@ -575,10 +591,72 @@ function MetricsCard({
                 <Metric label="Отработано задач" value={`${counts.done} из ${counts.total}`} note="за сегодня" pct={doneShare} />
                 <Metric label="Выручка за месяц" value={formatRub(metrics.revenueMonth)} note={`план ${plan.factPct}%`} pct={plan.factPct} />
             </div>
+            <CallsBreakdown calls={metrics.calls} />
             <p className="mt-2 text-[11px] leading-snug text-gray-500">
-                Разговором считается состоявшийся звонок дольше 20 секунд: гудки и автоответчик работой не считаются.
+                Разговором считается звонок, на котором дозвонились: гудки и автоответчик работой не считаются. Один
+                разговор — одна строка, даже если очередь звонила нескольким сразу.
             </p>
         </section>
+    );
+}
+
+/**
+ * Из чего сложилось «Звонков сегодня».
+ *
+ * Закон проекта: любое названное человеку число раскладывается до исходных
+ * данных по первому вопросу. Поэтому счётчик и этот список берутся из одного и
+ * того же запроса — разойтись они не могут.
+ */
+function CallsBreakdown({ calls }: { calls: MyDay['metrics']['calls'] }) {
+    const [open, setOpen] = useState(false);
+
+    if (calls.length === 0) return null;
+
+    const hhmm = (at: string) => new Date(at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+    return (
+        <div className="mt-2 border-t border-gray-100 pt-2">
+            <button
+                type="button"
+                onClick={() => setOpen((v) => !v)}
+                className="text-[11px] font-medium text-blue-700 hover:underline"
+            >
+                {open ? 'Скрыть разговоры' : `Из чего сложилось: ${calls.length} разговоров`}
+            </button>
+
+            {open && (
+                <table className="mt-2 w-full border-collapse text-[11px]">
+                    <tbody>
+                        {calls.map((call, i) => (
+                            <tr key={`${call.at}-${i}`} className="border-t border-gray-100 align-baseline">
+                                <td className="py-1 pr-2 tabular-nums text-gray-900">{hhmm(call.at)}</td>
+                                <td className="py-1 pr-2 text-gray-500">{call.direction}</td>
+                                <td className="py-1 pr-2 tabular-nums text-gray-500">
+                                    {call.answered ? `${call.durationSec} сек` : 'не дозвонились'}
+                                </td>
+                                <td className="py-1 pr-2 tabular-nums text-gray-500">{call.phone ?? '—'}</td>
+                                <td className="py-1 text-gray-900">
+                                    {call.orderNumber ? (
+                                        <>
+                                            №<OrderNumberLink number={call.orderNumber} from="my-day" />
+                                            {/* Номер, найденный по телефону клиента, — догадка, и она
+                                                помечена: иначе человек примет её за установленную привязку. */}
+                                            {call.orderGuessed && (
+                                                <span className="ml-1 text-gray-400" title="Заказ найден по номеру телефона клиента: привязки разговора к заказу нет">
+                                                    по номеру
+                                                </span>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <span className="text-gray-400">заказ не определён</span>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
+        </div>
     );
 }
 

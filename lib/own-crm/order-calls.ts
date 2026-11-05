@@ -1,24 +1,24 @@
 /**
  * Звонки по заказу для карточки.
  *
- * Источник правды — RetailCRM: номер заказа у звонка проставляет она, и наш
- * матчинг по телефону ошибается примерно в трети случаев (закон проекта).
- * Но брать только привязку мало — вот что терялось до 01.10.2026:
+ * Источник — НАШИ звонки Телфина. До 09.10.2026 строки собирались от
+ * `retailcrm_calls`: номер заказа у звонка проставляла сама RetailCRM, и это
+ * было надёжнее нашего матчинга по телефону. От RetailCRM отвязались, таблица
+ * не наполняется, и порядок перевернулся: главной стала наша привязка
+ * (`call_order_matches` — набрали из карточки, привязали руками, поймала
+ * автопривязка), а выгрузка RetailCRM осталась ХВОСТОМ для звонков до отвязки.
+ *
+ * Что здесь нельзя потерять (разбор 01.10.2026, когда модуль и появился):
  *
  *  1. Один наш звонок Телфина содержит несколько «ног» разговора
- *     (`record_uuids`), а RetailCRM считает их разными звонками. Выборка «наши
- *     записи по списку id» схлопывала их в одну строку: на заказе 54890 из пяти
- *     разговоров менеджер видел четыре — пропадал разговор другого сотрудника.
- *     Затронуто 435 заказов и 762 строки.
- *  2. Наш матчинг подключался только там, где RetailCRM не знала о заказе
- *     ничего. Если она знала хоть один звонок, остальные найденные нами
- *     скрывались: 941 заказ, 5 210 звонков.
- *  3. У 4 123 звонков RetailCRM нашей записи нет вовсе — раньше их не было
- *     видно; теперь строка остаётся, просто без записи и расшифровки.
- *
- * Поэтому строки собираются от RetailCRM (один разговор — одна строка), запись
- * и расшифровка подтягиваются к ним, а сверху добавляются звонки нашего
- * матчинга, которых в RetailCRM нет.
+ *     (`record_uuids`), а RetailCRM считала их разными звонками. Поэтому на
+ *     архивную строку заводится своя строка, даже если запись у них общая:
+ *     иначе на заказе 54890 из пяти разговоров менеджер видел четыре.
+ *  2. Наш матчинг раньше подключался только там, где RetailCRM не знала о
+ *     заказе ничего: 941 заказ и 5 210 звонков скрывались. Теперь наоборот —
+ *     наши звонки показываются всегда.
+ *  3. У 4 123 звонков RetailCRM нашей записи нет вовсе. Строка остаётся, просто
+ *     без записи и расшифровки.
  */
 import { supabase } from '@/utils/supabase';
 
@@ -30,11 +30,11 @@ export type OrderCall = {
     transcription: string | null;
     summary: string | null;
     link: string | null;
-    /** Откуда знаем про звонок: привязка RetailCRM или наш матчинг. */
+    /** Откуда знаем про звонок: наша привязка или архив RetailCRM. */
     source: 'crm' | 'match';
     /** Есть ли у нас сама запись разговора. */
     hasRecording: boolean;
-    /** Кто говорил — добавочный из RetailCRM, если она его назвала. */
+    /** Кто говорил — добавочный из записи звонка. */
     extension: string | null;
 };
 
@@ -46,7 +46,11 @@ type TelphinRow = {
     recording_url: string | null;
     transcript: string | null;
     record_uuids: string[] | null;
+    manager_extension: string | null;
 };
+
+const TELPHIN_FIELDS =
+    'telphin_call_id, direction, started_at, duration_sec, recording_url, transcript, record_uuids, manager_extension';
 
 function toCall(row: TelphinRow, source: 'crm' | 'match'): OrderCall {
     return {
@@ -59,7 +63,7 @@ function toCall(row: TelphinRow, source: 'crm' | 'match'): OrderCall {
         link: row.recording_url || null,
         source,
         hasRecording: Boolean(row.recording_url),
-        extension: null,
+        extension: row.manager_extension || null,
     };
 }
 
@@ -67,7 +71,28 @@ export async function loadOrderCalls(params: { orderNumber: string; orderRowId: 
     const calls: OrderCall[] = [];
     const usedTelphinIds = new Set<string>();
 
-    // 1. Разговоры, про которые знает RetailCRM: по строке на каждый.
+    // 1. Наша привязка — главный источник. Единственный живой с 09.10.2026.
+    const { data: matched } = await supabase
+        .from('call_order_matches')
+        .select('telphin_call_id')
+        .eq('retailcrm_order_id', params.orderRowId);
+
+    const ourIds = Array.from(
+        new Set(((matched ?? []) as any[]).map((m) => m.telphin_call_id).filter(Boolean).map(String)),
+    );
+
+    if (ourIds.length) {
+        const { data: ourRows } = await supabase.from('raw_telphin_calls').select(TELPHIN_FIELDS).in('telphin_call_id', ourIds);
+
+        for (const row of ((ourRows ?? []) as TelphinRow[])) {
+            usedTelphinIds.add(row.telphin_call_id);
+            calls.push(toCall(row, 'match'));
+        }
+    }
+
+    // 2. Хвост: звонки до отвязки, про которые знает только выгрузка RetailCRM.
+    //    Чтение архива осознанное — у старых заказов это единственный способ
+    //    увидеть разговор. Новых строк здесь не появляется.
     const { data: crmCalls } = await supabase
         .from('retailcrm_calls')
         .select('rc_call_id, external_id, call_date, call_type, duration_sec, ext_code')
@@ -77,12 +102,9 @@ export async function loadOrderCalls(params: { orderNumber: string; orderRowId: 
     const externalIds = ((crmCalls ?? []) as any[]).map((c) => c.external_id).filter(Boolean);
 
     // Наши записи ищем по «ногам» разговора: у одной записи их бывает несколько.
-    let byExternalId = new Map<string, TelphinRow>();
+    const byExternalId = new Map<string, TelphinRow>();
     if (externalIds.length) {
-        const { data: telphinRows } = await supabase
-            .from('raw_telphin_calls')
-            .select('telphin_call_id, direction, started_at, duration_sec, recording_url, transcript, record_uuids')
-            .overlaps('record_uuids', externalIds);
+        const { data: telphinRows } = await supabase.from('raw_telphin_calls').select(TELPHIN_FIELDS).overlaps('record_uuids', externalIds);
 
         for (const row of ((telphinRows ?? []) as TelphinRow[])) {
             for (const uuid of row.record_uuids ?? []) {
@@ -93,15 +115,14 @@ export async function loadOrderCalls(params: { orderNumber: string; orderRowId: 
 
     for (const crm of ((crmCalls ?? []) as any[])) {
         const record = crm.external_id ? byExternalId.get(crm.external_id) : undefined;
-        if (record) {
-            usedTelphinIds.add(record.telphin_call_id);
-        }
+        // Этот разговор уже показан по нашей привязке — второй строкой не идёт.
+        if (record && usedTelphinIds.has(record.telphin_call_id)) continue;
 
         calls.push({
             // Ключ — звонок RetailCRM: двух одинаковых строк не будет, даже если
             // запись у разговоров общая.
             id: record ? `${record.telphin_call_id}:${crm.rc_call_id}` : `crm:${crm.rc_call_id}`,
-            // Время и длительность — из RetailCRM: у общей записи они одни на всех.
+            // Время и длительность — из архива: у общей записи они одни на всех.
             date: crm.call_date ?? record?.started_at ?? null,
             type: crm.call_type === 'in' ? 'incoming' : crm.call_type === 'out' ? 'outgoing' : record?.direction ?? null,
             duration: crm.duration_sec ?? record?.duration_sec ?? null,
@@ -110,30 +131,8 @@ export async function loadOrderCalls(params: { orderNumber: string; orderRowId: 
             link: record?.recording_url || null,
             source: 'crm',
             hasRecording: Boolean(record?.recording_url),
-            extension: crm.ext_code || null,
+            extension: record?.manager_extension || crm.ext_code || null,
         });
-    }
-
-    // 2. Звонки нашего матчинга, которых в RetailCRM нет. Раньше они скрывались
-    //    целиком, если RetailCRM знала по заказу хоть один звонок.
-    const { data: matched } = await supabase
-        .from('call_order_matches')
-        .select('telphin_call_id')
-        .eq('retailcrm_order_id', params.orderRowId);
-
-    const extraIds = Array.from(
-        new Set(((matched ?? []) as any[]).map((m) => m.telphin_call_id).filter((id) => id && !usedTelphinIds.has(id))),
-    );
-
-    if (extraIds.length) {
-        const { data: extraRows } = await supabase
-            .from('raw_telphin_calls')
-            .select('telphin_call_id, direction, started_at, duration_sec, recording_url, transcript, record_uuids')
-            .in('telphin_call_id', extraIds);
-
-        for (const row of ((extraRows ?? []) as TelphinRow[])) {
-            calls.push(toCall(row, 'match'));
-        }
     }
 
     // Свежие сверху — так же, как было.
