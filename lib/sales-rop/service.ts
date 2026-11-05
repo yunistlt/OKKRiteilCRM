@@ -18,6 +18,7 @@ import {
     firstNameOf,
     formatOwnerReport,
     formatPersonalPlan,
+    signed,
 } from '@/lib/sales-rop/format';
 import { sendNotification } from '@/lib/notify/send';
 import type { NotifyContext } from '@/lib/notify/route';
@@ -1085,15 +1086,17 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
               }).catch(() => null)
             : null;
 
-        const morningText = formatMorning(
-            { managerId: bucket.managerId, managerName: bucket.name, telegramUsername: bucket.tg, tasks: bucket.tasks },
-            CRM_BASE,
-            {
-                greeting: written?.greeting || settings.morningGreeting,
-                farewell: written?.farewell || settings.morningFarewell,
-                date: new Date(today),
-                advices,
-            },
+        const morningText = signed(
+            formatMorning(
+                { managerId: bucket.managerId, managerName: bucket.name, telegramUsername: bucket.tg, tasks: bucket.tasks },
+                CRM_BASE,
+                {
+                    greeting: written?.greeting || settings.morningGreeting,
+                    farewell: written?.farewell || settings.morningFarewell,
+                    date: new Date(today),
+                    advices,
+                },
+            ),
         );
         preview.push(morningText);
 
@@ -1644,7 +1647,8 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         const contactsText = contacts ? formatContactDates(contacts, settings.dailyTarget) : null;
 
         preview.push(
-            call
+            signed(
+                call
                 ? `${own}\n\n${formatCallDay({
                       calls: Number(call.calls_total),
                       // Подтверждённые расшифровкой, а не «дольше 20 секунд».
@@ -1664,6 +1668,7 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
                       targetTalks: settings.talksTarget,
                   })}${review?.text ? `\n\n${review.text}` : ''}${contactsText ? `\n\n${contactsText}` : ''}`
                 : `${own}${contactsText ? `\n\n${contactsText}` : ''}`,
+            ),
         );
     }
 
