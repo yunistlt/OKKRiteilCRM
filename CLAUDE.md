@@ -109,3 +109,16 @@ Major subsystems (each is a cluster of `lib/*.ts` + `app/api/*` + `app/<feature>
 ## Docs
 
 `docs/INDEX.md` is the documentation map; `docs/ARCHITECTURE.md` has the full architectural principles; `docs/GLOSSARY.md` defines domain terms. Per-subsystem docs live under `docs/<subsystem>/`.
+
+---
+
+## Как отвечать Андрею
+
+Коротко. Это главное правило.
+
+- Ответ — несколько строк. Длинный разбор только по прямой просьбе.
+- Сразу итог, без подводки и пересказа задачи.
+- Не писать то, что не спрашивали: косвенное, «на будущее», советы вдогонку.
+- Варианты — одной строкой каждый, без расписывания плюсов и минусов.
+- Сделал — скажи что и где. Не вышло — скажи почему, одной фразой.
+- Тон спокойный, без извинений и похвалы.
