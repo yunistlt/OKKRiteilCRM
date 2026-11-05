@@ -1,12 +1,17 @@
 /**
  * Что происходило с клиентом: звонки и письма.
  *
- * Как связываем — по факту данных (проверено 30.09.2026):
+ * Как связываем — по факту данных:
  * - Телефоны в карточках клиентов не заполнены ни у одного из 20 699, поэтому
- *   телефон берём из его заказов.
- * - Номер клиента в звонках (`customer_rc_id`) не совпадает с номерами наших
- *   карточек ни разу — связать напрямую нельзя. Зато у 81% звонков проставлен
- *   номер заказа, и через заказы клиента звонки находятся у 2 152 клиентов.
+ *   телефон берём из его заказов (проверено 30.09.2026).
+ * - Звонки — НАШИ, из Телфина, по телефону заказов клиента
+ *   (`public.own_client_calls`). До 09.10.2026 они брались из выгрузки
+ *   RetailCRM по номерам заказов клиента; от RetailCRM отвязались, таблица не
+ *   наполняется, и экран показывал «Звонков нет» живым клиентам — пустой ответ
+ *   мёртвой таблицы от правды не отличить.
+ * - Через привязку звонка к заказу клиента не поймать: автопривязка по закону
+ *   владельца 05.10.2026 срабатывает только когда у клиента РОВНО ОДИН
+ *   открытый заказ, а в карточку смотрят как раз тогда, когда открытых нет.
  * - Письма ищем по адресу отправителя.
  */
 import { supabase } from '@/utils/supabase';
@@ -43,7 +48,7 @@ const EMAIL_OUTCOMES: Record<string, string> = {
     noreply: 'Письмо-робот',
 };
 
-/** Номера заказов клиента — общий ключ для звонков. */
+/** Номера заказов клиента — ключ к архиву звонков до отвязки от RetailCRM. */
 async function orderNumbers(customerId: string): Promise<string[]> {
     const { data } = await supabase
         .from('orders')
@@ -54,12 +59,16 @@ async function orderNumbers(customerId: string): Promise<string[]> {
     return (data || []).map((row: any) => String(row.number));
 }
 
-/** Звонки клиента — через номера его заказов. */
-export async function clientCalls(customerId: string, limit = 30): Promise<ClientCall[]> {
+/**
+ * Разговоры клиента до отвязки от RetailCRM.
+ *
+ * Осознанное чтение архива: `retailcrm_calls` не наполняется с 09.10.2026, но
+ * у звонков ДО этой даты наша запись есть не у всех (4 123 звонка), а в
+ * карточке важна вся история клиента. Новых строк отсюда не приходит.
+ */
+async function archiveCalls(customerId: string, limit: number): Promise<ClientCall[]> {
     const numbers = await orderNumbers(customerId);
-    if (!numbers.length) {
-        return [];
-    }
+    if (!numbers.length) return [];
 
     const { data, error } = await supabase
         .from('retailcrm_calls')
@@ -68,9 +77,7 @@ export async function clientCalls(customerId: string, limit = 30): Promise<Clien
         .order('call_date', { ascending: false })
         .limit(limit);
 
-    if (error) {
-        throw error;
-    }
+    if (error) throw error;
 
     return (data || []).map((row: any) => ({
         at: row.call_date,
@@ -81,6 +88,45 @@ export async function clientCalls(customerId: string, limit = 30): Promise<Clien
         missed: Boolean(row.is_missed),
         hasRecording: Boolean(row.record_uuid),
     }));
+}
+
+/**
+ * Звонки клиента: сначала наши, потом архив.
+ *
+ * Наши звонки главные — они единственные живые. Архив добавляется хвостом и
+ * только за те дни, которых в наших данных нет: иначе один разговор пришёл бы
+ * дважды и история клиента выглядела бы вдвое активнее, чем была.
+ */
+export async function clientCalls(customerId: string, limit = 30): Promise<ClientCall[]> {
+    const { data, error } = await supabase.rpc('own_client_calls', {
+        p_customer_id: customerId,
+        p_limit: limit,
+    });
+
+    if (error) throw error;
+
+    const own: ClientCall[] = ((data ?? []) as any[]).map((row: any) => ({
+        at: row.started_at,
+        direction: String(row.direction ?? 'звонок'),
+        durationSec: row.duration_sec ?? null,
+        managerName: row.manager_name || null,
+        orderNumber: row.order_number || null,
+        // «Без ответа» — дозвониться не удалось: правило одно на систему
+        // (`public.call_answered`).
+        missed: !row.answered,
+        hasRecording: Boolean(row.has_recording),
+    }));
+
+    if (own.length >= limit) return own;
+
+    // Граница: до самого раннего нашего звонка. Телфин у нас с 2026 года, и
+    // переход должен быть по дате, а не по тому, кто первый ответил.
+    const ourEarliest = own.length ? own[own.length - 1].at : null;
+    const archive = (await archiveCalls(customerId, limit).catch(() => [] as ClientCall[])).filter(
+        (call) => !ourEarliest || String(call.at) < String(ourEarliest),
+    );
+
+    return [...own, ...archive].slice(0, limit);
 }
 
 /** Письма от клиента и что с ними сделал секретарь. */

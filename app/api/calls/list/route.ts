@@ -15,10 +15,16 @@ export const dynamic = 'force-dynamic';
  * менеджеры увидели «Звонков не найдено» за сегодняшний день при живой
  * телефонии.
  *
- * Привязку к заказу и менеджера берём, в порядке надёжности:
- *  1. `retailcrm_calls` — для старых звонков, где это уже посчитала CRM;
- *  2. наш матчинг `call_order_matches` — для новых;
- *  3. добавочный номер из записи звонка → менеджер из справочника.
+ * Привязку к заказу берём, в порядке надёжности:
+ *  1. наш матчинг `call_order_matches` — он живой и единственный с 09.10.2026;
+ *  2. `retailcrm_calls` — ХВОСТ для звонков до отвязки, где привязку успела
+ *     посчитать RetailCRM. Новых строк там не появляется, поэтому архив идёт
+ *     вторым: пока он стоял первым, у старых звонков наша привязка — в том
+ *     числе поставленная человеком руками — не показывалась.
+ *
+ * Кто говорил — по добавочному из записи звонка. Имя из `retailcrm_calls` для
+ * этого не годится: там `manager_name` — владелец ЗАКАЗА, а не тот, кто снял
+ * трубку (закон проекта «кто говорил ≠ чей заказ»).
  *
  * Запись разговора и расшифровка лежат в той же строке Телфина.
  */
@@ -84,8 +90,9 @@ export async function GET(req: Request) {
     const uuids = rows.flatMap((row) => (Array.isArray(row.record_uuids) ? row.record_uuids : [])).filter(Boolean);
 
     /**
-     * Что знает про эти звонки RetailCRM: для старых звонков привязка к заказу
-     * и менеджер там уже посчитаны, и это надёжнее нашего матчинга.
+     * Что знает про эти звонки RetailCRM. Осознанное чтение архива: таблица не
+     * наполняется с 09.10.2026, но у звонков ДО отвязки номер заказа часто
+     * знает только она. Для новых звонков эта карта всегда пустая.
      */
     const fromCrm = new Map<string, { orderNumber: string | null; managerName: string | null }>();
     if (uuids.length) {
@@ -171,8 +178,11 @@ export async function GET(req: Request) {
                 date: row.started_at,
                 direction: row.direction === 'incoming' ? 'Входящий' : 'Исходящий',
                 phone,
-                managerName: crm?.managerName ?? byExtension.get(extensionOf(row)) ?? null,
-                orderNumber: crm?.orderNumber ?? ourOrder?.number ?? null,
+                // Говоривший — по добавочному записи; имя из архива только
+                // там, где добавочного нет (старые звонки без него).
+                managerName: byExtension.get(extensionOf(row)) ?? crm?.managerName ?? null,
+                // Наша привязка главная, архив — хвост.
+                orderNumber: ourOrder?.number ?? crm?.orderNumber ?? null,
                 missed: Number(row.duration_sec ?? 0) === 0,
                 durationSec: row.duration_sec ?? 0,
                 recordingUrl: row.recording_url ?? null,

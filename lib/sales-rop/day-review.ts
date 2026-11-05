@@ -10,10 +10,14 @@ import { byStatusCode } from '@/lib/own-crm/status-code';
 // Числа считает код, разговоры разбирает модель. Модель не считает ничего —
 // ей достаётся вопрос «что происходило в разговоре», а не «сколько».
 //
-// Откуда что берём (проверено 07.10.2026, см. docs/read-gate/OVERVIEW.md):
-// время, длительность и КТО ГОВОРИЛ — из Телфина; номер заказа — из RetailCRM.
-// В retailcrm_calls время сдвинуто на час, а manager_rc_id это владелец
-// заказа, а не говоривший: по нему в день менеджера попадают чужие разговоры.
+// Откуда что берём: всё своё, из Телфина (`raw_telphin_calls`). Время,
+// длительность и КТО ГОВОРИЛ — из самой записи звонка; номер заказа — из нашей
+// привязки, а где её нет — по телефону заказа (`public.own_call_orders`).
+//
+// Номер заказа раньше брался из `retailcrm_calls`. От RetailCRM отвязались
+// 09.10.2026, таблица не наполняется, и с этого дня вечерний разбор остался
+// без номеров заказов вовсе: модель разбирала разговоры, не зная, о каком
+// заказе шла речь.
 // ============================================================================
 
 /** Добавочный Телфина по менеджеру — кто на самом деле говорил. */
@@ -48,7 +52,7 @@ async function loadDay(managerId: number, date: string) {
 
     const { data } = await supabase
         .from('raw_telphin_calls')
-        .select('started_at, direction, duration_sec, transcript, record_uuids, raw_payload')
+        .select('telphin_call_id, started_at, direction, duration_sec, transcript, record_uuids, raw_payload')
         .gte('started_at', from)
         .lte('started_at', to)
         .gte('duration_sec', 30);
@@ -63,44 +67,55 @@ async function loadDay(managerId: number, date: string) {
 }
 
 /**
- * Номер заказа по записи разговора — единственное, что берём из RetailCRM.
+ * Номер заказа к каждому разговору — из наших данных.
  *
- * Выбираем звонки ЗА ОКНО СУТОК, а не всю таблицу: без фильтра PostgREST
- * отдаёт первую тысячу строк, и совпадений не находится вовсе — в первом
- * прогоне заказы в разбор не попали именно поэтому. Окно берём с запасом в
- * сутки: время в retailcrm_calls сдвинуто, и у границы дня звонок уезжает.
+ * Два уровня, и оба названы вслух (`public.own_call_orders`):
+ *  * `privyazka` — привязка звонка к заказу: набрали из карточки, привязали
+ *    руками, поймала автопривязка;
+ *  * `telefon` — привязки нет, но номер разговора совпал с телефоном заказа.
+ *    Автопривязка по закону владельца 05.10.2026 срабатывает только когда у
+ *    клиента РОВНО ОДИН открытый заказ, поэтому привязка есть примерно у
+ *    трети разговоров, а по телефону заказ находится у четырёх пятых.
+ *
+ * Догадку по телефону модели подаём помеченной: разбор не должен утверждать
+ * про заказ то, чего система не устанавливала.
  */
-async function orderNumbersByCall(calls: any[], date: string): Promise<Map<string, string>> {
-    const out = new Map<string, string>();
+async function orderNumbersByCall(
+    calls: any[],
+    date: string,
+): Promise<Map<string, { number: string; guessed: boolean }>> {
+    const out = new Map<string, { number: string; guessed: boolean }>();
     if (!calls.length) return out;
 
-    const from = new Date(`${date}T00:00:00+03:00`).getTime();
-    const { data } = await supabase
-        .from('retailcrm_calls')
-        .select('record_uuid, order_number')
-        .gte('call_date', new Date(from - 24 * 3600e3).toISOString())
-        .lte('call_date', new Date(from + 48 * 3600e3).toISOString())
-        .not('order_number', 'is', null);
+    const { data, error } = await supabase.rpc('own_call_orders', {
+        p_from: new Date(`${date}T00:00:00+03:00`).toISOString(),
+        p_to: new Date(`${date}T23:59:59+03:00`).toISOString(),
+    });
 
-    const byUuid = new Map<string, string>();
+    if (error) {
+        console.error('[rop] номера заказов к разговорам не прочитались:', error);
+        return out;
+    }
+
+    const byCall = new Map<string, { number: string; guessed: boolean }>();
     for (const row of ((data ?? []) as any[])) {
-        const rc = String(row.record_uuid ?? '').toLowerCase();
-        if (rc) byUuid.set(rc, String(row.order_number));
+        const id = String(row.telphin_call_id ?? '').toUpperCase();
+        if (!id || !row.order_number) continue;
+        byCall.set(id, {
+            number: String(row.order_number),
+            guessed: String(row.order_source ?? '') === 'telefon',
+        });
     }
 
-    for (const c of calls) {
-        const uuids: string[] = Array.isArray(c.record_uuids) ? c.record_uuids : [];
-        for (const u of uuids) {
-            const low = String(u).toLowerCase();
-            const hit = Array.from(byUuid.keys()).find((rc) => low.includes(rc));
-            if (hit) { out.set(String(c.started_at), byUuid.get(hit)!); break; }
-            if (out.has(String(c.started_at))) break;
-        }
+    for (const call of calls) {
+        const hit = byCall.get(String(call.telphin_call_id ?? '').toUpperCase());
+        if (hit) out.set(String(call.telphin_call_id), hit);
     }
+
     return out;
 }
 
-export function buildFacts(calls: any[], orderOf: Map<string, string>): DayFacts {
+export function buildFacts(calls: any[], orderOf: Map<string, { number: string; guessed: boolean }>): DayFacts {
     const withT = calls.filter((c) => c.transcript && String(c.transcript).trim());
     return {
         talks: calls.length,
@@ -108,7 +123,11 @@ export function buildFacts(calls: any[], orderOf: Map<string, string>): DayFacts
         firstTalk: calls.length ? mskTime(calls[0].started_at) : null,
         beforeLunch: calls.filter((c) => Number(mskTime(c.started_at).slice(0, 2)) < 13).length,
         withTranscript: withT.length,
-        inboundNoOrder: calls.filter((c) => c.direction !== 'outgoing' && !orderOf.get(String(c.started_at))).length,
+        // Входящий, по которому заказа нет ВООБЩЕ: ни привязки, ни заказа с
+        // таким телефоном. Это и есть потерянное обращение — звонок клиента,
+        // после которого в системе не осталось ничего.
+        inboundNoOrder: calls.filter((c) => c.direction !== 'outgoing' && !orderOf.get(String(c.telphin_call_id)))
+            .length,
     };
 }
 
@@ -366,7 +385,7 @@ export async function buildDayReview(managerId: number, managerName: string, dat
     const withT = calls.filter((c) => c.transcript && String(c.transcript).trim());
     if (!withT.length) return { ok: false, reason: 'Ни одного расшифрованного разговора' };
 
-    const orderNumbers = Array.from(new Set(Array.from(orderOf.values())));
+    const orderNumbers = Array.from(new Set(Array.from(orderOf.values()).map((v) => v.number)));
     const checks = await runDayChecks(managerId, date, calls, orderNumbers);
 
     /**
@@ -380,13 +399,17 @@ export async function buildDayReview(managerId: number, managerName: string, dat
     ])));
 
     const dialogs = withT.map((c) => {
-        const num = orderOf.get(String(c.started_at)) ?? null;
+        const order = orderOf.get(String(c.telphin_call_id)) ?? null;
         return {
             время: mskTime(c.started_at),
             тип: c.direction === 'outgoing' ? 'исходящий' : 'входящий',
             секунд: c.duration_sec,
-            заказ: num,
-            про_клиента: num ? known.get(num) ?? null : null,
+            заказ: order?.number ?? null,
+            // Откуда номер: привязка — установленный факт, телефон — догадка.
+            // Без этой пометки разбор начинает утверждать про заказ то, чего
+            // система не устанавливала.
+            заказ_определён: order ? (order.guessed ? 'по телефону клиента, привязки нет' : 'привязка разговора') : null,
+            про_клиента: order ? known.get(order.number) ?? null : null,
             расшифровка: String(c.transcript).slice(0, 4000),
         };
     });

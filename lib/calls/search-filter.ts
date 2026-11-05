@@ -36,7 +36,14 @@ async function managerExtensions(text: string): Promise<string[]> {
     return Array.from(new Set(extensions));
 }
 
-/** Записи звонков, которые RetailCRM пометила этим менеджером (старые звонки). */
+/**
+ * Записи звонков, которые RetailCRM пометила этим менеджером.
+ *
+ * Осознанное чтение архива: `retailcrm_calls` не наполняется с 09.10.2026.
+ * Новые звонки находятся по добавочному (`managerExtensions` выше) — он лежит
+ * в самой записи звонка; эта ветка нужна только для звонков до отвязки, у
+ * которых добавочного в записи нет.
+ */
 async function crmUuidsByManager(text: string): Promise<string[]> {
     const { data } = await supabase
         .from('retailcrm_calls')
@@ -47,12 +54,26 @@ async function crmUuidsByManager(text: string): Promise<string[]> {
     return ((data ?? []) as any[]).map((row) => String(row.external_id));
 }
 
-/** Звонки заказов с такими номерами: наша привязка и привязка RetailCRM. */
-async function callsOfOrders(numbers: string[]): Promise<{ callIds: string[]; uuids: string[] }> {
-    if (!numbers.length) return { callIds: [], uuids: [] };
+/**
+ * Чем помечены звонки заказов с такими номерами.
+ *
+ * Трёх источников мало по отдельности, поэтому собираем все:
+ *  * `callIds` — наша привязка, живая;
+ *  * `phones` — телефон самого заказа. Привязки у разговора часто нет вовсе:
+ *    автопривязка по закону владельца 05.10.2026 срабатывает только когда у
+ *    клиента РОВНО ОДИН открытый заказ. Без этой ветки поиск по номеру заказа
+ *    молча терял новые звонки — находил только привязанные;
+ *  * `uuids` — записи из выгрузки RetailCRM, хвост для звонков до отвязки.
+ */
+async function callsOfOrders(numbers: string[]): Promise<{ callIds: string[]; uuids: string[]; phones: string[] }> {
+    if (!numbers.length) return { callIds: [], uuids: [], phones: [] };
     const take = numbers.slice(0, MAX_VALUES);
 
-    const { data: orderRows } = await supabase.from('orders').select('id').in('number', take).limit(MAX_VALUES);
+    const { data: orderRows } = await supabase
+        .from('orders')
+        .select('id, phone, "additionalPhone"')
+        .in('number', take)
+        .limit(MAX_VALUES);
     const orderIds = ((orderRows ?? []) as any[]).map((row) => Number(row.id)).filter(Number.isFinite);
 
     const [links, crm] = await Promise.all([
@@ -71,9 +92,18 @@ async function callsOfOrders(numbers: string[]): Promise<{ callIds: string[]; uu
             .limit(MAX_VALUES),
     ]);
 
+    const phones = new Set<string>();
+    for (const row of ((orderRows ?? []) as any[])) {
+        for (const phone of [row.phone, row.additionalPhone]) {
+            const key = phoneKey(phone);
+            if (key) phones.add(key);
+        }
+    }
+
     return {
         callIds: (((links as any).data ?? []) as any[]).map((row) => String(row.telphin_call_id)),
         uuids: (((crm as any).data ?? []) as any[]).map((row) => String(row.external_id)),
+        phones: Array.from(phones).slice(0, MAX_VALUES),
     };
 }
 
@@ -115,6 +145,12 @@ export async function buildCallSearchFilter(search: string): Promise<string[]> {
     // Заказ: номер из запроса и заказы найденного клиента.
     const orderNumbers = Array.from(new Set([...(/^\d{3,9}$/.test(digits) ? [digits] : []), ...clientKeys.orderNumbers]));
     const ofOrders = await callsOfOrders(orderNumbers);
+
+    // Телефон заказа: по нему находятся новые звонки, у которых привязки нет.
+    if (ofOrders.phones.length) {
+        parts.push(`from_number_normalized.in.(${ofOrders.phones.join(',')})`);
+        parts.push(`to_number_normalized.in.(${ofOrders.phones.join(',')})`);
+    }
 
     // Записи RetailCRM переводим в звонки Телфина отдельным запросом: список в
     // фигурных скобках внутри `or(...)` разобрать нельзя — запятые в нём
