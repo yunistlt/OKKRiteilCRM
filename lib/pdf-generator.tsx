@@ -351,7 +351,8 @@ function ProposalPDF({ data }: { data: ProposalData }) {
                     {/* «За 1 шт.» прямо в шапке: рядом с количеством партии скидку
                         за единицу принимали за скидку на всю строку (владелец 15.10.2026). */}
                     <Text style={[invStyles.tblHeaderText, invStyles.cPrice]}>Цена, ₽</Text>
-                    <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Скидка за 1 шт., ₽</Text>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cDisc]}>{'Скидка\nза 1 шт., ₽'}</Text>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cNet]}>{'Со скидкой\nза 1 шт., ₽'}</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Сумма, ₽</Text>
                 </View>
                 {data.items.map((item, idx) => (
@@ -376,8 +377,12 @@ function ProposalPDF({ data }: { data: ProposalData }) {
                         <Text style={[invStyles.cell, invStyles.cPrice]}>
                             {formatMoney(item.initial_price ?? item.price)}
                         </Text>
-                        <Text style={[invStyles.cell, invStyles.cTotal]}>
+                        <Text style={[invStyles.cell, invStyles.cDisc]}>
                             {item.discount ? formatMoney(item.discount) : '—'}
+                        </Text>
+                        {/* Цена одной штуки со скидкой: цена − скидка. */}
+                        <Text style={[invStyles.cell, invStyles.cNet]}>
+                            {formatMoney((item.initial_price ?? item.price) - (item.discount || 0))}
                         </Text>
                         {/* Сумма — к оплате за строку: (цена − скидка) × количество. */}
                         <Text style={[invStyles.cell, invStyles.cTotal]}>
@@ -572,10 +577,19 @@ const invStyles = StyleSheet.create({
     tblHeaderText: { fontSize: 8.5, color: '#fff', fontFamily: FONT_FAMILY, fontWeight: 'bold', textTransform: 'uppercase' },
     tblRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f1f5f9', padding: '6 8' },
     tblAlt: { backgroundColor: '#f8fafc' },
-    cNum: { width: '5%' }, cName: { width: '38%' }, cQty: { width: '9%', textAlign: 'right' },
-    cUnit: { width: '9%', textAlign: 'center' }, cPrice: { width: '19%', textAlign: 'right' }, cTotal: { width: '20%', textAlign: 'right' },
+    /**
+     * Ширины держим в сумме не больше 100%: при переполнении react-pdf не
+     * переносит заголовки, а наезжает ими друг на друга («ЦЕНА, ₽СКИДКА ЗА
+     * 1 ШТ., ₽»). В КП к процентам добавляется ещё колонка фото в 54 pt.
+     */
+    cNum: { width: '5%' }, cName: { width: '20%' }, cQty: { width: '7%', textAlign: 'right' },
+    cUnit: { width: '6%', textAlign: 'center' }, cPrice: { width: '13%', textAlign: 'right' }, cTotal: { width: '15%', textAlign: 'right' },
     // Счёт: та же таблица плюс колонка скидки — наименованию отдаём меньше места.
-    cInvName: { width: '20%' }, cDisc: { width: '18%', textAlign: 'right' },
+    cInvName: { width: '22%' }, cDisc: { width: '14%', textAlign: 'right' },
+    // Цена одной штуки уже со скидкой. Без неё её считали руками по каждой
+    // позиции, и клиенты переспрашивали (Евгения Матвеева, Ирина Гордеева
+    // 05.11.2026).
+    cNet: { width: '14%', textAlign: 'right' },
     // Размеры и цвет: «сделать больше шрифт, серый шрифт поменять на чёрный»
     // (Евгения 06.10.2026) — в документ приходилось всматриваться.
     cell: { fontSize: 9.5, color: '#111827' },
@@ -728,7 +742,8 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                     <Text style={[invStyles.tblHeaderText, invStyles.cQty]}>Кол-во</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cUnit]}>Ед.</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cPrice]}>Цена, ₽</Text>
-                    <Text style={[invStyles.tblHeaderText, invStyles.cDisc]}>Скидка за 1 шт., ₽</Text>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cDisc]}>{'Скидка\nза 1 шт., ₽'}</Text>
+                    <Text style={[invStyles.tblHeaderText, invStyles.cNet]}>{'Со скидкой\nза 1 шт., ₽'}</Text>
                     <Text style={[invStyles.tblHeaderText, invStyles.cTotal]}>Сумма, ₽</Text>
                 </View>
                 {data.items.map((item, idx) => (
@@ -749,6 +764,10 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                         </Text>
                         <Text style={[invStyles.cell, invStyles.cDisc]}>
                             {item.discount ? formatMoney(item.discount) : '—'}
+                        </Text>
+                        {/* Цена одной штуки со скидкой: цена − скидка. */}
+                        <Text style={[invStyles.cell, invStyles.cNet]}>
+                            {formatMoney((item.initial_price ?? item.price) - (item.discount || 0))}
                         </Text>
                         <Text style={[invStyles.cell, invStyles.cTotal]}>
                             {formatMoney(((item.initial_price ?? item.price) - (item.discount || 0)) * item.quantity)}
