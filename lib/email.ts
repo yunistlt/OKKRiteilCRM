@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer';
 import MailComposer from 'nodemailer/lib/mail-composer';
 import { randomUUID } from 'crypto';
 import { linkifyHtml } from '@/lib/html-links';
+import { htmlToPlainText } from '@/lib/email/html-text';
 import { brandAttachment, wrapInBrand } from '@/lib/email-brand';
 import { appendToSentFolder } from './email/imap';
 
@@ -92,21 +93,7 @@ export async function sendAppEmail({ to, subject, html, fromName = 'OKKRiteil CR
 // ── Письма по заказу (переписка, привязанная к заказу RetailCRM) ──────────────
 
 /** Текст письма из его HTML — для текстовой части MIME и для ленты переписки. */
-export function htmlToPlainText(html: string): string {
-    return String(html ?? '')
-        .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n')
-        .replace(/<[^>]+>/g, '')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-}
+export { htmlToPlainText };
 
 /**
  * Служебный тег RetailCRM в теме письма: `[#N/NNNNN]`, где NNNNN — номер заказа,
