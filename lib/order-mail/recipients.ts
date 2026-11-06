@@ -18,6 +18,22 @@ export type MessageRecipients = {
     cc: string[];
 };
 
+/**
+ * Ящики-автоответчики: пишут нам, но писем не принимают.
+ *
+ * Уведомления сайта приходят с `noreply@webasyst.biz`, и ответ в таком треде
+ * уходил на этот адрес — менеджер видел «отправлено», а клиент не получал
+ * ничего (Ирина Гордеева 06.11.2026, доработка 84, заказ 900454: письмо от
+ * 05.11 не дошло, с личной почты дошло).
+ */
+const NO_REPLY_LOCAL = /^(no-?reply|do-?not-?reply|not?-?reply|noreply[-.].*|mailer-daemon|postmaster|bounce[s]?|notifications?)$/i;
+
+export function isNoReplyAddress(address: unknown): boolean {
+    const value = String(address ?? '').trim().toLowerCase();
+    const local = value.split('@')[0] ?? '';
+    return Boolean(local) && value.includes('@') && NO_REPLY_LOCAL.test(local);
+}
+
 /** Кто ещё участвовал в письме, кроме нас и отправителя. */
 export function othersInConversation(message: MessageRecipients): string[] {
     const sender = String(message.from ?? '').trim().toLowerCase();
@@ -26,5 +42,6 @@ export function othersInConversation(message: MessageRecipients): string[] {
         .map((address) => String(address ?? '').trim().toLowerCase())
         .filter((address) => address
             && address !== sender
-            && !address.endsWith(`@${OUR_MAIL_DOMAIN}`));
+            && !address.endsWith(`@${OUR_MAIL_DOMAIN}`)
+            && !isNoReplyAddress(address));
 }
