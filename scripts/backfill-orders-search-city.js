@@ -1,5 +1,8 @@
 /**
- * Дописать город и адрес доставки в orders.search_text у старых заказов.
+ * Дописать город в orders.search_text у старых заказов.
+ *
+ * Город в двух местах: кастом-поле «Город доставки (менеджерам ОП)» и адрес
+ * доставки. Берём оба.
  *
  * Миграция 20261106_orders_search_city.sql меняет только триггер — он считает
  * search_text заново при следующей записи заказа. Старые строки так и остаются
@@ -39,6 +42,7 @@ async function main() {
         SELECT id
         FROM orders
         WHERE coalesce(
+                  raw_payload->'customFields'->>'gorod_dostavki_menedzheram_op',
                   delivery->'address'->>'city',
                   delivery->'address'->>'region',
                   delivery->'address'->>'text',
@@ -47,6 +51,7 @@ async function main() {
               ) <> ''
           AND position(
                   lower(coalesce(
+                      raw_payload->'customFields'->>'gorod_dostavki_menedzheram_op',
                       delivery->'address'->>'city',
                       delivery->'address'->>'region',
                       delivery->'address'->>'text',
@@ -59,7 +64,8 @@ async function main() {
     const [{ count }] = await sql`
         SELECT count(*)::int AS count
         FROM orders
-        WHERE coalesce(delivery->'address'->>'city', delivery->'address'->>'region',
+        WHERE coalesce(raw_payload->'customFields'->>'gorod_dostavki_menedzheram_op',
+                       delivery->'address'->>'city', delivery->'address'->>'region',
                        delivery->'address'->>'text', warehouse_address, '') <> ''`;
     console.log(`заказов с адресом: ${count.toLocaleString('ru-RU')}`);
 

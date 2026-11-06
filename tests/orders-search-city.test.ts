@@ -25,6 +25,12 @@ function latestSearchTextMigration(): string {
 describe('строка поиска заказа', () => {
     const sql = latestSearchTextMigration();
 
+    it('включает кастом-поле «Город доставки (менеджерам ОП)»', () => {
+        // Менеджеры ведут город прежде всего здесь, и ищут по нему: у заказов
+        // 900493 и 900176 из жалобы адрес доставки пуст, а поле заполнено.
+        expect(sql).toContain("'gorod_dostavki_menedzheram_op'");
+    });
+
     it('включает город, регион и адрес доставки', () => {
         expect(sql).toContain("delivery->'address'->>'city'");
         expect(sql).toContain("delivery->'address'->>'region'");
