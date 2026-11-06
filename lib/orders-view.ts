@@ -50,6 +50,7 @@ export const FILTER_FIELDS: ViewItem[] = [
     { key: 'statuses', label: 'Статус заказа', group: 'Основное' },
     { key: 'categories', label: 'Категория товара', group: 'Товары' },
     { key: 'itemName', label: 'Наименование товара', group: 'Товары' },
+    { key: 'itemQty', label: 'Кол-во шт', group: 'Товары' },
     { key: 'sferas', label: 'Сфера деятельности', group: 'Покупатель' },
     { key: 'control', label: 'КОНТРОЛЬ', group: 'Основное' },
     { key: 'contragent', label: 'Наименование контрагента', group: 'Контрагент' },
