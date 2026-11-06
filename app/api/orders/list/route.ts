@@ -8,6 +8,16 @@ import { clientIdsByText } from '@/lib/orders-customer-search';
 export const dynamic = 'force-dynamic';
 
 /**
+ * Сколько заказов отбираем по количеству штук за раз.
+ *
+ * Количество без названия товара — условие широкое: «одна штука» стоит в
+ * 17 тысячах заказов, а их номера едут в запрос списком. Пятьсот строк
+ * человек просматривает и так, а дальше ему нужно уточнить название —
+ * об этом интерфейс говорит прямо.
+ */
+const ITEM_QTY_LIMIT = 500;
+
+/**
  * Список заказов для раздела «Заказы» — перенос экрана RetailCRM.
  *
  * Отдельный маршрут, а не ответвление от ОКК: там дашборд контроля качества со своими
@@ -46,6 +56,8 @@ export async function GET(req: Request) {
      * пока человек не выбрал свой порядок сам.
      */
     let searchRank: Map<number, number> | null = null;
+    /** Упёрлись в потолок отбора по количеству — скажем об этом в интерфейсе. */
+    let qtyCapped = false;
     if (filter.itemName.trim()) {
         const { data: ranked, error: rankError } = await supabase.rpc('orders_search_ranked', {
             q: filter.itemName.trim(),
@@ -57,6 +69,37 @@ export async function GET(req: Request) {
             const rows = (ranked || []) as Array<{ order_id: number; rank: number }>;
             searchRank = new Map(rows.map((row) => [Number(row.order_id), Number(row.rank)]));
             filter.searchIds = rows.map((row) => Number(row.order_id));
+        }
+    }
+
+    /**
+     * «Кол-во шт»: заказы, где этот товар идёт нужным количеством.
+     *
+     * Количество лежит в позициях, а не в заказе, поэтому номера отбирает
+     * база (orders_item_qty_ids) — и попадают они в тот же список searchIds,
+     * что и поиск по словам: тогда и строки, и счётчики статусов считаются по
+     * одним и тем же заказам (просьба Лены Парфёновой 05.11.2026).
+     */
+    const qty = Number(String(filter.itemQty ?? '').replace(',', '.'));
+    if (Number.isFinite(qty) && qty > 0) {
+        const { data: byQty, error: qtyError } = await supabase.rpc('orders_item_qty_ids', {
+            qty,
+            q: filter.itemName.trim() || null,
+            max_rows: ITEM_QTY_LIMIT,
+        });
+        if (qtyError) {
+            console.error('[orders/list] отбор по количеству не отработал:', qtyError);
+        } else {
+            const ids = ((byQty || []) as any[])
+                .map((row) => Number(typeof row === 'object' ? Object.values(row)[0] : row))
+                .filter((id) => Number.isFinite(id));
+            // Искали и по названию — остаются заказы, прошедшие оба условия,
+            // в прежнем порядке совпадения.
+            const allowed = new Set(ids);
+            filter.searchIds = filter.searchIds
+                ? filter.searchIds.filter((id) => allowed.has(id))
+                : ids;
+            qtyCapped = ids.length >= ITEM_QTY_LIMIT;
         }
     }
 
@@ -389,6 +432,11 @@ export async function GET(req: Request) {
             totalCount: listResult.count ?? 0,
             totalPages: Math.max(1, Math.ceil((listResult.count ?? 0) / pageSize)),
         },
+        /**
+         * Отбор по количеству упёрся в потолок — интерфейс говорит об этом
+         * прямо, иначе человек решит, что других таких заказов нет.
+         */
+        itemQtyCapped: qtyCapped ? ITEM_QTY_LIMIT : null,
         // Итого по всему фильтру, а не по странице.
         totals: {
             count: Number((totalsResult.data as any)?.[0]?.orders_count ?? listResult.count ?? 0),
