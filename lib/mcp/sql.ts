@@ -40,21 +40,14 @@ function explain(message: string): string {
     return `Запрос не выполнился: ${message}`;
 }
 
-/**
- * Выполняет готовый SELECT. Для запросов, которые пишет код, а не Claude.
- *
- * Запрос уходит в функцию базы завёрнутым: каждая строка упакована в одну
- * колонку mcp_row. Функция сама превращает строку в JSON записью to_jsonb(t), и
- * если в запросе есть колонка с именем t, база берёт её вместо всей строки —
- * ответ молча приходит неверным. С одной колонкой mcp_row спутать нечего.
- */
+/** Выполняет готовый SELECT. Для запросов, которые пишет код, а не Claude. */
 export async function runSelect<T = Record<string, any>>(sql: string, limit?: number): Promise<T[]> {
     const body = sql.trim().replace(/;\s*$/, '');
-    const wrapped = `SELECT to_jsonb(mcp_q.*) AS mcp_row FROM (${body}) AS mcp_q${limit ? ` LIMIT ${limit}` : ''}`;
+    const query = limit ? `SELECT * FROM (${body}) AS mcp_q LIMIT ${limit}` : body;
     return withSlot(async () => {
-        const { data, error } = await supabase.rpc('shtab_run_readonly_query', { p_sql: wrapped });
+        const { data, error } = await supabase.rpc('shtab_run_readonly_query', { p_sql: query });
         if (error) throw new Error(explain(String(error.message ?? error)));
-        return ((data ?? []) as Array<{ mcp_row: T }>).map((row) => row.mcp_row);
+        return (data ?? []) as T[];
     });
 }
 
