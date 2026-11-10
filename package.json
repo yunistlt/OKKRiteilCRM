@@ -33,6 +33,7 @@
     "staging:seed": "node scripts/with-staging-env.js npx tsx scripts/staging-seed.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@radix-ui/react-slot": "^1.2.4",
     "@react-pdf/renderer": "^4.5.1",
     "@supabase/supabase-js": "^2.39.3",

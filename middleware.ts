@@ -46,6 +46,9 @@ export async function middleware(request: NextRequest) {
         // закрыты не сессией, а в самих обработчиках — страница просмотра заказа проверяет подпись
         // ссылки и её срок, а проверка номера заказа требует ключ X-Api-Key.
         pathname.startsWith('/api/external/tseh/') ||
+        // Коннектор Claude: сессии у него нет, маршрут закрыт личным ключом
+        // сотрудника (X-Api-Key) в самом обработчике и работает только на чтение.
+        pathname.startsWith('/mcp/') ||
         pathname === '/api/payments/tochka' ||
         pathname.startsWith('/api/sync') ||
         pathname.startsWith('/api/matching') ||
