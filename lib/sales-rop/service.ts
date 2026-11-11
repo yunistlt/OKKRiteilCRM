@@ -5,8 +5,18 @@ import { touchClosesTask } from '@/lib/sales-rop/touch-rules';
 import { logError } from '@/lib/error-monitor';
 import { planAllowedForManager } from '@/lib/read-gate/service';
 import { PRESALE_STATUSES, buildPlan, dayCapacity, longPlayRoom, ownTasks, purchases, taskKey } from '@/lib/sales-rop/rules';
-import { applyChiefDecision, applyChiefPostpones, decideDay, logChiefDecision, type ChiefResult } from '@/lib/sales-rop/chief';
+import {
+    applyChiefDecision,
+    applyChiefPostpones,
+    decideDay,
+    logChiefDecision,
+    type ChiefContext,
+    type ChiefResult,
+} from '@/lib/sales-rop/chief';
 import { loadTaskMemory } from '@/lib/sales-rop/memory';
+import { absenceOn, absentToday, loadAbsences, nextAbsence, type Absence } from '@/lib/sales-rop/absences';
+import { lastWeek, loadWeek } from '@/lib/sales-rop/load-review';
+import { listBlocks } from '@/lib/salary/blocks/registry';
 import { adviseTask, clientKeyForOrder } from '@/lib/sales-rop/task-advisor';
 import { computeTaskResults } from '@/lib/sales-rop/task-result';
 import type { PresaleOrder, Task, Thresholds } from '@/lib/sales-rop/rules';
@@ -94,6 +104,14 @@ export type Settings = Thresholds & {
     talkMinutesTarget: number;
     /** Норма состоявшихся разговоров в день, одна на всех. */
     talksTarget: number;
+    /**
+     * Куда отдел идёт вдолгую — словами владельца.
+     *
+     * Задача РОПа двойная: выполнить план месяца и вести к стратегической цели.
+     * Первое считается из планов мотивации, второе до сих пор жило только в
+     * комментариях кода — а цель, которой нет в настройках, не читает никто.
+     */
+    strategicGoal: string;
     /** День выбирает ИИ-РОП, а не код. */
     chiefEnabled: boolean;
     /** Решает, но людям уходит план по правилам: два решения сравниваются вслепую. */
@@ -201,6 +219,7 @@ export async function loadSettings(): Promise<Settings> {
         taskAdviceEnabled: String(map.get('task_advice_enabled') ?? 'true') === 'true',
         // ИИ-РОП: день выбирает модель, а не код. Выключен по умолчанию —
         // включается осознанно, после теневого прогона.
+        strategicGoal: String(map.get('strategic_goal') || ''),
         chiefEnabled: String(map.get('chief_enabled') ?? 'false') === 'true',
         // Теневой режим: РОП решает и решение пишется в журнал, но людям уходит
         // план по правилам. Так два решения сравниваются на живых данных, ничем
@@ -845,17 +864,225 @@ async function setContactDate(
  * chief.ts, а план по правилам остаётся на случай, если он не ответит.
  */
 /**
+ * Чем руководствуется РОП, кроме пула работы.
+ *
+ * Задача у него две: выполнить план и вести отдел к стратегической цели. Чтобы
+ * решать день, ему нужны те же вещи, что живому руководителю: план и факт,
+ * отпуска, мотивация менеджера, его результаты за прошлую неделю и регламенты
+ * отдела. Всё это уже есть в системе, и читается оттуда, где заведено:
+ * планы — из «Настройки мотивации → Планы», отпуска — из «Катерины», итоги —
+ * из суточной статистики, регламенты — из базы знаний, той же, по которой
+ * работают менеджеры.
+ *
+ * Собирается один раз на прогон: по менеджерам различается только выборка.
+ */
+export type ChiefShared = {
+    departmentPlan: number;
+    departmentFact: number;
+    personalPlans: Map<number, number>;
+    personalFacts: Map<number, number>;
+    workdaysLeft: number;
+    permanentByManager: Map<number, number>;
+    permanentTotal: number;
+    week: { from: string; to: string; rows: Awaited<ReturnType<typeof loadWeek>> };
+    motivation: Map<number, { scheme: string; blocks: string[] }>;
+    playbook: Array<{ title: string; content: string }>;
+    strategicGoal: string;
+};
+
+export async function loadChiefShared(today: string, settings: Settings): Promise<ChiefShared> {
+    const managerIds = settings.planManagerIds;
+    const week = lastWeek(today);
+
+    const [departmentPlan, personalPlans, personalFacts, weekRows, playbook, motivation, permanent] = await Promise.all([
+        loadMonthPlan(today, settings.monthPlan),
+        loadPersonalPlans(today),
+        loadMonthSoldByManager(today).catch(() => new Map<number, number>()),
+        loadWeek(week.from, week.to).catch(() => []),
+        loadSalesPlaybook(),
+        loadMotivation(today),
+        loadPermanentClients(managerIds),
+    ]);
+
+    let departmentFact = 0;
+    for (const value of Array.from(personalFacts.values())) departmentFact += value;
+
+    return {
+        departmentPlan,
+        departmentFact,
+        personalPlans,
+        personalFacts,
+        workdaysLeft: workdaysLeftInMonth(today),
+        permanentByManager: permanent.byManager,
+        permanentTotal: permanent.total,
+        week: { from: week.from, to: week.to, rows: weekRows },
+        motivation,
+        playbook,
+        strategicGoal: settings.strategicGoal,
+    };
+}
+
+/**
+ * Регламенты, нормативы и скрипты отдела продаж.
+ *
+ * Лежат в базе знаний Семёна (раздел `sales-department`) — там же, откуда
+ * менеджер читает справку. Отдельного файла с правилами для РОПа быть не
+ * должно: знания агентов живут в РАГ, а не в коде, иначе бот и человек начнут
+ * работать по разным версиям одного регламента.
+ */
+async function loadSalesPlaybook(): Promise<Array<{ title: string; content: string }>> {
+    const { data, error } = await supabase
+        .from('okk_consultant_knowledge')
+        .select('title, content')
+        .eq('section_key', 'sales-department')
+        .eq('type', 'instruction')
+        .eq('is_active', true)
+        .order('title');
+    if (error) return [];
+    return ((data ?? []) as any[])
+        .map((r) => ({ title: String(r.title ?? ''), content: String(r.content ?? '') }))
+        .filter((r) => r.title && r.content);
+}
+
+/** Чем менеджеру платят: схема мотивации и её включённые блоки, по-русски. */
+async function loadMotivation(today: string): Promise<Map<number, { scheme: string; blocks: string[] }>> {
+    const out = new Map<number, { scheme: string; blocks: string[] }>();
+    const [{ data: comps }, { data: schemes }, { data: schemeBlocks }] = await Promise.all([
+        supabase.from('salary_manager_comp').select('manager_id, scheme_code, effective_from').lte('effective_from', today),
+        supabase.from('salary_scheme').select('id, code, name, effective_from, archived_at'),
+        supabase.from('salary_scheme_block').select('scheme_id, block_code, enabled, sort_order').order('sort_order'),
+    ]);
+
+    // Название блока — из каталога конструктора: кодов вроде «conv_bonus»
+    // человек не читает, а бриф читает человек, когда проверяет решение.
+    const blockName = new Map(listBlocks().map((b) => [b.code, b.name]));
+
+    const schemeByCode = new Map<string, { id: string; name: string }>();
+    for (const row of ((schemes ?? []) as any[])
+        .filter((r) => !r.archived_at && String(r.effective_from ?? '').slice(0, 10) <= today)
+        .sort((a, b) => String(a.effective_from).localeCompare(String(b.effective_from)))) {
+        schemeByCode.set(String(row.code), { id: String(row.id), name: String(row.name ?? row.code) });
+    }
+
+    const blocksByScheme = new Map<string, string[]>();
+    for (const row of (schemeBlocks ?? []) as any[]) {
+        if (row.enabled === false) continue;
+        const list = blocksByScheme.get(String(row.scheme_id)) ?? [];
+        const name = blockName.get(String(row.block_code)) ?? String(row.block_code);
+        if (!list.includes(name)) list.push(name);
+        blocksByScheme.set(String(row.scheme_id), list);
+    }
+
+    const latest = new Map<number, { code: string; from: string }>();
+    for (const row of (comps ?? []) as any[]) {
+        const id = Number(row.manager_id);
+        const from = String(row.effective_from).slice(0, 10);
+        const prev = latest.get(id);
+        if (!prev || prev.from <= from) latest.set(id, { code: String(row.scheme_code), from });
+    }
+
+    for (const [managerId, comp] of Array.from(latest.entries())) {
+        const scheme = schemeByCode.get(comp.code);
+        if (!scheme) continue;
+        out.set(managerId, { scheme: scheme.name, blocks: blocksByScheme.get(scheme.id) ?? [] });
+    }
+    return out;
+}
+
+/**
+ * Постоянные клиенты: с третьей покупки (так же считает зарплата).
+ *
+ * Это измеритель стратегической цели: живыми заявками он не растёт, растёт
+ * только работой вдолгую.
+ */
+async function loadPermanentClients(
+    managerIds: number[],
+): Promise<{ byManager: Map<number, number>; total: number }> {
+    const byManager = new Map<number, number>();
+    const totalRes = await supabase
+        .from('sales_client_relation')
+        .select('client_key', { count: 'exact', head: true })
+        .gte('orders_count', 3);
+    for (const id of managerIds) {
+        const res = await supabase
+            .from('sales_client_relation')
+            .select('client_key', { count: 'exact', head: true })
+            .eq('manager_id', id)
+            .gte('orders_count', 3);
+        byManager.set(id, Number(res.count ?? 0));
+    }
+    return { byManager, total: Number(totalRes.count ?? 0) };
+}
+
+/** Контекст одного менеджера: из общего снимка плюс его отпуска. */
+export function chiefContextFor(params: {
+    managerId: number;
+    today: string;
+    shared: ChiefShared;
+    absences: Absence[];
+    nameById: Map<number | null, { name: string; tg: string }>;
+}): ChiefContext {
+    const { managerId, today, shared, absences, nameById } = params;
+    const ahead = nextAbsence(absences, managerId, today);
+    const week = shared.week.rows.find((r) => r.managerId === managerId);
+
+    return {
+        plan: {
+            personal: shared.personalPlans.get(managerId) ?? 0,
+            personalFact: shared.personalFacts.get(managerId) ?? 0,
+            department: shared.departmentPlan,
+            departmentFact: shared.departmentFact,
+            workdaysLeft: shared.workdaysLeft,
+        },
+        strategicGoal: shared.strategicGoal,
+        permanentClients: {
+            mine: shared.permanentByManager.get(managerId) ?? 0,
+            department: shared.permanentTotal,
+        },
+        motivation: shared.motivation.get(managerId) ?? null,
+        results: week
+            ? {
+                  from: shared.week.from,
+                  to: shared.week.to,
+                  issued: week.tasksIssued,
+                  touched: week.tasksTouched,
+                  talks: week.tasksConfirmed,
+                  replied: week.tasksReplied,
+                  moved: week.tasksMoved,
+                  money: week.tasksMoney,
+                  callMinutes: week.callMinutes,
+              }
+            : null,
+        ownAbsenceAhead: ahead
+            ? { from: ahead.from, to: ahead.to, days: Math.max(0, Math.round((new Date(`${ahead.from}T00:00:00Z`).getTime() - new Date(`${today}T00:00:00Z`).getTime()) / 86_400_000)) }
+            : null,
+        teamAway: absentToday(absences, today)
+            .filter((a) => a.managerId !== managerId)
+            .map((a) => ({ name: nameById.get(a.managerId)?.name ?? `менеджер ${a.managerId}`, to: a.to })),
+        playbook: shared.playbook,
+    };
+}
+
+/**
  * Кому уходит план: список из настроек, иначе все активные менеджеры бота.
  *
  * Нужен, чтобы норма дня была у человека, даже когда живых заказов у него нет
  * вовсе: иначе день остаётся пустым, а работа вдолгую не даётся никогда.
  */
-async function planRecipients(t: Settings): Promise<number[]> {
-    if (t.planManagerIds.length > 0) return t.planManagerIds;
-    const { data } = await supabase.from('sales_rop_manager').select('manager_id').eq('is_active', true);
-    return ((data ?? []) as any[])
-        .map((r) => Number(r.manager_id))
-        .filter((x) => Number.isFinite(x) && x > 0);
+async function planRecipients(t: Settings, today: string, absences: Absence[]): Promise<number[]> {
+    const all =
+        t.planManagerIds.length > 0
+            ? t.planManagerIds
+            : ((
+                  await supabase.from('sales_rop_manager').select('manager_id').eq('is_active', true)
+              ).data ?? ([] as any[]))
+                  .map((r: any) => Number(r.manager_id))
+                  .filter((x: number) => Number.isFinite(x) && x > 0);
+
+    // Человек в отпуске плана не получает, и работу вдолгую под него не
+    // подбираем вовсе: за две недели отсутствия накопилось бы двести задач,
+    // которые к возвращению уже неверны.
+    return (all as number[]).filter((id: number) => !absenceOn(absences, id, today));
 }
 
 export async function collectTasks(params: {
@@ -864,8 +1091,10 @@ export async function collectTasks(params: {
     t: Awaited<ReturnType<typeof loadSettings>>;
     intake: Map<number | null, number>;
     personalLoad: Map<number | null, number>;
+    /** Отпуска: кому план сегодня не положен. */
+    absences: Absence[];
 }): Promise<Map<number | null, Task[]>> {
-    const { orders, today, t, intake, personalLoad } = params;
+    const { orders, today, t, intake, personalLoad, absences } = params;
     const plan = buildPlan(orders, today, t, intake, personalLoad);
 
     // Развитие добавляется после основного плана: сначала то, что горит.
@@ -885,7 +1114,7 @@ export async function collectTasks(params: {
     // заказу поставили дату контакта: пул скакнул с 9 до 54.
     const shortfall = new Map<number | null, number>();
     const recipients = new Set<number | null>(plan.keys());
-    for (const id of await planRecipients(t)) recipients.add(id);
+    for (const id of await planRecipients(t, today, absences)) recipients.add(id);
     for (const managerId of Array.from(recipients)) {
         const tasks = plan.get(managerId) ?? [];
         const personal = Math.min(2, Math.max(0.5, personalLoad.get(managerId) ?? 1));
@@ -1112,10 +1341,13 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     // План по правилам — то, что уходит людям, если ИИ-РОП молчит или работает
     // в теневом режиме. Пул для РОПа шире нормы: он должен выбирать, а не
     // соглашаться с тем, что код уже отрезал.
-    const plan = await collectTasks({ orders, today, t: settings, intake, personalLoad });
+    // Отпуска читаем один раз: справочник один, его ведёт «Катерина».
+    const absences = await loadAbsences();
+    const plan = await collectTasks({ orders, today, t: settings, intake, personalLoad, absences });
     const poolFactor = settings.chiefEnabled ? Math.max(1, Math.round(settings.chiefPoolFactor)) : 1;
     const pool = settings.chiefEnabled
         ? await collectTasks({
+              absences,
               orders,
               today,
               t: {
@@ -1158,6 +1390,9 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     const chiefPostpone: ChiefResult['postpone'] = [];
     const chiefLog: string[] = [];
     if (pool) {
+        // План, мотивация, итоги недели, отпуска и регламенты — один снимок на
+        // прогон: по менеджерам в нём меняется только выборка.
+        const shared = await loadChiefShared(today, settings).catch(() => null);
         for (const [managerId, candidates] of Array.from(pool.entries())) {
             if (candidates.length === 0) continue;
             // Заказы без менеджера уходят владельцу отдельным блоком: решать за
@@ -1200,6 +1435,9 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
                 memory,
                 capacity: cap,
                 limits,
+                context: shared
+                    ? chiefContextFor({ managerId, today, shared, absences, nameById })
+                    : undefined,
             });
             if (!decided) {
                 chiefLog.push(`${who}: РОП не ответил, день по правилам`);
@@ -1268,6 +1506,13 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     for (const [managerId, tasks] of Array.from(plan.entries())) {
         if (tasks.length === 0) continue;
         if (settings.planManagerIds.length > 0 && (managerId === null || !settings.planManagerIds.includes(managerId))) {
+            continue;
+        }
+        // В отпуске плана нет. Это не решение РОПа, а факт: человека нет на
+        // работе, и список задач ему ни сделать, ни прочитать.
+        const away = absenceOn(absences, managerId, today);
+        if (away) {
+            preview.push(`${nameById.get(managerId)?.name ?? managerId}: в отпуске до ${away.to.split('-').reverse().join('.')}, плана нет`);
             continue;
         }
         const who = nameById.get(managerId) ?? { name: 'без менеджера', tg: '' };

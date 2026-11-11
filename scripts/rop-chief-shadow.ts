@@ -22,7 +22,10 @@ const ask = args.includes('--ask');
 const showBrief = args.includes('--brief');
 
 async function main() {
-    const { loadSettings, loadPresaleOrders, loadManagerFactors, collectTasks } = await import('../lib/sales-rop/service');
+    const { loadSettings, loadPresaleOrders, loadManagerFactors, collectTasks, loadChiefShared, chiefContextFor } = await import(
+        '../lib/sales-rop/service'
+    );
+    const { loadAbsences, absenceOn } = await import('../lib/sales-rop/absences');
     const { localToday } = await import('../lib/sales-rop/local-day');
     const { dayCapacity, longPlayRoom, ownTasks, taskBlock, taskKey } = await import('../lib/sales-rop/rules');
     const { loadTaskMemory } = await import('../lib/sales-rop/memory');
@@ -41,8 +44,10 @@ async function main() {
     const personalLoad = await loadManagerFactors().catch(() => new Map<number | null, number>());
 
     const factor = Math.max(1, Math.round(settings.chiefPoolFactor));
-    const plan = await collectTasks({ orders, today, t: settings, intake, personalLoad });
+    const absences = await loadAbsences();
+    const plan = await collectTasks({ orders, today, t: settings, intake, personalLoad, absences });
     const pool = await collectTasks({
+        absences,
         orders,
         today,
         t: {
@@ -60,6 +65,9 @@ async function main() {
 
     const names = new Map<number | null, string>();
     for (const o of orders) names.set(o.managerId, o.managerName);
+    const nameById = new Map<number | null, { name: string; tg: string }>();
+    for (const o of orders) nameById.set(o.managerId, { name: o.managerName, tg: o.telegram });
+    const shared = await loadChiefShared(today, settings);
 
     console.log(`День ${today}. Пул шире нормы в ${factor} раза. Модель: ${ask ? 'спрашиваем' : 'НЕ зовём'}`);
 
@@ -99,13 +107,16 @@ async function main() {
             console.log(`  ${taskKey(t)} | ${t.client} | ${t.reasonCode} | ${t.reasonText}`);
         }
 
-        const brief = renderChiefBrief({ managerName: who, today, pool: candidates, memory, capacity: cap, limits });
+        const away = absenceOn(absences, managerId, today);
+        if (away) console.log(`В ОТПУСКЕ до ${away.to} — плана нет.`);
+        const context = chiefContextFor({ managerId, today, shared, absences, nameById });
+        const brief = renderChiefBrief({ managerName: who, today, pool: candidates, memory, capacity: cap, limits, context });
         console.log(`\nБриф Роману: ${brief.length} знаков, примерно ${Math.round(brief.length / 3)} токенов.`);
         if (showBrief) console.log('\n--- БРИФ ---\n' + brief + '\n--- конец брифа ---');
 
         if (!ask) continue;
 
-        const decided = await decideDay({ managerName: who, today, pool: candidates, memory, capacity: cap, limits });
+        const decided = await decideDay({ managerName: who, today, pool: candidates, memory, capacity: cap, limits, context });
         if (!decided) {
             console.log('РОП не ответил (нет промпта, нет ключа или ответ не разобрался).');
             continue;

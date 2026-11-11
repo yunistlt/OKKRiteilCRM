@@ -224,6 +224,50 @@ export function poolLine(task: Task, memory?: TaskMemory): string {
     return parts.join('\n   ');
 }
 
+/**
+ * Чем РОП руководствуется, кроме пула работы.
+ *
+ * Задача у него две (решение владельца 11.11.2026): выполнить план и вести
+ * отдел к стратегической цели. Обе он решает не из головы, а опираясь на
+ * регламенты, нормативы и скрипты отдела — они лежат в базе знаний, той же, из
+ * которой читает справку менеджер, а не в промпте.
+ */
+export type ChiefContext = {
+    /** Цель первая: план месяца. Деньги без НДС, как их считает движок ЗП. */
+    plan?: {
+        personal: number;
+        personalFact: number;
+        department: number;
+        departmentFact: number;
+        /** Рабочих дней до конца месяца, не считая сегодняшний. */
+        workdaysLeft: number;
+    } | null;
+    /** Цель вторая: куда идём вдолгую. Текст владельца из настроек бота. */
+    strategicGoal?: string;
+    /** Постоянные клиенты (с третьей покупки): у него и по отделу. */
+    permanentClients?: { mine: number; department: number } | null;
+    /** Чем этому менеджеру платят: схема мотивации и включённые блоки. */
+    motivation?: { scheme: string; blocks: string[] } | null;
+    /** Итоги его работы за прошлую неделю — по фактам, а не по галочкам. */
+    results?: {
+        from: string;
+        to: string;
+        issued: number;
+        touched: number;
+        talks: number;
+        replied: number;
+        moved: number;
+        money: number;
+        callMinutes: number;
+    } | null;
+    /** Его собственный отпуск впереди: до него надо успеть передать дела. */
+    ownAbsenceAhead?: { from: string; to: string; days: number } | null;
+    /** Кто из отдела отсутствует сегодня: их клиенты без присмотра. */
+    teamAway?: Array<{ name: string; to: string }>;
+    /** Регламенты, нормативы и скрипты отдела из базы знаний. */
+    playbook?: Array<{ title: string; content: string }>;
+};
+
 /** Что РОП знает про день менеджера, прежде чем решать. */
 export type ChiefBrief = {
     managerName: string;
@@ -232,8 +276,8 @@ export type ChiefBrief = {
     memory: Map<number, TaskMemory>;
     capacity: DayCapacity;
     limits: ChiefLimits;
-    /** План месяца и факт по этому менеджеру, если известны. */
-    monthPlan?: { plan: number; fact: number } | null;
+    /** Задача, мотивация, итоги, отпуска и регламенты. */
+    context?: ChiefContext;
 };
 
 /**
@@ -248,27 +292,93 @@ export function renderChiefBrief(b: ChiefBrief): string {
     const own = ownTasks(b.pool);
     const active = b.pool.filter((t) => taskBlock(t.reasonCode) === 'active' && t.reasonCode !== 'contact_today');
     const long = longPlayTasks(b.pool);
+    const c = b.context ?? {};
+    const ru = (iso: string) => iso.split('-').reverse().join('.');
 
-    const lines: string[] = [
-        `Менеджер: ${b.managerName}. День: ${b.today.split('-').reverse().join('.')}`,
-        '',
-        '--- РАМКИ ДНЯ (условия, а не работа: в план их не ставят) ---',
-        `Норма дня — ${b.capacity.dailyTarget} дел.`,
-        `Из них ${own.length} уже заняты собственными звонками менеджера и ${b.capacity.intake} — разбором новых заявок, которые придут в течение дня.`,
-        'Собственные звонки входят в день всегда и отложить их нельзя: это обещания, данные клиентам. Задание по ним дать нужно.',
-        `Из пула можно взять: живых сделок до ${b.limits.live}, работы вдолгую до ${b.limits.longPlay}. Меньше ${b.limits.minAlways} задач день не бывает.`,
-        `Отложить можно только работу вдолгую и не дальше ${b.limits.maxPostponeDays} дней.`,
-    ];
-    if (b.monthPlan && b.monthPlan.plan > 0) {
-        lines.push(`План месяца: ${formatRub(b.monthPlan.plan)}, сделано ${formatRub(b.monthPlan.fact)}.`);
+    const lines: string[] = [`Менеджер: ${b.managerName}. День: ${ru(b.today)}`];
+
+    // --- Задача: план и стратегическая цель. Всё остальное — средства ---
+    lines.push('', '--- ЗАЧЕМ ЭТОТ ДЕНЬ ---');
+    if (c.plan) {
+        const left = Math.max(0, c.plan.personal - c.plan.personalFact);
+        const perDay = c.plan.workdaysLeft > 0 ? Math.round(left / c.plan.workdaysLeft) : left;
+        lines.push(
+            `Личный план месяца ${formatRub(c.plan.personal)}, сделано ${formatRub(c.plan.personalFact)}`
+                + (c.plan.personal > 0
+                    ? ` (${Math.round((c.plan.personalFact / c.plan.personal) * 100)}%)`
+                    : '')
+                + `. Осталось добрать ${formatRub(left)} за ${c.plan.workdaysLeft} рабочих дней — это ${formatRub(perDay)} в день.`,
+        );
+        if (c.plan.department > 0) {
+            lines.push(
+                `План отдела ${formatRub(c.plan.department)}, отдел сделал ${formatRub(c.plan.departmentFact)}`
+                    + ` (${Math.round((c.plan.departmentFact / c.plan.department) * 100)}%).`,
+            );
+        }
+    }
+    if (c.strategicGoal) {
+        lines.push(`Цель вдолгую: ${c.strategicGoal}`);
+        if (c.permanentClients) {
+            lines.push(
+                `Постоянных клиентов (с третьей покупки) у него ${c.permanentClients.mine}, по отделу ${c.permanentClients.department}.`
+                    + ' Растёт это число только работой вдолгую — одними живыми заявками до цели не дойти.',
+            );
+        }
     }
 
+    // --- Рамки: что можно дать и чего нельзя ---
+    lines.push('', '--- РАМКИ ДНЯ (условия, а не работа: в план их не ставят) ---');
+    lines.push(`Норма дня — ${b.capacity.dailyTarget} дел.`);
+    lines.push(
+        `Из них ${own.length} уже заняты собственными звонками менеджера и ${b.capacity.intake} — разбором новых заявок, которые придут в течение дня.`,
+    );
+    lines.push(
+        'Собственные звонки входят в день всегда и отложить их нельзя: это обещания, данные клиентам. Задание по ним дать нужно.',
+    );
+    lines.push(
+        `Из пула можно взять: живых сделок до ${b.limits.live}, работы вдолгую до ${b.limits.longPlay}. Меньше ${b.limits.minAlways} задач день не бывает.`,
+    );
+    lines.push(`Отложить можно только работу вдолгую и не дальше ${b.limits.maxPostponeDays} дней.`);
+    if (c.ownAbsenceAhead) {
+        lines.push(
+            `Внимание: менеджер уходит в отпуск ${ru(c.ownAbsenceAhead.from)} — через ${c.ownAbsenceAhead.days} дн., вернётся ${ru(c.ownAbsenceAhead.to)}.`
+                + ' До отпуска надо закрыть счета и договориться с клиентами о сроках, а не начинать длинные разговоры.',
+        );
+    }
+    if (c.teamAway && c.teamAway.length > 0) {
+        lines.push(
+            'Сегодня в отпуске: '
+                + c.teamAway.map((x) => `${x.name} (до ${ru(x.to)})`).join(', ')
+                + '. Их клиенты без присмотра — горячее можно отдать этому менеджеру.',
+        );
+    }
+
+    if (c.results) {
+        lines.push(
+            '',
+            `--- КАК ОН РАБОТАЛ ${ru(c.results.from)}–${ru(c.results.to)} ---`,
+            `Задач выдано ${c.results.issued}, тронуто ${c.results.touched}, состоявшихся разговоров ${c.results.talks}`
+                + ` (${c.results.callMinutes} мин), клиент отвечал ${c.results.replied} раз,`
+                + ` заказ сдвинулся ${c.results.moved} раз, в производство ушло ${c.results.money}.`,
+            'Это факты, собранные кодом по звонкам и истории заказов, а не отметки менеджера.',
+        );
+    }
+
+    if (c.motivation) {
+        lines.push(
+            '',
+            '--- ЧЕМ ЕМУ ПЛАТЯТ ---',
+            `Схема «${c.motivation.scheme}»: ${c.motivation.blocks.join(', ')}.`,
+            'Задание должно двигать то, за что ему платят, иначе он его не сделает.',
+        );
+    }
+
+    // --- Пул работы ---
     lines.push(
         '',
         '--- ПУЛ РАБОТЫ: выбирать только отсюда ---',
         'Ключ — первое поле строки. Работы с другим ключом не существует.',
     );
-
     if (own.length > 0) {
         lines.push('', `СОБСТВЕННЫЕ ЗВОНКИ МЕНЕДЖЕРА НА СЕГОДНЯ (${own.length}, входят в день):`);
         for (const t of own) lines.push(` • ${poolLine(t, b.memory.get(t.orderId))}`);
@@ -277,6 +387,16 @@ export function renderChiefBrief(b: ChiefBrief): string {
     for (const t of active) lines.push(` • ${poolLine(t, b.memory.get(t.orderId))}`);
     lines.push('', `РАБОТА ВДОЛГУЮ (${long.length}):`);
     for (const t of long) lines.push(` • ${poolLine(t, b.memory.get(t.orderId))}`);
+
+    // --- То, на что он опирается ---
+    if (c.playbook && c.playbook.length > 0) {
+        lines.push(
+            '',
+            '--- РЕГЛАМЕНТЫ, НОРМАТИВЫ И СКРИПТЫ ОТДЕЛА ---',
+            'Это те же документы, по которым работают менеджеры. Решения и задания опирай на них и называй документ, когда он решает дело.',
+        );
+        for (const doc of c.playbook) lines.push('', `### ${doc.title}`, doc.content.trim());
+    }
 
     return lines.join('\n');
 }
