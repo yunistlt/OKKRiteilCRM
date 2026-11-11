@@ -63,6 +63,8 @@ function openTable(schema: Schema, key: McpKey, name: string): Table {
     return table;
 }
 
+const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://okk.zmksoft.com').replace(/\/+$/, '');
+
 const filterShape = z.object({
     field: z.string().describe('Имя поля'),
     op: z.enum(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'in', 'is_null', 'not_null']).optional().describe('Сравнение. По умолчанию eq. like — вхождение без учёта регистра'),
@@ -70,7 +72,16 @@ const filterShape = z.object({
 });
 
 export function buildServer(key: McpKey): McpServer {
-    const server = new McpServer({ name: 'okk', version: '1.0.0' }, { instructions: INSTRUCTIONS });
+    const server = new McpServer(
+        {
+            name: 'okk',
+            version: '1.0.0',
+            websiteUrl: SITE_URL,
+            // Тот же значок, что у вкладки ОКК: по нему Claude рисует лого коннектора.
+            icons: [{ src: `${SITE_URL}/favicon-v2.png`, mimeType: 'image/png', sizes: ['640x640'] }],
+        },
+        { instructions: INSTRUCTIONS },
+    );
 
     /** Обёртка каждого инструмента: журнал, размер ответа, ошибка человеческим текстом. */
     const tool = <S extends z.ZodRawShape>(
