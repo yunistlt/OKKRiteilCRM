@@ -882,8 +882,6 @@ export type ChiefShared = {
     personalPlans: Map<number, number>;
     personalFacts: Map<number, number>;
     workdaysLeft: number;
-    permanentByManager: Map<number, number>;
-    permanentTotal: number;
     week: { from: string; to: string; rows: Awaited<ReturnType<typeof loadWeek>> };
     motivation: Map<number, { scheme: string; blocks: string[] }>;
     playbook: Array<{ title: string; content: string }>;
@@ -891,17 +889,15 @@ export type ChiefShared = {
 };
 
 export async function loadChiefShared(today: string, settings: Settings): Promise<ChiefShared> {
-    const managerIds = settings.planManagerIds;
     const week = lastWeek(today);
 
-    const [departmentPlan, personalPlans, personalFacts, weekRows, playbook, motivation, permanent] = await Promise.all([
+    const [departmentPlan, personalPlans, personalFacts, weekRows, playbook, motivation] = await Promise.all([
         loadMonthPlan(today, settings.monthPlan),
         loadPersonalPlans(today),
         loadMonthSoldByManager(today).catch(() => new Map<number, number>()),
         loadWeek(week.from, week.to).catch(() => []),
         loadSalesPlaybook(),
         loadMotivation(today),
-        loadPermanentClients(managerIds),
     ]);
 
     let departmentFact = 0;
@@ -913,8 +909,6 @@ export async function loadChiefShared(today: string, settings: Settings): Promis
         personalPlans,
         personalFacts,
         workdaysLeft: workdaysLeftInMonth(today),
-        permanentByManager: permanent.byManager,
-        permanentTotal: permanent.total,
         week: { from: week.from, to: week.to, rows: weekRows },
         motivation,
         playbook,
@@ -989,31 +983,6 @@ async function loadMotivation(today: string): Promise<Map<number, { scheme: stri
     return out;
 }
 
-/**
- * Постоянные клиенты: с третьей покупки (так же считает зарплата).
- *
- * Это измеритель стратегической цели: живыми заявками он не растёт, растёт
- * только работой вдолгую.
- */
-async function loadPermanentClients(
-    managerIds: number[],
-): Promise<{ byManager: Map<number, number>; total: number }> {
-    const byManager = new Map<number, number>();
-    const totalRes = await supabase
-        .from('sales_client_relation')
-        .select('client_key', { count: 'exact', head: true })
-        .gte('orders_count', 3);
-    for (const id of managerIds) {
-        const res = await supabase
-            .from('sales_client_relation')
-            .select('client_key', { count: 'exact', head: true })
-            .eq('manager_id', id)
-            .gte('orders_count', 3);
-        byManager.set(id, Number(res.count ?? 0));
-    }
-    return { byManager, total: Number(totalRes.count ?? 0) };
-}
-
 /** Контекст одного менеджера: из общего снимка плюс его отпуска. */
 export function chiefContextFor(params: {
     managerId: number;
@@ -1035,10 +1004,6 @@ export function chiefContextFor(params: {
             workdaysLeft: shared.workdaysLeft,
         },
         strategicGoal: shared.strategicGoal,
-        permanentClients: {
-            mine: shared.permanentByManager.get(managerId) ?? 0,
-            department: shared.permanentTotal,
-        },
         motivation: shared.motivation.get(managerId) ?? null,
         results: week
             ? {
