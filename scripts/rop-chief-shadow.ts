@@ -24,7 +24,7 @@ const showBrief = args.includes('--brief');
 async function main() {
     const { loadSettings, loadPresaleOrders, loadManagerFactors, collectTasks } = await import('../lib/sales-rop/service');
     const { localToday } = await import('../lib/sales-rop/local-day');
-    const { dayCapacity, ownTasks, taskBlock, taskKey } = await import('../lib/sales-rop/rules');
+    const { dayCapacity, longPlayRoom, ownTasks, taskBlock, taskKey } = await import('../lib/sales-rop/rules');
     const { loadTaskMemory } = await import('../lib/sales-rop/memory');
     const { renderChiefBrief, decideDay, applyChiefDecision } = await import('../lib/sales-rop/chief');
     const { supabase } = await import('../utils/supabase');
@@ -70,9 +70,11 @@ async function main() {
         const who = names.get(managerId) ?? `менеджер ${managerId}`;
         const own = ownTasks(candidates);
         const cap = dayCapacity({ managerId, t: settings, ownCount: own.length, intakeByManager: intake, loadByManager: personalLoad });
+        // Те же пределы, что в утреннем прогоне: иначе теневая проверка
+        // показывает не то, что уйдёт людям.
         const limits = {
             live: cap.room,
-            longPlay: settings.devPerDay + settings.clientTouchPerDay,
+            longPlay: longPlayRoom({ cap, ownCount: own.length, base: settings.devPerDay + settings.clientTouchPerDay }),
             minAlways: settings.minAlways,
             maxPostponeDays: settings.chiefMaxPostponeDays,
         };
