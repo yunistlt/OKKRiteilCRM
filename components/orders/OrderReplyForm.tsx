@@ -5,6 +5,7 @@ import { uploadOrderFile } from '@/lib/orders/upload-order-file';
 import { useEffect, useRef, useState } from 'react';
 import { Loader, Send } from 'lucide-react';
 import { stripOrderThreadTag } from '@/lib/email-subject';
+import { isNoReplyAddress } from '@/lib/order-mail/recipients';
 import { fetchJsonRetry } from '@/lib/fetch-json';
 
 interface OrderReplyFormProps {
@@ -141,6 +142,8 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
     const [savingDraft, setSavingDraft] = useState(false);
     const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
     const [draftNote, setDraftNote] = useState<string | null>(null);
+    /** Ответ в треде уведомления сайта: куда на самом деле уйдёт письмо. */
+    const [noReplyNote, setNoReplyNote] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -151,9 +154,20 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
                 if (cancelled) return;
                 if (!res.ok) throw new Error(data.error || 'Не удалось загрузить переписку');
                 setThread(data);
-                setTo(replyTo?.to || data.to || '');
-                if (replyTo?.cc?.length) {
-                    setCc(replyTo.cc.join(', '));
+                /**
+                 * Отвечаем в треде, который начало уведомление сайта, — в
+                 * «Кому» нельзя ставить его ящик: письмо туда не дойдёт, а
+                 * менеджер увидит «отправлено» (заказ 900454, 05.11.2026).
+                 * Берём почту клиента из заказа и говорим об этом вслух.
+                 */
+                const answeringRobot = isNoReplyAddress(replyTo?.to);
+                setTo((answeringRobot ? '' : replyTo?.to) || data.to || '');
+                setNoReplyNote(answeringRobot
+                    ? `Это письмо пришло с ящика уведомлений ${replyTo?.to} — он писем не принимает. Отвечаем на почту из заказа.`
+                    : null);
+                const replyCc = (replyTo?.cc || []).filter((address) => !isNoReplyAddress(address));
+                if (replyCc.length) {
+                    setCc(replyCc.join(', '));
                     setCopyOpen(true);
                 }
                 // Отвечаем — тема письма с «Re:», иначе обычная тема по заказу.
@@ -649,6 +663,12 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent, replyTo }
             </div>
 
             {error && <p className="mt-2 border border-red-300 bg-red-50 px-2 py-1.5 text-xs text-red-700">{error}</p>}
+
+            {noReplyNote && (
+                <p className="mt-2 border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                    {noReplyNote}
+                </p>
+            )}
 
             {draftNote && (
                 <p className="mt-2 border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-600">

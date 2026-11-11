@@ -41,6 +41,12 @@ export interface OrdersFilter {
      */
     itemName: string;
     /**
+     * Сколько штук этого товара в заказе. Просьба Лены Парфёновой 05.11.2026:
+     * по одному названию находятся и заказы на штуку, и на полсотни, а нужен
+     * конкретный. Пусто — количество не важно.
+     */
+    itemQty: string;
+    /**
      * Номера заказов, найденных поиском по словам (`orders_search_ranked`),
      * в порядке убывания совпадения. Считает их база — здесь только список,
      * как и у дублей.
@@ -90,7 +96,7 @@ export interface OrdersFilter {
 }
 
 export const EMPTY_FILTER: OrdersFilter = {
-    number: '', customer: '', itemName: '', managers: [], statuses: [], marks: [],
+    number: '', customer: '', itemName: '', itemQty: '', managers: [], statuses: [], marks: [],
     sumFrom: '', sumTo: '', categories: [], control: '',
     contactFrom: '', contactTo: '', createdFrom: '', createdTo: '',
     contragent: '', sferas: [], purchaseFrom: '', purchaseTo: '',
@@ -149,6 +155,7 @@ export function parseOrdersFilter(searchParams: URLSearchParams): OrdersFilter {
         number: text('number'),
         customer: text('customer'),
         itemName: text('itemName'),
+        itemQty: text('itemQty'),
         managers: list('managers').length ? list('managers') : list('manager'),
         statuses: list('statuses').length ? list('statuses') : list('status'),
         marks: list('marks'),

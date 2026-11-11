@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { htmlToPlainText } from '@/lib/email/html-text';
 import { buildThreads, parseReferences, type MailMessage, type MailThread } from './thread';
 
 /**
@@ -14,25 +15,10 @@ import { buildThreads, parseReferences, type MailMessage, type MailThread } from
  * `outgoing_emails` — одно и то же письмо дважды. Склеиваем по `message_id`.
  */
 
-const textFromHtml = (html: unknown): string =>
-    String(html ?? '')
-        .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n')
-        .replace(/<[^>]+>/g, '')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-
 const bodyOf = (row: { body_text?: unknown; body_html?: unknown }): string | null => {
     const plain = String(row.body_text ?? '').trim();
     if (plain) return plain;
-    const fromHtml = textFromHtml(row.body_html);
+    const fromHtml = htmlToPlainText(row.body_html);
     return fromHtml || null;
 };
 

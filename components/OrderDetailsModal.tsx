@@ -19,7 +19,7 @@ import { clientTime } from '@/lib/own-crm/phone-timezone';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { STANDARD_CONTRACT_TERMS } from '@/lib/legal/contract-terms';
 import { priceSourceLabel } from '@/lib/format';
-import { itemTotalWithDiscount, orderTotals } from '@/lib/own-crm/discount';
+import { itemPriceWithDiscount, itemTotalWithDiscount, orderTotals } from '@/lib/own-crm/discount';
 import { uniquePhones } from '@/lib/own-crm/phones';
 
 /** Где помним, что менеджер свернул блок расчётов из калькулятора. */
@@ -1724,6 +1724,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                         {/* Под рубли и проценты сразу: в 8 рем поле
                                             скидки схлопывалось (12.10.2026). */}
                                         <th className="w-48 px-3 py-3 text-right">Скидка</th>
+                                        {/* Цена одной штуки со скидкой: её считали
+                                            на бумажке, а клиенты переспрашивали
+                                            (Евгения Матвеева, Ирина Гордеева
+                                            05.11.2026). */}
+                                        <th className="w-32 px-3 py-3 text-right">Со скидкой за 1 шт.</th>
                                         <th className="w-36 px-3 py-3 text-right">Стоимость</th>
                                         <th className="w-10 px-3 py-3"></th>
                                     </tr>
@@ -1731,7 +1736,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 <tbody className="divide-y">
                                     {draftItems.length === 0 ? (
                                         <tr>
-                                            <td colSpan={8} className="py-10 text-center text-gray-500">
+                                            <td colSpan={9} className="py-10 text-center text-gray-500">
                                                 Позиций нет — найдите товар на сайте или добавьте руками.
                                             </td>
                                         </tr>
@@ -1858,6 +1863,17 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                     />
                                                     <span className="text-xs text-gray-400">%</span>
                                                 </div>
+                                            </td>
+                                            {/* Считает тот же модуль, что и стоимость
+                                                строки, КП и счёт: рубли и процент
+                                                скидки складываются. */}
+                                            <td className="px-3 py-2 text-right text-gray-900">
+                                                {formatCurrency(itemPriceWithDiscount({
+                                                    price: row.price,
+                                                    quantity: row.quantity,
+                                                    discountAmount: row.discount,
+                                                    discountPercent: row.discountPercent,
+                                                }))}
                                             </td>
                                             <td className="px-3 py-2 text-right font-semibold text-gray-900">
                                                 {formatCurrency(itemTotalWithDiscount({

@@ -8,6 +8,11 @@
  * Запуск:
  *   npx tsx scripts/close-improvement.ts --id=27 --note="…" --build=114df16
  *   то же с --apply, чтобы записать и отправить.
+ *
+ * Запись, которую мы делать не будем, закрывается с ключом --reject: отметка
+ * та же, но автору уходит честное «делать не будем» с причиной, а не
+ * «выполнено». Врать человеку, который потратил время на заявку, нельзя
+ * (решение владельца 06.11.2026 по записям 60 и 73).
  */
 import { config } from 'dotenv';
 config({ path: '.env.local' });
@@ -16,6 +21,8 @@ const arg = (name: string): string | null =>
     process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=') ?? null;
 
 const APPLY = process.argv.includes('--apply');
+/** Закрываем без доработки: задача не делается. */
+const REJECT = process.argv.includes('--reject');
 
 async function main() {
     const id = Number(arg('id'));
@@ -51,13 +58,16 @@ async function main() {
     }
 
     const lines = [
-        `Доработка №${improvement.id} выполнена.`,
+        REJECT
+            ? `Доработка №${improvement.id} закрыта — делать не будем.`
+            : `Доработка №${improvement.id} выполнена.`,
         '',
         `Вы писали: ${String(improvement.text ?? '').trim()}`,
         '',
-        `Пояснение: ${note}`,
+        `${REJECT ? 'Почему' : 'Пояснение'}: ${note}`,
     ];
-    if (build) lines.push('', `Сборка: ${build}`);
+    // Сборки у отказа нет: кода не меняли.
+    if (build && !REJECT) lines.push('', `Сборка: ${build}`);
     const text = lines.join('\n');
 
     console.log(`№${improvement.id} → ${improvement.author_name} (менеджер ${managerId ?? 'не найден'})`);
@@ -74,8 +84,9 @@ async function main() {
         .update({
             done_at: new Date().toISOString(),
             done_by: 'Андрей Теренков',
-            done_note: note,
-            done_build: build,
+            // В реестре у отказа видно, что это отказ, а не сделанная работа.
+            done_note: REJECT ? `Делать не будем. ${note}` : note,
+            done_build: REJECT ? null : build,
         })
         .eq('id', id);
 
