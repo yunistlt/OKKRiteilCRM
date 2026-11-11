@@ -1,7 +1,7 @@
 import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { buildDayReview } from '@/lib/sales-rop/day-review';
+import { buildDayReview, previousWorkday } from '@/lib/sales-rop/day-review';
 import { backfillTouches } from '@/lib/sales-rop/service';
 
 export const dynamic = 'force-dynamic';
@@ -24,9 +24,9 @@ export async function GET(req: NextRequest) {
 
     try {
         const url = new URL(req.url);
-        // Вчера по московскому календарю.
-        const date = url.searchParams.get('date')
-            || new Date(Date.now() + 3 * 3600e3 - 24 * 3600e3).toISOString().slice(0, 10);
+        // Предыдущий рабочий день по московскому календарю: в понедельник это
+        // пятница, иначе её разговоры не разбирает никто.
+        const date = url.searchParams.get('date') || previousWorkday();
         const only = url.searchParams.get('manager');
 
         /**

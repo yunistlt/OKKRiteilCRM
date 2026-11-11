@@ -33,6 +33,22 @@ async function extensionByManager(managerId: number): Promise<string | null> {
 
 const mskTime = (d: any) => new Date(new Date(d).getTime() + 3 * 3600e3).toISOString().slice(11, 16);
 
+/**
+ * Какой день разбирать: предыдущий РАБОЧИЙ, а не календарное «вчера».
+ *
+ * Крон ходит по будням, и в понедельник «вчера» — это воскресенье: два звонка и
+ * ни одной расшифровки. Разбора не выходит, а пятница при этом не разбирается
+ * никогда. 06.11.2026 так и потерялось: 112 разговоров, 27 расшифровок — и ни
+ * одного разбора, вместе со всем, что клиенты сказали в пятницу.
+ */
+export function previousWorkday(nowMs: number = Date.now()): string {
+    const msk = new Date(nowMs + 3 * 3600e3);
+    do {
+        msk.setUTCDate(msk.getUTCDate() - 1);
+    } while (msk.getUTCDay() === 0 || msk.getUTCDay() === 6);
+    return msk.toISOString().slice(0, 10);
+}
+
 export type DayFacts = {
     talks: number;
     minutes: number;
