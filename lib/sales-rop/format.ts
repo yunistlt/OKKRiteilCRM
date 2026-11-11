@@ -88,8 +88,14 @@ export function firstNameOf(fullName: string): string {
     return parts.length > 1 ? parts[1] : parts[0] || '';
 }
 
-/** Совет по задаче: что сделать, почему, что предложить. */
-export type TaskAdviceLine = { action: string; why: string; offer: string } | null;
+/**
+ * Задание по задаче: что сделать, зачем, о чём спросить, что предложить.
+ *
+ * Цель и вопрос появились с ИИ-РОПом: он выдаёт не напоминание, а задание —
+ * чем день по этой работе должен кончиться. Старый советник их не заполняет, и
+ * тогда строка остаётся прежней.
+ */
+export type TaskAdviceLine = { action: string; why: string; offer: string; goal?: string; ask?: string } | null;
 
 export function formatMorning(
     plan: ManagerPlan,
@@ -179,7 +185,9 @@ export function formatMorning(
         const advice = wrap?.advices?.get(`${t.orderId}:${t.reasonCode}`);
         if (advice?.action) {
             lines.push(`   ➡️ ${advice.action}`);
+            if (advice.goal) lines.push(`   Цель: ${advice.goal}`);
             if (advice.why) lines.push(`   Почему: ${advice.why}`);
+            if (advice.ask) lines.push(`   Спросить: ${advice.ask}`);
             // «Узнать» вместо «предложить»: задача — выяснить, что ещё нужно
             //  клиенту, а не зачитать ему список товаров.
             if (advice.offer) lines.push(`   Узнать: ${advice.offer}`);

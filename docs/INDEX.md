@@ -66,6 +66,7 @@
 - [transcription/CHECKLIST.md](transcription/CHECKLIST.md) — Транскрибация (✅ готово)
 
 ### 📖 Документация и справочники
+- [sales-rop/OVERVIEW.md](sales-rop/OVERVIEW.md) — Бот-РОП Роман: как собирается день (as-built)
 - [knowledge-base/DOCS.md](knowledge-base/DOCS.md) — Документация VoC KB
 - [messenger/ACCESS_MODEL.md](messenger/ACCESS_MODEL.md) — Модель доступа
 - [ai-team/STAFF_ROLES.md](ai-team/STAFF_ROLES.md) — Штатное расписание ИИ-команды
