@@ -4,7 +4,7 @@ import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 import { touchClosesTask } from '@/lib/sales-rop/touch-rules';
 import { logError } from '@/lib/error-monitor';
 import { planAllowedForManager } from '@/lib/read-gate/service';
-import { PRESALE_STATUSES, buildPlan, dayCapacity, ownTasks, purchases, taskKey } from '@/lib/sales-rop/rules';
+import { PRESALE_STATUSES, buildPlan, dayCapacity, longPlayRoom, ownTasks, purchases, taskKey } from '@/lib/sales-rop/rules';
 import { applyChiefDecision, applyChiefPostpones, decideDay, logChiefDecision, type ChiefResult } from '@/lib/sales-rop/chief';
 import { loadTaskMemory } from '@/lib/sales-rop/memory';
 import { adviseTask, clientKeyForOrder } from '@/lib/sales-rop/task-advisor';
@@ -844,6 +844,20 @@ async function setContactDate(
  * выбирать. Решение РОПа всё равно срежется до настоящей нормы сторожами в
  * chief.ts, а план по правилам остаётся на случай, если он не ответит.
  */
+/**
+ * Кому уходит план: список из настроек, иначе все активные менеджеры бота.
+ *
+ * Нужен, чтобы норма дня была у человека, даже когда живых заказов у него нет
+ * вовсе: иначе день остаётся пустым, а работа вдолгую не даётся никогда.
+ */
+async function planRecipients(t: Settings): Promise<number[]> {
+    if (t.planManagerIds.length > 0) return t.planManagerIds;
+    const { data } = await supabase.from('sales_rop_manager').select('manager_id').eq('is_active', true);
+    return ((data ?? []) as any[])
+        .map((r) => Number(r.manager_id))
+        .filter((x) => Number.isFinite(x) && x > 0);
+}
+
 export async function collectTasks(params: {
     orders: Awaited<ReturnType<typeof loadPresaleOrders>>;
     today: string;
@@ -856,9 +870,24 @@ export async function collectTasks(params: {
 
     // Развитие добавляется после основного плана: сначала то, что горит.
     const plannedIds = new Set<number>();
+    for (const tasks of Array.from(plan.values())) {
+        for (const task of tasks) plannedIds.add(task.orderId);
+    }
+
+    // Недобор до нормы дня считаем КАЖДОМУ, кому уходит план, а не только тем,
+    // у кого нашлись живые заказы.
+    //
+    // Пока норма была только у них, менеджер с сухим портфелем не получал
+    // развития вовсе: загрузчики отсекают его строкой `room === 0`. У Гордеевой
+    // 11.11.2026 было 39 кандидатов на развитие и 271 на обзвон базы — и ни
+    // одной задачи, только два напоминания об отношениях, те же каждый день.
+    // Матвеевой развитие досталось в тот же день лишь потому, что по одному её
+    // заказу поставили дату контакта: пул скакнул с 9 до 54.
     const shortfall = new Map<number | null, number>();
-    for (const [managerId, tasks] of Array.from(plan.entries())) {
-        for (const t of tasks) plannedIds.add(t.orderId);
+    const recipients = new Set<number | null>(plan.keys());
+    for (const id of await planRecipients(t)) recipients.add(id);
+    for (const managerId of Array.from(recipients)) {
+        const tasks = plan.get(managerId) ?? [];
         const personal = Math.min(2, Math.max(0.5, personalLoad.get(managerId) ?? 1));
         shortfall.set(
             managerId,
@@ -1147,9 +1176,14 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
             });
             const limits = {
                 live: cap.room,
-                // Работа вдолгую идёт сверх дневного лимита теми же дозами, что и
-                // раньше: резать её первой значит не делать её никогда.
-                longPlay: settings.devPerDay + settings.clientTouchPerDay,
+                // Работа вдолгую идёт сверх дневного лимита малой дозой, а у
+                // менеджера с сухим портфелем добирает день до нормы — тем же
+                // правилом, по которому её даёт код.
+                longPlay: longPlayRoom({
+                    cap,
+                    ownCount: own.length,
+                    base: settings.devPerDay + settings.clientTouchPerDay,
+                }),
                 minAlways: settings.minAlways,
                 maxPostponeDays: settings.chiefMaxPostponeDays,
             };

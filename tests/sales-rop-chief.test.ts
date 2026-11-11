@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { applyChiefDecision, parseChiefDecision, type ChiefLimits } from '@/lib/sales-rop/chief';
-import { taskKey, type Task } from '@/lib/sales-rop/rules';
+import { longPlayRoom, taskKey, type Task } from '@/lib/sales-rop/rules';
 
 const task = (over: Partial<Task> = {}): Task => ({
     orderId: 100,
@@ -148,5 +148,20 @@ describe('сторожа', () => {
             action: 'позвонить',
             ask: 'когда смотрят счёт',
         });
+    });
+});
+
+describe('норма дня при сухом портфеле', () => {
+    it('работа вдолгую добирает день до нормы, когда живых сделок нет', () => {
+        // Гордеева 11.11.2026: норма 19, своих звонков нет, шесть заявок в день.
+        // Малой дозы (3 развития + 2 отношения) мало — день останется пустым.
+        const cap = { dailyTarget: 19, perManager: 11, intake: 6, room: 11 };
+        expect(longPlayRoom({ cap, ownCount: 0, base: 5 })).toBe(13);
+    });
+
+    it('у менеджера с полным днём доза остаётся малой', () => {
+        // Парфёнова: норма 17, шесть своих звонков и шесть заявок.
+        const cap = { dailyTarget: 17, perManager: 11, intake: 6, room: 5 };
+        expect(longPlayRoom({ cap, ownCount: 6, base: 5 })).toBe(5);
     });
 });

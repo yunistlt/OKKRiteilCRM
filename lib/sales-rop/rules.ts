@@ -366,6 +366,18 @@ export function longPlayTasks(list: Task[]): Task[] {
     );
 }
 
+/**
+ * Сколько работы вдолгую даём в день.
+ *
+ * Обычно это малая доза сверх плана. Но у менеджера с сухим портфелем день
+ * нечем наполнить, и тогда работа вдолгую добирает его до нормы — ровно так же,
+ * как это делает код правил. Иначе один путь дал бы человеку девятнадцать дел,
+ * а другой пять, и состав дня зависел бы от того, кто его собрал.
+ */
+export function longPlayRoom(params: { cap: DayCapacity; ownCount: number; base: number }): number {
+    return Math.max(params.base, params.cap.dailyTarget - params.ownCount - params.cap.intake);
+}
+
 /** План на день: по задаче на заказ, не больше N на менеджера, дорогое — первым. */
 export function buildPlan(
     orders: PresaleOrder[],

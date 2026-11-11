@@ -204,11 +204,20 @@ export function applyChiefDecision(params: {
     return { tasks: [...own, ...live, ...longPlay], assignments, postpone, note: decision.note, violations };
 }
 
-/** Строка пула для брифа: факты и память, без выводов. */
+/**
+ * Строка пула для брифа: факты и память, без выводов.
+ *
+ * Повод обрезаем до первой строки. Дальше в нём лежит совет старого советника
+ * («предложите верстаки…»), а это чужое мнение, которое РОПу решать не
+ * помогает: своё задание он напишет сам. На трёх менеджерах этот хвост давал
+ * 23 тысячи токенов входа из 34 тысяч знаков брифа.
+ */
 export function poolLine(task: Task, memory?: TaskMemory): string {
+    const reason = String(task.reasonText ?? '').split('\n')[0].trim();
+    const head = task.number ? `заказ №${task.number} | ` : '';
     const parts = [
-        `${taskKey(task)} | ${task.client} | заказ №${task.number} | ${formatRub(task.amount)}`,
-        `${task.statusName} | повод: ${task.reasonText}`,
+        `${taskKey(task)} | ${task.client} | ${head}${formatRub(task.amount)} | ${task.statusName}`,
+        `повод: ${reason}`,
     ];
     const mem = memoryLine(memory);
     if (mem) parts.push(`история: ${mem}`);
@@ -227,30 +236,46 @@ export type ChiefBrief = {
     monthPlan?: { plan: number; fact: number } | null;
 };
 
+/**
+ * Бриф РОПу.
+ *
+ * Рамки дня и пул работы разведены жёстко: в первом прогоне модель приняла
+ * строки «собственные звонки» и «разбор новых заявок» за позиции пула и
+ * попыталась поставить их в план как работу. Сторожа их не пропустили, но
+ * причина была в тексте, а не в модели.
+ */
 export function renderChiefBrief(b: ChiefBrief): string {
     const own = ownTasks(b.pool);
+    const active = b.pool.filter((t) => taskBlock(t.reasonCode) === 'active' && t.reasonCode !== 'contact_today');
+    const long = longPlayTasks(b.pool);
+
     const lines: string[] = [
         `Менеджер: ${b.managerName}. День: ${b.today.split('-').reverse().join('.')}`,
-        `Норма дня: ${b.capacity.dailyTarget} дел, из них собственных звонков ${own.length}, разбор новых заявок ${b.capacity.intake}.`,
-        `Можно дать: живых задач до ${b.limits.live}, работы вдолгую до ${b.limits.longPlay}. Минимум задач всегда: ${b.limits.minAlways}.`,
+        '',
+        '--- РАМКИ ДНЯ (условия, а не работа: в план их не ставят) ---',
+        `Норма дня — ${b.capacity.dailyTarget} дел.`,
+        `Из них ${own.length} уже заняты собственными звонками менеджера и ${b.capacity.intake} — разбором новых заявок, которые придут в течение дня.`,
+        'Собственные звонки входят в день всегда и отложить их нельзя: это обещания, данные клиентам. Задание по ним дать нужно.',
+        `Из пула можно взять: живых сделок до ${b.limits.live}, работы вдолгую до ${b.limits.longPlay}. Меньше ${b.limits.minAlways} задач день не бывает.`,
+        `Отложить можно только работу вдолгую и не дальше ${b.limits.maxPostponeDays} дней.`,
     ];
     if (b.monthPlan && b.monthPlan.plan > 0) {
-        lines.push(
-            `План месяца: ${formatRub(b.monthPlan.plan)}, сделано ${formatRub(b.monthPlan.fact)}.`,
-        );
+        lines.push(`План месяца: ${formatRub(b.monthPlan.plan)}, сделано ${formatRub(b.monthPlan.fact)}.`);
     }
+
     lines.push(
         '',
-        'Собственные звонки менеджера на сегодня входят в день всегда — их выбирать не надо, но задание по ним дать нужно.',
-        '',
-        '--- ПУЛ РАБОТЫ ---',
+        '--- ПУЛ РАБОТЫ: выбирать только отсюда ---',
+        'Ключ — первое поле строки. Работы с другим ключом не существует.',
     );
 
-    const active = b.pool.filter((t) => taskBlock(t.reasonCode) === 'active');
-    const long = longPlayTasks(b.pool);
-    lines.push(`Живые сделки (${active.length}):`);
+    if (own.length > 0) {
+        lines.push('', `СОБСТВЕННЫЕ ЗВОНКИ МЕНЕДЖЕРА НА СЕГОДНЯ (${own.length}, входят в день):`);
+        for (const t of own) lines.push(` • ${poolLine(t, b.memory.get(t.orderId))}`);
+    }
+    lines.push('', `ЖИВЫЕ СДЕЛКИ (${active.length}):`);
     for (const t of active) lines.push(` • ${poolLine(t, b.memory.get(t.orderId))}`);
-    lines.push('', `Работа вдолгую (${long.length}):`);
+    lines.push('', `РАБОТА ВДОЛГУЮ (${long.length}):`);
     for (const t of long) lines.push(` • ${poolLine(t, b.memory.get(t.orderId))}`);
 
     return lines.join('\n');
