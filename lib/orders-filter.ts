@@ -82,6 +82,12 @@ export interface OrdersFilter {
      */
     customFields?: Record<string, string>;
     /**
+     * Коды текстовых полей карточки — тех, что ищутся подстрокой. Заполняет
+     * маршрут списка из справочника полей (`orders_text_filter_fields`):
+     * какие поля текстовые, знает база, а не этот файл.
+     */
+    textCustomFields?: string[];
+    /**
      * Карточки клиентов, подошедшие под поле «Покупатель». Заполняет маршрут
      * списка перед запросом (`clientIdsByText`): искать заказы по клиенту одним
      * запросом нельзя — карточки лежат в своих таблицах.
@@ -335,17 +341,31 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
     if (filter.customerComment) q = q.ilike('raw_payload->>customerComment', `%${safe(filter.customerComment)}%`);
 
     /**
-     * Поля карточки заказа. Ищем точное совпадение значения: подстрокой
-     * (ILIKE) запрос шёл перебором всех заказов и со счётчиком не укладывался
-     * в таймаут — список возвращался пустым. Точное совпадение идёт по GIN
-     * (миграция 20261005_orders_custom_fields_index.sql): 3,7 с → 76 мс.
+     * Поля карточки заказа.
+     *
+     * Поле-справочник сверяем ЦЕЛИКОМ: значение там выбирают из списка.
+     * Точное совпадение идёт по GIN-индексу (миграция
+     * 20261005_orders_custom_fields_index.sql): 3,7 с → 76 мс.
+     *
+     * Текстовое поле человек набирает руками, и сравнивать его целиком нельзя:
+     * «АО «СХК» Росатом, Северск, Томская область» и «АО «СХК» Росатом Северск
+     * Томская область» — один адрес, а строки разные, и фильтр не показывал ни
+     * одного из двух заказов (доработка №92, Ирина Гордеева 10.11.2026).
+     * Такие поля ищем подстрокой по их собственной колонке — 72 мс на 39 тысяч
+     * заказов; по JSON та же подстрока стоила бы 3,7 с.
      */
+    const byText = new Set(filter.textCustomFields ?? []);
     const cf = Object.entries(filter.customFields ?? {})
         .filter(([code, value]) => String(value ?? '').trim() && /^[a-z0-9_]+$/i.test(code));
-    if (cf.length) {
+
+    const exact = cf.filter(([code]) => !byText.has(code));
+    if (exact.length) {
         q = q.contains('raw_payload->customFields', Object.fromEntries(
-            cf.map(([code, value]) => [code, String(value).trim()]),
+            exact.map(([code, value]) => [code, String(value).trim()]),
         ));
+    }
+    for (const [code, value] of cf.filter(([code]) => byText.has(code))) {
+        q = q.ilike(code, `%${safe(String(value).trim())}%`);
     }
 
     return q;

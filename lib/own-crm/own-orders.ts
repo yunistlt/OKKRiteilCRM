@@ -189,6 +189,8 @@ export async function editOwnOrder(
         managerComment?: string | null;
         statusCode?: string | null;
         managerId?: number | null;
+        /** Имя робота, если правит он: история пишет отметку, а не фамилию. */
+        actorBot?: string | null;
         customFields?: Record<string, unknown>;
         contact?: Record<string, unknown>;
         delivery?: Record<string, unknown>;
@@ -442,7 +444,12 @@ export async function editOwnOrder(
         history.push({ field: 'delivery_type', oldValue: before.delivery?.code, newValue: edit.delivery.code as any });
     }
 
-    await writeOwnHistory(rowId, history, Number(edit.managerId ?? before.managerId) || null);
+    await writeOwnHistory(
+        rowId,
+        history,
+        Number(edit.managerId ?? before.managerId) || null,
+        edit.actorBot ?? null,
+    );
 
     // Взял менеджер заказ ничейного клиента — клиент закрепляется за ним.
     await attachClientToManager(

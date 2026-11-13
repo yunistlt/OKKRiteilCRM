@@ -30,11 +30,18 @@ const text = (value: unknown): string | null => {
 /**
  * Записать изменения по заказу. `actorId` — номер менеджера, который правил:
  * история показывает его фамилией, как у RetailCRM.
+ *
+ * `actorBot` — имя робота, если правку сделал он, а не человек. Без этой
+ * отметки правка бота читается как работа менеджера: утренний план сам
+ * проставляет дату следующего контакта, и сверка дня объявляла это
+ * «переносом даты без причины» — нарушением, которого человек не совершал
+ * (жалобы Ирины Гордеевой №86–№90 от 10.11.2026).
  */
 export async function writeOwnHistory(
     orderId: number,
     entries: HistoryEntry[],
     actorId?: number | null,
+    actorBot?: string | null,
 ): Promise<void> {
     const list = entries.filter((entry) => entry.field);
     if (!Number.isFinite(orderId) || !list.length) return;
@@ -59,7 +66,9 @@ export async function writeOwnHistory(
             field: entry.field,
             old_value: text(entry.oldValue),
             new_value: text(entry.newValue),
-            user_data: actorId ? { id: Number(actorId) } : null,
+            user_data: actorBot
+                ? { ...(actorId ? { id: Number(actorId) } : {}), bot: String(actorBot) }
+                : actorId ? { id: Number(actorId) } : null,
             occurred_at: occurredAt,
         }));
 

@@ -13,20 +13,14 @@ export type LetterSegment =
     /** Номер заказа ссылкой на нашу карточку. */
     | { kind: 'order'; label: string; order: string };
 
-const ENTITIES: Record<string, string> = {
-    '&amp;': '&',
-    '&lt;': '<',
-    '&gt;': '>',
-    '&quot;': '"',
-    '&#39;': "'",
-    '&apos;': "'",
-    '&nbsp;': ' ',
-};
-
-/** Человеческий текст из того, что бот отправил в Telegram. */
-export function decodeEntities(text: string): string {
-    return text.replace(/&(?:amp|lt|gt|quot|#39|apos|nbsp);/g, (match) => ENTITIES[match] ?? match);
-}
+/**
+ * Человеческий текст из того, что бот отправил в Telegram.
+ *
+ * Расшифровка общая на весь проект (`lib/html-entities.ts`): у писем и у
+ * сообщений бота коды одни и те же, и знать их должен один модуль.
+ */
+export { decodeEntities } from '@/lib/html-entities';
+import { decodeEntities } from '@/lib/html-entities';
 
 /** Снять теги, которые в вебе не нужны (`<b>`, `<i>`, `<code>`). */
 function stripTags(text: string): string {

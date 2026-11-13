@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { parseOrdersFilter, applyOrdersFilter, applyOverdueFilter, filterToCountParams } from '@/lib/orders-filter';
 import { clientIdsByText } from '@/lib/orders-customer-search';
+import { textFilterFields } from '@/lib/orders-text-fields';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +31,14 @@ export async function GET(req: Request) {
      */
     if (filter.customer) {
         filter.customerIds = await clientIdsByText(filter.customer);
+    }
+
+    /**
+     * Поля карточки, которые ищутся подстрокой: город доставки, примечания,
+     * ФИО. Список берём из справочника полей, а не из кода (доработка №92).
+     */
+    if (Object.keys(filter.customFields ?? {}).length) {
+        filter.textCustomFields = await textFilterFields();
     }
 
     /**

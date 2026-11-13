@@ -787,7 +787,12 @@ async function setContactDate(
     }
 
     try {
-        const res = await editOrder(orderId, { customFields: { data_kontakta: date } });
+        // Отметка «правил робот»: без неё сверка дня видит в этой записи
+        // перенос даты менеджером и пишет человеку нарушение за работу бота.
+        const res = await editOrder(orderId, {
+            customFields: { data_kontakta: date },
+            actorBot: 'sales-rop',
+        });
         return res.ok ? { ok: true } : { ok: false, error: res.reason };
     } catch (e: any) {
         return { ok: false, error: e.message };
