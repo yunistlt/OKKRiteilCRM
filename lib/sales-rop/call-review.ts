@@ -1,6 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { AiAgent, recordAiUsage } from '@/lib/ai-usage';
+import { parseRefusals, type Refusal } from '@/lib/sales-rop/refusal';
 
 // Разбор дня по расшифровкам звонков.
 //
@@ -19,6 +20,8 @@ export type DayCall = {
     durationSec: number;
     phone: string | null;
     orderNumber: string | null;
+    /** Номер заказа угадан по телефону клиента, привязки разговора к заказу нет. */
+    orderGuessed: boolean;
     /** Чей это заказ. Может отличаться от того, кто говорил: замена, отпуск,
      *  клиент набрал напрямую, обратный звонок с сайта поднял сосед по очереди. */
     orderManagerName: string | null;
@@ -99,6 +102,7 @@ export async function loadDayCalls(date: string, managerRcId: string): Promise<D
         durationSec: Number(r.duration_sec ?? 0),
         phone: r.phone ?? null,
         orderNumber: r.order_number ?? null,
+        orderGuessed: String(r.order_source ?? '') === 'telefon',
         orderManagerName: r.order_manager_name ?? null,
         transcript: r.transcript ?? null,
     }));
@@ -123,8 +127,13 @@ export function renderDayCalls(calls: DayCall[], managerName = '', utcOffsetHour
             c.orderManagerName && managerName && c.orderManagerName !== managerName
                 ? `, заказ ведёт ${c.orderManagerName}`
                 : '';
+        // Номер, найденный по телефону, помечаем: иначе разбор утверждает про
+        // заказ то, чего система не устанавливала.
+        const order = c.orderNumber
+            ? `, заказ №${c.orderNumber}${c.orderGuessed ? ' (по телефону клиента, привязки нет)' : ''}`
+            : '';
         lines.push(
-            `[${hhmm(c.at)}, ${c.direction}, ${c.durationSec} сек${c.orderNumber ? `, заказ №${c.orderNumber}` : ''}${foreign}]`,
+            `[${hhmm(c.at)}, ${c.direction}, ${c.durationSec} сек${order}${foreign}]`,
             c.transcript ?? '(расшифровки нет)',
             '',
         );
@@ -136,6 +145,8 @@ export function renderDayCalls(calls: DayCall[], managerName = '', utcOffsetHour
 
 export type CallReview = {
     text: string;
+    /** Клиенты, сказавшие в разговоре, что потребности нет. Решение — за РОПом. */
+    refusals: Refusal[];
     totalCalls: number;
     realTalks: number;
     emptyCalls: number;
@@ -165,9 +176,9 @@ export async function reviewCallDay(
 
     // Разбирать нечего: считать это ошибкой не надо, но и звать модель незачем.
     if (real.length === 0) {
-        return { ...stats, text: `За день ${calls.length} звонков, и ни один не дошёл до разговора.` };
+        return { ...stats, refusals: [], text: `За день ${calls.length} звонков, и ни один не дошёл до разговора.` };
     }
-    if (!isOpenAIConfigured()) return { ...stats, text: '' };
+    if (!isOpenAIConfigured()) return { ...stats, refusals: [], text: '' };
 
     const { data: prompt } = await supabase
         .from('ai_prompts')
@@ -175,7 +186,7 @@ export async function reviewCallDay(
         .eq('key', 'sales_call_day_review')
         .eq('is_active', true)
         .maybeSingle();
-    if (!prompt) return { ...stats, text: '' };
+    if (!prompt) return { ...stats, refusals: [], text: '' };
 
     try {
         const openai = getOpenAIClient();
@@ -196,10 +207,13 @@ export async function reviewCallDay(
             purpose: 'sales_call_day_review',
         }).catch(() => null);
 
-        return { ...stats, text: (completion.choices[0]?.message?.content || '').trim() };
+        // Разбор для человека и решения для кода приезжают одним ответом:
+        // машинная строка отрезается и в отчёт не попадает.
+        const { text, refusals } = parseRefusals(completion.choices[0]?.message?.content || '');
+        return { ...stats, text, refusals };
     } catch {
         // Разбор — добавка к цифрам, а не замена им: сбой модели не должен
         // отменять вечерний отчёт.
-        return { ...stats, text: '' };
+        return { ...stats, refusals: [], text: '' };
     }
 }

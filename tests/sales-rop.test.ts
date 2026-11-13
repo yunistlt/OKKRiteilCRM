@@ -10,6 +10,7 @@ import {
     splitTelegramMessage,
     TELEGRAM_TEXT_LIMIT,
 } from '@/lib/sales-rop/format';
+import { openTaskNote } from '@/lib/sales-rop/touch-rules';
 
 // Бот-РОП: что попадает в утренний план и как это читается.
 //
@@ -72,6 +73,19 @@ describe('что попадает в план', () => {
 
     it('контакт в будущем — не трогаем', () => {
         expect(taskFor(order({ contactDate: '2026-09-10' }), TODAY, T)).toBeNull();
+    });
+
+    it('счёт на оплате с созвоном в будущем — тоже не трогаем', () => {
+        // Доработка №77: созвон назначен на пятницу, а задача по заказу 54013
+        // приходила каждое утро — охрана будущей даты стояла ниже правила
+        // «счёт выставлен, оплаты нет».
+        expect(
+            taskFor(
+                order({ statusCode: 'prepayed', lastTouchAt: '2026-08-20', contactDate: '2026-09-10' }),
+                TODAY,
+                T,
+            ),
+        ).toBeNull();
     });
 
     it('согласование, стоящее дольше порога', () => {
@@ -877,5 +891,29 @@ describe('два блока дня', () => {
             '',
         );
         expect(text).not.toContain('ТЕКУЩИЕ АКТИВНЫЕ ЗАЯВКИ');
+    });
+});
+
+/**
+ * Перенос даты без звонка — нарушение плана, а не его выполнение. Задача
+ * остаётся на сегодня, и менеджер должен прочитать, почему она не ушла
+ * (доработки №63 и №64, Ирина Гордеева 29.10.2026).
+ */
+describe('почему задача дня осталась открытой', () => {
+    it('перенос даты объясняется словами', () => {
+        expect(openTaskNote('перенос даты')).toContain('звонка не было');
+        expect(openTaskNote('перенос даты без причины')).toContain('звонка не было');
+    });
+
+    it('закрывающее касание ничего не объясняет — задача сделана', () => {
+        expect(openTaskNote('звонок')).toBeNull();
+        expect(openTaskNote('письмо')).toBeNull();
+        expect(openTaskNote('смена статуса')).toBeNull();
+        expect(openTaskNote('комментарий')).toBeNull();
+    });
+
+    it('с заказом сегодня не работали — объяснять нечего', () => {
+        expect(openTaskNote(null)).toBeNull();
+        expect(openTaskNote('')).toBeNull();
     });
 });

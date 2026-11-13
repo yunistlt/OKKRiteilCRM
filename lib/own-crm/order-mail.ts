@@ -20,7 +20,6 @@
  * Комментарии остаются там, где им место: в своём поле карточки и в истории.
  */
 import { supabase } from '@/utils/supabase';
-import { htmlToPlainText } from '@/lib/html-entities';
 
 export type OrderMailEntry = {
     id: string;
@@ -60,8 +59,20 @@ export type OrderMailEntry = {
  * Текст письма из HTML. Часть писем приходит вообще без текстовой части —
  * у них заполнен только `body_html`, и лента показывала пустоту.
  */
-/** Текст письма из HTML — общими правилами проекта (`lib/html-entities.ts`). */
-const textFromHtml = (html: unknown): string => htmlToPlainText(html);
+const textFromHtml = (html: unknown): string =>
+    String(html ?? '')
+        .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
 
 /** Текст письма: берём текстовую часть, а если её нет — вытаскиваем из HTML. */
 const mailBody = (row: { body_text?: unknown; body_html?: unknown }): string | null => {

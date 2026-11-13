@@ -4,7 +4,19 @@ import { loadStatusDirectory } from '@/lib/own-crm/status-code';
 import { touchClosesTask } from '@/lib/sales-rop/touch-rules';
 import { logError } from '@/lib/error-monitor';
 import { planAllowedForManager } from '@/lib/read-gate/service';
-import { PRESALE_STATUSES, buildPlan, purchases } from '@/lib/sales-rop/rules';
+import { PRESALE_STATUSES, buildPlan, dayCapacity, longPlayRoom, ownTasks, purchases, taskKey } from '@/lib/sales-rop/rules';
+import {
+    applyChiefDecision,
+    applyChiefPostpones,
+    decideDay,
+    logChiefDecision,
+    type ChiefContext,
+    type ChiefResult,
+} from '@/lib/sales-rop/chief';
+import { loadTaskMemory } from '@/lib/sales-rop/memory';
+import { absenceOn, absentToday, loadAbsences, nextAbsence, type Absence } from '@/lib/sales-rop/absences';
+import { lastWeek, loadWeek } from '@/lib/sales-rop/load-review';
+import { listBlocks } from '@/lib/salary/blocks/registry';
 import { adviseTask, clientKeyForOrder } from '@/lib/sales-rop/task-advisor';
 import { computeTaskResults } from '@/lib/sales-rop/task-result';
 import type { PresaleOrder, Task, Thresholds } from '@/lib/sales-rop/rules';
@@ -18,14 +30,16 @@ import {
     firstNameOf,
     formatOwnerReport,
     formatPersonalPlan,
+    signed,
 } from '@/lib/sales-rop/format';
 import { sendNotification } from '@/lib/notify/send';
 import type { NotifyContext } from '@/lib/notify/route';
-import type { OwnerRow } from '@/lib/sales-rop/format';
+import type { OwnerRow, TaskAdviceLine } from '@/lib/sales-rop/format';
 import { editOrder } from '@/lib/own-crm/edit-order';
 import { analyzeClient } from '@/lib/sales-rop/analyst';
 import { appendRopNote } from '@/lib/sales-rop/crm-note';
 import { reviewCallDay } from '@/lib/sales-rop/call-review';
+import { applyRefusals, formatRefusals } from '@/lib/sales-rop/refusal';
 import { generateGreeting } from '@/lib/sales-rop/greeting';
 import type { EveningRow } from '@/lib/sales-rop/format';
 
@@ -70,6 +84,11 @@ export type Settings = Thresholds & {
     summaryToGroup: boolean;
     /** Разбирать ли расшифровки звонков в вечернем отчёте. */
     reviewCalls: boolean;
+    /** Откладывать ли клиента, когда в разговоре прозвучал отказ. */
+    refusalRule: boolean;
+    /** На сколько откладываем «сейчас не нужно» и «в этом году не нужно». */
+    refusalSeasonDays: number;
+    refusalYearDays: number;
     /** Личный чат владельца и выключатель его отчёта. */
     ownerChatId: string;
     /** Слать ли владельцу копию каждого утреннего плана. */
@@ -85,6 +104,24 @@ export type Settings = Thresholds & {
     talkMinutesTarget: number;
     /** Норма состоявшихся разговоров в день, одна на всех. */
     talksTarget: number;
+    /**
+     * Куда отдел идёт вдолгую — словами владельца.
+     *
+     * Задача РОПа двойная: выполнить план месяца и вести к стратегической цели.
+     * Первое считается из планов мотивации, второе до сих пор жило только в
+     * комментариях кода — а цель, которой нет в настройках, не читает никто.
+     */
+    strategicGoal: string;
+    /** День выбирает ИИ-РОП, а не код. */
+    chiefEnabled: boolean;
+    /** Решает, но людям уходит план по правилам: два решения сравниваются вслепую. */
+    chiefShadow: boolean;
+    /** Во сколько раз пул кандидатов шире нормы дня. */
+    chiefPoolFactor: number;
+    /** Окно памяти: за сколько дней РОП видит прошлые попытки по этой работе. */
+    chiefMemoryDays: number;
+    /** Насколько далеко РОПу позволено отложить клиента. */
+    chiefMaxPostponeDays: number;
     devPerDay: number;
     devMinOrders: number;
     devMinDays: number;
@@ -151,6 +188,9 @@ export async function loadSettings(): Promise<Settings> {
         deliverPlansToDm: String(map.get('deliver_plans_to_dm') ?? 'true') === 'true',
         summaryToGroup: String(map.get('summary_to_group') ?? 'true') === 'true',
         reviewCalls: String(map.get('review_calls') ?? 'true') === 'true',
+        refusalRule: String(map.get('refusal_rule') ?? 'true') === 'true',
+        refusalSeasonDays: num('refusal_season_days', 120),
+        refusalYearDays: num('refusal_year_days', 365),
         ownerChatId: String(map.get('owner_chat_id') || ''),
         // Копия утренних планов владельцу. По умолчанию включена: реагировать
         // на слабый план надо утром, а не вечером по отчёту, когда день прошёл.
@@ -177,6 +217,19 @@ export async function loadSettings(): Promise<Settings> {
         // Совет по каждой задаче. Включён по умолчанию: без него строка плана
         // не говорит менеджеру ничего, чего он не знает, и список разгребают.
         taskAdviceEnabled: String(map.get('task_advice_enabled') ?? 'true') === 'true',
+        // ИИ-РОП: день выбирает модель, а не код. Выключен по умолчанию —
+        // включается осознанно, после теневого прогона.
+        strategicGoal: String(map.get('strategic_goal') || ''),
+        chiefEnabled: String(map.get('chief_enabled') ?? 'false') === 'true',
+        // Теневой режим: РОП решает и решение пишется в журнал, но людям уходит
+        // план по правилам. Так два решения сравниваются на живых данных, ничем
+        // не рискуя.
+        chiefShadow: String(map.get('chief_shadow') ?? 'true') === 'true',
+        // Во сколько раз пул шире нормы дня: РОП должен выбирать, а не
+        // соглашаться с тем, что код уже отрезал.
+        chiefPoolFactor: num('chief_pool_factor', 3),
+        chiefMemoryDays: num('chief_memory_days', 30),
+        chiefMaxPostponeDays: num('chief_max_postpone_days', 120),
         disciplineDays: num('discipline_days', 7),
         disciplineWarnPct: num('discipline_warn_pct', 80),
         queueEnabled: String(map.get('queue_enabled') ?? 'false') === 'true',
@@ -757,6 +810,11 @@ export type MorningResult = {
     /** Кому сообщение не доставлено. Пусто — рассылка прошла целиком. */
     failures: string[];
     /**
+     * Что решил ИИ-РОП по каждому менеджеру и что срезали сторожа. Пусто —
+     * решал код: выключен, не ответил или нет ключа модели.
+     */
+    chief: string[];
+    /**
      * Заказы, попавшие в план. Нужны ночной оценке: прежде чем утром давать по
      * заказу совет, его баллы ОКК должны быть свежими. Сверка считает план
      * вхолостую (dryRun) и ставит эти заказы на переоценку первыми.
@@ -799,6 +857,298 @@ async function setContactDate(
     }
 }
 
+
+/**
+ * Собрать всю работу, какую сегодня можно дать одному отделу: живые сделки,
+ * письма без ответа, закрытые без разговора, отношения, развитие и обзвон
+ * базы.
+ *
+ * Пороги приходят параметром, потому что сбор нужен дважды и разными мерками:
+ * людям — по норме дня, ИИ-РОПу — пул втрое шире, чтобы ему было из чего
+ * выбирать. Решение РОПа всё равно срежется до настоящей нормы сторожами в
+ * chief.ts, а план по правилам остаётся на случай, если он не ответит.
+ */
+/**
+ * Чем руководствуется РОП, кроме пула работы.
+ *
+ * Задача у него две: выполнить план и вести отдел к стратегической цели. Чтобы
+ * решать день, ему нужны те же вещи, что живому руководителю: план и факт,
+ * отпуска, мотивация менеджера, его результаты за прошлую неделю и регламенты
+ * отдела. Всё это уже есть в системе, и читается оттуда, где заведено:
+ * планы — из «Настройки мотивации → Планы», отпуска — из «Катерины», итоги —
+ * из суточной статистики, регламенты — из базы знаний, той же, по которой
+ * работают менеджеры.
+ *
+ * Собирается один раз на прогон: по менеджерам различается только выборка.
+ */
+export type ChiefShared = {
+    departmentPlan: number;
+    departmentFact: number;
+    personalPlans: Map<number, number>;
+    personalFacts: Map<number, number>;
+    workdaysLeft: number;
+    week: { from: string; to: string; rows: Awaited<ReturnType<typeof loadWeek>> };
+    motivation: Map<number, { scheme: string; blocks: string[] }>;
+    playbook: Array<{ title: string; content: string }>;
+    strategicGoal: string;
+};
+
+export async function loadChiefShared(today: string, settings: Settings): Promise<ChiefShared> {
+    const week = lastWeek(today);
+
+    const [departmentPlan, personalPlans, personalFacts, weekRows, playbook, motivation] = await Promise.all([
+        loadMonthPlan(today, settings.monthPlan),
+        loadPersonalPlans(today),
+        loadMonthSoldByManager(today).catch(() => new Map<number, number>()),
+        loadWeek(week.from, week.to).catch(() => []),
+        loadSalesPlaybook(),
+        loadMotivation(today),
+    ]);
+
+    let departmentFact = 0;
+    for (const value of Array.from(personalFacts.values())) departmentFact += value;
+
+    return {
+        departmentPlan,
+        departmentFact,
+        personalPlans,
+        personalFacts,
+        workdaysLeft: workdaysLeftInMonth(today),
+        week: { from: week.from, to: week.to, rows: weekRows },
+        motivation,
+        playbook,
+        strategicGoal: settings.strategicGoal,
+    };
+}
+
+/**
+ * Регламенты, нормативы и скрипты отдела продаж.
+ *
+ * Лежат в базе знаний Семёна (раздел `sales-department`) — там же, откуда
+ * менеджер читает справку. Отдельного файла с правилами для РОПа быть не
+ * должно: знания агентов живут в РАГ, а не в коде, иначе бот и человек начнут
+ * работать по разным версиям одного регламента.
+ */
+async function loadSalesPlaybook(): Promise<Array<{ title: string; content: string }>> {
+    const { data, error } = await supabase
+        .from('okk_consultant_knowledge')
+        .select('title, content')
+        .eq('section_key', 'sales-department')
+        .eq('type', 'instruction')
+        .eq('is_active', true)
+        .order('title');
+    if (error) return [];
+    return ((data ?? []) as any[])
+        .map((r) => ({ title: String(r.title ?? ''), content: String(r.content ?? '') }))
+        .filter((r) => r.title && r.content);
+}
+
+/** Чем менеджеру платят: схема мотивации и её включённые блоки, по-русски. */
+async function loadMotivation(today: string): Promise<Map<number, { scheme: string; blocks: string[] }>> {
+    const out = new Map<number, { scheme: string; blocks: string[] }>();
+    const [{ data: comps }, { data: schemes }, { data: schemeBlocks }] = await Promise.all([
+        supabase.from('salary_manager_comp').select('manager_id, scheme_code, effective_from').lte('effective_from', today),
+        supabase.from('salary_scheme').select('id, code, name, effective_from, archived_at'),
+        supabase.from('salary_scheme_block').select('scheme_id, block_code, enabled, sort_order').order('sort_order'),
+    ]);
+
+    // Название блока — из каталога конструктора: кодов вроде «conv_bonus»
+    // человек не читает, а бриф читает человек, когда проверяет решение.
+    const blockName = new Map(listBlocks().map((b) => [b.code, b.name]));
+
+    const schemeByCode = new Map<string, { id: string; name: string }>();
+    for (const row of ((schemes ?? []) as any[])
+        .filter((r) => !r.archived_at && String(r.effective_from ?? '').slice(0, 10) <= today)
+        .sort((a, b) => String(a.effective_from).localeCompare(String(b.effective_from)))) {
+        schemeByCode.set(String(row.code), { id: String(row.id), name: String(row.name ?? row.code) });
+    }
+
+    const blocksByScheme = new Map<string, string[]>();
+    for (const row of (schemeBlocks ?? []) as any[]) {
+        if (row.enabled === false) continue;
+        const list = blocksByScheme.get(String(row.scheme_id)) ?? [];
+        const name = blockName.get(String(row.block_code)) ?? String(row.block_code);
+        if (!list.includes(name)) list.push(name);
+        blocksByScheme.set(String(row.scheme_id), list);
+    }
+
+    const latest = new Map<number, { code: string; from: string }>();
+    for (const row of (comps ?? []) as any[]) {
+        const id = Number(row.manager_id);
+        const from = String(row.effective_from).slice(0, 10);
+        const prev = latest.get(id);
+        if (!prev || prev.from <= from) latest.set(id, { code: String(row.scheme_code), from });
+    }
+
+    for (const [managerId, comp] of Array.from(latest.entries())) {
+        const scheme = schemeByCode.get(comp.code);
+        if (!scheme) continue;
+        out.set(managerId, { scheme: scheme.name, blocks: blocksByScheme.get(scheme.id) ?? [] });
+    }
+    return out;
+}
+
+/** Контекст одного менеджера: из общего снимка плюс его отпуска. */
+export function chiefContextFor(params: {
+    managerId: number;
+    today: string;
+    shared: ChiefShared;
+    absences: Absence[];
+    nameById: Map<number | null, { name: string; tg: string }>;
+}): ChiefContext {
+    const { managerId, today, shared, absences, nameById } = params;
+    const ahead = nextAbsence(absences, managerId, today);
+    const week = shared.week.rows.find((r) => r.managerId === managerId);
+
+    return {
+        plan: {
+            personal: shared.personalPlans.get(managerId) ?? 0,
+            personalFact: shared.personalFacts.get(managerId) ?? 0,
+            department: shared.departmentPlan,
+            departmentFact: shared.departmentFact,
+            workdaysLeft: shared.workdaysLeft,
+        },
+        strategicGoal: shared.strategicGoal,
+        motivation: shared.motivation.get(managerId) ?? null,
+        results: week
+            ? {
+                  from: shared.week.from,
+                  to: shared.week.to,
+                  issued: week.tasksIssued,
+                  touched: week.tasksTouched,
+                  talks: week.tasksConfirmed,
+                  replied: week.tasksReplied,
+                  moved: week.tasksMoved,
+                  money: week.tasksMoney,
+                  callMinutes: week.callMinutes,
+              }
+            : null,
+        ownAbsenceAhead: ahead
+            ? { from: ahead.from, to: ahead.to, days: Math.max(0, Math.round((new Date(`${ahead.from}T00:00:00Z`).getTime() - new Date(`${today}T00:00:00Z`).getTime()) / 86_400_000)) }
+            : null,
+        teamAway: absentToday(absences, today)
+            .filter((a) => a.managerId !== managerId)
+            .map((a) => ({ name: nameById.get(a.managerId)?.name ?? `менеджер ${a.managerId}`, to: a.to })),
+        playbook: shared.playbook,
+    };
+}
+
+/**
+ * Кому уходит план: список из настроек, иначе все активные менеджеры бота.
+ *
+ * Нужен, чтобы норма дня была у человека, даже когда живых заказов у него нет
+ * вовсе: иначе день остаётся пустым, а работа вдолгую не даётся никогда.
+ */
+async function planRecipients(t: Settings, today: string, absences: Absence[]): Promise<number[]> {
+    const all =
+        t.planManagerIds.length > 0
+            ? t.planManagerIds
+            : ((
+                  await supabase.from('sales_rop_manager').select('manager_id').eq('is_active', true)
+              ).data ?? ([] as any[]))
+                  .map((r: any) => Number(r.manager_id))
+                  .filter((x: number) => Number.isFinite(x) && x > 0);
+
+    // Человек в отпуске плана не получает, и работу вдолгую под него не
+    // подбираем вовсе: за две недели отсутствия накопилось бы двести задач,
+    // которые к возвращению уже неверны.
+    return (all as number[]).filter((id: number) => !absenceOn(absences, id, today));
+}
+
+export async function collectTasks(params: {
+    orders: Awaited<ReturnType<typeof loadPresaleOrders>>;
+    today: string;
+    t: Awaited<ReturnType<typeof loadSettings>>;
+    intake: Map<number | null, number>;
+    personalLoad: Map<number | null, number>;
+    /** Отпуска: кому план сегодня не положен. */
+    absences: Absence[];
+}): Promise<Map<number | null, Task[]>> {
+    const { orders, today, t, intake, personalLoad, absences } = params;
+    const plan = buildPlan(orders, today, t, intake, personalLoad);
+
+    // Развитие добавляется после основного плана: сначала то, что горит.
+    const plannedIds = new Set<number>();
+    for (const tasks of Array.from(plan.values())) {
+        for (const task of tasks) plannedIds.add(task.orderId);
+    }
+
+    // Недобор до нормы дня считаем КАЖДОМУ, кому уходит план, а не только тем,
+    // у кого нашлись живые заказы.
+    //
+    // Пока норма была только у них, менеджер с сухим портфелем не получал
+    // развития вовсе: загрузчики отсекают его строкой `room === 0`. У Гордеевой
+    // 11.11.2026 было 39 кандидатов на развитие и 271 на обзвон базы — и ни
+    // одной задачи, только два напоминания об отношениях, те же каждый день.
+    // Матвеевой развитие досталось в тот же день лишь потому, что по одному её
+    // заказу поставили дату контакта: пул скакнул с 9 до 54.
+    const shortfall = new Map<number | null, number>();
+    const recipients = new Set<number | null>(plan.keys());
+    for (const id of await planRecipients(t, today, absences)) recipients.add(id);
+    for (const managerId of Array.from(recipients)) {
+        const tasks = plan.get(managerId) ?? [];
+        const personal = Math.min(2, Math.max(0.5, personalLoad.get(managerId) ?? 1));
+        shortfall.set(
+            managerId,
+            Math.max(
+                0,
+                Math.round(t.dailyTarget * personal) - tasks.length - Math.round(intake.get(managerId) ?? 0),
+            ),
+        );
+    }
+
+    // Отношения с клиентом — отдельная работа от сделок. Сюда попадает и тот,
+    // кто ни разу ничего не купил: обратился Росатом, посчитали, не сложилось —
+    // забыть его нельзя, а по сделке напоминать нечего, она закрыта.
+    // Закрытые без разговора — вперёд остального: это не напоминание, а
+    // возврат в работу, и место под него резервируется до развития и обзвона.
+    for (const back of await loadSilentCancelTasks(t, today)) {
+        const list = plan.get(back.managerId) ?? [];
+        list.push(back);
+        plan.set(back.managerId, list);
+        plannedIds.add(back.orderId);
+    }
+
+    // Письма без ответа — вперёд обзвона: клиент уже обратился сам.
+    for (const mail of await loadUnansweredMailTasks(t, orders)) {
+        if (plannedIds.has(mail.orderId)) continue;
+        const list = plan.get(mail.managerId) ?? [];
+        list.push(mail);
+        plan.set(mail.managerId, list);
+        plannedIds.add(mail.orderId);
+    }
+
+    for (const touch of await loadClientTouchTasks(t, today)) {
+        const list = plan.get(touch.managerId) ?? [];
+        list.push(touch);
+        plan.set(touch.managerId, list);
+    }
+
+    // Один и тот же снимок на оба блока развития: лишний запрос к базе в
+    // утреннем прогоне ничего не уточняет.
+    const clientsWithOpenDeal = await loadClientsWithOpenDeal();
+
+    for (const dev of await loadDevelopmentTasks(t, plannedIds, shortfall, clientsWithOpenDeal)) {
+        const list = plan.get(dev.managerId) ?? [];
+        list.push(dev);
+        plan.set(dev.managerId, list);
+        plannedIds.add(dev.orderId);
+        shortfall.set(dev.managerId, Math.max(0, (shortfall.get(dev.managerId) ?? 0) - 1));
+    }
+
+    // Если и развития не хватило — добираем обзвоном базы. Клиентов, которые
+    // когда-то покупали и давно молчат, хватает всегда; умного повода для
+    // звонка тут нет, и притворяться, что он есть, не надо: «давно не покупали»
+    // это честная причина позвонить.
+    for (const task of await loadReactivationTasks(t, plannedIds, shortfall, clientsWithOpenDeal)) {
+        const list = plan.get(task.managerId) ?? [];
+        list.push(task);
+        plan.set(task.managerId, list);
+        plannedIds.add(task.orderId);
+    }
+
+    return plan;
+}
 
 /**
  * Письмо клиента без ответа (ТЗ переписки §9, этап 3).
@@ -956,72 +1306,33 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
 
     // Личная нагрузка поверх общей: добавить одной, не трогая другую.
     const personalLoad = await loadManagerFactors().catch(() => new Map<number | null, number>());
-    const plan = buildPlan(orders, today, settings, intake, personalLoad);
-
-    // Развитие добавляется после основного плана: сначала то, что горит.
-    const plannedIds = new Set<number>();
-    const shortfall = new Map<number | null, number>();
-    for (const [managerId, tasks] of Array.from(plan.entries())) {
-        for (const t of tasks) plannedIds.add(t.orderId);
-        const personal = Math.min(2, Math.max(0.5, personalLoad.get(managerId) ?? 1));
-        shortfall.set(
-            managerId,
-            Math.max(
-                0,
-                Math.round(settings.dailyTarget * personal) - tasks.length - Math.round(intake.get(managerId) ?? 0),
-            ),
-        );
-    }
-
-    // Отношения с клиентом — отдельная работа от сделок. Сюда попадает и тот,
-    // кто ни разу ничего не купил: обратился Росатом, посчитали, не сложилось —
-    // забыть его нельзя, а по сделке напоминать нечего, она закрыта.
-    // Закрытые без разговора — вперёд остального: это не напоминание, а
-    // возврат в работу, и место под него резервируется до развития и обзвона.
-    for (const back of await loadSilentCancelTasks(settings, today)) {
-        const list = plan.get(back.managerId) ?? [];
-        list.push(back);
-        plan.set(back.managerId, list);
-        plannedIds.add(back.orderId);
-    }
-
-    // Письма без ответа — вперёд обзвона: клиент уже обратился сам.
-    for (const mail of await loadUnansweredMailTasks(settings, orders)) {
-        if (plannedIds.has(mail.orderId)) continue;
-        const list = plan.get(mail.managerId) ?? [];
-        list.push(mail);
-        plan.set(mail.managerId, list);
-        plannedIds.add(mail.orderId);
-    }
-
-    for (const touch of await loadClientTouchTasks(settings, today)) {
-        const list = plan.get(touch.managerId) ?? [];
-        list.push(touch);
-        plan.set(touch.managerId, list);
-    }
-
-    // Один и тот же снимок на оба блока развития: лишний запрос к базе в
-    // утреннем прогоне ничего не уточняет.
-    const clientsWithOpenDeal = await loadClientsWithOpenDeal();
-
-    for (const dev of await loadDevelopmentTasks(settings, plannedIds, shortfall, clientsWithOpenDeal)) {
-        const list = plan.get(dev.managerId) ?? [];
-        list.push(dev);
-        plan.set(dev.managerId, list);
-        plannedIds.add(dev.orderId);
-        shortfall.set(dev.managerId, Math.max(0, (shortfall.get(dev.managerId) ?? 0) - 1));
-    }
-
-    // Если и развития не хватило — добираем обзвоном базы. Клиентов, которые
-    // когда-то покупали и давно молчат, хватает всегда; умного повода для
-    // звонка тут нет, и притворяться, что он есть, не надо: «давно не покупали»
-    // это честная причина позвонить.
-    for (const task of await loadReactivationTasks(settings, plannedIds, shortfall, clientsWithOpenDeal)) {
-        const list = plan.get(task.managerId) ?? [];
-        list.push(task);
-        plan.set(task.managerId, list);
-        plannedIds.add(task.orderId);
-    }
+    // Два решения на один день, и собираются они одним кодом.
+    //
+    // План по правилам — то, что уходит людям, если ИИ-РОП молчит или работает
+    // в теневом режиме. Пул для РОПа шире нормы: он должен выбирать, а не
+    // соглашаться с тем, что код уже отрезал.
+    // Отпуска читаем один раз: справочник один, его ведёт «Катерина».
+    const absences = await loadAbsences();
+    const plan = await collectTasks({ orders, today, t: settings, intake, personalLoad, absences });
+    const poolFactor = settings.chiefEnabled ? Math.max(1, Math.round(settings.chiefPoolFactor)) : 1;
+    const pool = settings.chiefEnabled
+        ? await collectTasks({
+              absences,
+              orders,
+              today,
+              t: {
+                  ...settings,
+                  dailyTarget: settings.dailyTarget * poolFactor,
+                  tasksPerManager: settings.tasksPerManager * poolFactor,
+                  coldPerDay: settings.coldPerDay * poolFactor,
+                  devPerDay: settings.devPerDay * poolFactor,
+                  clientTouchPerDay: settings.clientTouchPerDay * poolFactor,
+                  cancelReturnPerDay: settings.cancelReturnPerDay * poolFactor,
+              },
+              intake,
+              personalLoad,
+          })
+        : null;
 
     const nameById = new Map<number | null, { name: string; tg: string }>();
     for (const o of orders) {
@@ -1032,6 +1343,124 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
             name: orphan ? `${o.managerName} (менеджер неактивен)` : o.managerName,
             tg: orphan ? settings.orphanTelegram : o.telegram,
         });
+    }
+
+    // --- РОП решает день ---
+    //
+    // К этому моменту код собрал факты: пул кандидатов, нормы, память о прошлых
+    // попытках. Дальше решает руководитель — что взять, в каком порядке, с какой
+    // целью и кого отложить. Код остаётся сторожем: работу не из пула не
+    // принимает, норму дня превысить не даёт, живую сделку отложить не
+    // позволяет, дату назад не сдвигает и хранит, почему каждая строка здесь.
+    //
+    // Не ответил, нет ключа, нет промпта — день остаётся тем, что собрали
+    // правила: план важнее того, кто его составил.
+    const chiefAdvice = new Map<string, TaskAdviceLine>();
+    const chiefNotes = new Map<number | null, string>();
+    const chiefPostpone: ChiefResult['postpone'] = [];
+    const chiefLog: string[] = [];
+    if (pool) {
+        // План, мотивация, итоги недели, отпуска и регламенты — один снимок на
+        // прогон: по менеджерам в нём меняется только выборка.
+        const shared = await loadChiefShared(today, settings).catch(() => null);
+        for (const [managerId, candidates] of Array.from(pool.entries())) {
+            if (candidates.length === 0) continue;
+            // Заказы без менеджера уходят владельцу отдельным блоком: решать за
+            // него день некому и не за кого.
+            if (managerId === null) continue;
+            // Платим за решение только по тем, кому план вообще уходит.
+            if (settings.planManagerIds.length > 0 && !settings.planManagerIds.includes(managerId)) continue;
+
+            const own = ownTasks(candidates);
+            const cap = dayCapacity({
+                managerId,
+                t: settings,
+                ownCount: own.length,
+                intakeByManager: intake,
+                loadByManager: personalLoad,
+            });
+            const limits = {
+                live: cap.room,
+                // Работа вдолгую идёт сверх дневного лимита малой дозой, а у
+                // менеджера с сухим портфелем добирает день до нормы — тем же
+                // правилом, по которому её даёт код.
+                longPlay: longPlayRoom({
+                    cap,
+                    ownCount: own.length,
+                    base: settings.devPerDay + settings.clientTouchPerDay,
+                }),
+                minAlways: settings.minAlways,
+                maxPostponeDays: settings.chiefMaxPostponeDays,
+            };
+            const who = nameById.get(managerId)?.name ?? `менеджер ${managerId ?? '—'}`;
+            const memory = await loadTaskMemory(
+                candidates.map((t) => t.orderId),
+                { today, days: settings.chiefMemoryDays },
+            ).catch(() => new Map());
+
+            const decided = await decideDay({
+                managerName: who,
+                today,
+                pool: candidates,
+                memory,
+                capacity: cap,
+                limits,
+                context: shared
+                    ? chiefContextFor({ managerId, today, shared, absences, nameById })
+                    : undefined,
+            });
+            if (!decided) {
+                chiefLog.push(`${who}: РОП не ответил, день по правилам`);
+                continue;
+            }
+
+            const result = applyChiefDecision({ pool: candidates, decision: decided.decision, limits });
+            if (!opts.dryRun) {
+                await logChiefDecision({
+                    today,
+                    managerId,
+                    poolSize: candidates.length,
+                    model: decided.model,
+                    decision: decided.decision,
+                    result,
+                    applied: !settings.chiefShadow,
+                });
+            }
+            chiefLog.push(
+                `${who}: из ${candidates.length} взял ${result.tasks.length}`
+                    + (result.postpone.length > 0 ? `, отложил ${result.postpone.length}` : '')
+                    + (result.violations.length > 0 ? ` (сторожа: ${result.violations.join('; ')})` : '')
+                    + (settings.chiefShadow ? ' — теневой режим, людям ушёл план по правилам' : ''),
+            );
+
+            // Теневой режим: решение записано в журнал, а день людям уходит по
+            // правилам. Так два решения сравниваются на живых данных, ничем не
+            // рискуя.
+            if (settings.chiefShadow) continue;
+
+            plan.set(managerId, result.tasks);
+            for (const t of result.tasks) {
+                const a = result.assignments.get(taskKey(t));
+                if (!a) continue;
+                chiefAdvice.set(`${t.orderId}:${t.reasonCode}`, {
+                    action: a.action,
+                    // «Почему» в задании РОПа заменено целью и вопросом: факт о
+                    // заказе и так стоит строкой выше.
+                    why: '',
+                    offer: '',
+                    goal: a.goal,
+                    ask: a.ask,
+                });
+            }
+            if (result.note) chiefNotes.set(managerId, result.note);
+            chiefPostpone.push(...result.postpone);
+        }
+
+        // Ритм общения двигаем одним проходом после всех решений — тем же путём,
+        // которым его двигает услышанный в разговоре отказ.
+        if (chiefPostpone.length > 0 && !opts.dryRun && !settings.chiefShadow) {
+            await applyChiefPostpones(chiefPostpone, today).catch(() => []);
+        }
     }
 
     const preview: string[] = [];
@@ -1047,6 +1476,13 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     for (const [managerId, tasks] of Array.from(plan.entries())) {
         if (tasks.length === 0) continue;
         if (settings.planManagerIds.length > 0 && (managerId === null || !settings.planManagerIds.includes(managerId))) {
+            continue;
+        }
+        // В отпуске плана нет. Это не решение РОПа, а факт: человека нет на
+        // работе, и список задач ему ни сделать, ни прочитать.
+        const away = absenceOn(absences, managerId, today);
+        if (away) {
+            preview.push(`${nameById.get(managerId)?.name ?? managerId}: в отпуске до ${away.to.split('-').reverse().join('.')}, плана нет`);
             continue;
         }
         const who = nameById.get(managerId) ?? { name: 'без менеджера', tg: '' };
@@ -1066,7 +1502,7 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     // Идём по одной задаче за раз, а не всеми сразу: рассылка не горит, а
     // полсотни одновременных запросов к модели упираются в её лимиты и роняют
     // весь утренний прогон ради подсказки к нему.
-    const advices = new Map<string, Awaited<ReturnType<typeof adviseTask>>>();
+    const advices = new Map<string, TaskAdviceLine>(chiefAdvice);
     if (settings.taskAdviceEnabled) {
         for (const bucket of Array.from(byRecipient.values())) {
             for (const t of bucket.tasks) {
@@ -1090,15 +1526,21 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
               }).catch(() => null)
             : null;
 
-        const morningText = formatMorning(
-            { managerId: bucket.managerId, managerName: bucket.name, telegramUsername: bucket.tg, tasks: bucket.tasks },
-            CRM_BASE,
-            {
-                greeting: written?.greeting || settings.morningGreeting,
-                farewell: written?.farewell || settings.morningFarewell,
-                date: new Date(today),
-                advices,
-            },
+        const morningText = signed(
+            formatMorning(
+                { managerId: bucket.managerId, managerName: bucket.name, telegramUsername: bucket.tg, tasks: bucket.tasks },
+                CRM_BASE,
+                {
+                    // Записка РОПа про день идёт сразу за приветствием: это его
+                    // слова о том, на чём сегодня держать внимание.
+                    greeting: [written?.greeting || settings.morningGreeting, chiefNotes.get(bucket.managerId)]
+                        .filter(Boolean)
+                        .join('\n\n'),
+                    farewell: written?.farewell || settings.morningFarewell,
+                    date: new Date(today),
+                    advices,
+                },
+            ),
         );
         preview.push(morningText);
 
@@ -1282,6 +1724,9 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         date: today,
         managers: preview.length,
         tasks: rows.length,
+        // Что решил ИИ-РОП и что срезали сторожа: видно в ответе крона и в
+        // теневом режиме, где план людям уходит всё ещё по правилам.
+        chief: chiefLog,
         crmSet,
         notesWritten,
         notesSkipped,
@@ -1300,12 +1745,6 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
  * (plan_date, order_id). Заказ ключуем номером заказа, касание — менеджером и
  * клиентом: это и есть «одна и та же работа» в пределах дня.
  */
-function taskKey(t: Task): string {
-    return Number(t.orderId) > 0
-        ? `order:${Number(t.orderId)}`
-        : `client:${t.managerId ?? '-'}:${String(t.client ?? '').trim().toLowerCase()}`;
-}
-
 function taskRow(date: string, t: Task) {
     return {
         plan_date: date,
@@ -1632,6 +2071,20 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         const review =
             managerId === null ? null : await reviewCallDay(today, String(managerId), w.name).catch(() => null);
 
+        // Клиент сказал, что потребности нет: РОП сам ставит дату следующего
+        // контакта, иначе задача по нему вернётся завтра утром (доработка №77).
+        const refusalText = formatRefusals(
+            settings.refusalRule && review?.refusals?.length
+                ? await applyRefusals({
+                      refusals: review.refusals,
+                      today,
+                      seasonDays: settings.refusalSeasonDays,
+                      yearDays: settings.refusalYearDays,
+                      dryRun: opts.dryRun,
+                  }).catch(() => [])
+                : [],
+        );
+
         if (call) {
             ownerRows.push({
                 managerName: w.name,
@@ -1649,7 +2102,8 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         const contactsText = contacts ? formatContactDates(contacts, settings.dailyTarget) : null;
 
         preview.push(
-            call
+            signed(
+                call
                 ? `${own}\n\n${formatCallDay({
                       calls: Number(call.calls_total),
                       // Подтверждённые расшифровкой, а не «дольше 20 секунд».
@@ -1667,8 +2121,9 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
                       avgMinutes: base ? Number(base.avg_minutes) : null,
                       targetMinutes: settings.talkMinutesTarget,
                       targetTalks: settings.talksTarget,
-                  })}${review?.text ? `\n\n${review.text}` : ''}${contactsText ? `\n\n${contactsText}` : ''}`
-                : `${own}${contactsText ? `\n\n${contactsText}` : ''}`,
+                  })}${review?.text ? `\n\n${review.text}` : ''}${refusalText ? `\n\n${refusalText}` : ''}${contactsText ? `\n\n${contactsText}` : ''}`
+                : `${own}${refusalText ? `\n\n${refusalText}` : ''}${contactsText ? `\n\n${contactsText}` : ''}`,
+            ),
         );
     }
 
@@ -1708,6 +2163,18 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         const review = settings.reviewCalls
             ? await reviewCallDay(today, String(managerId), name).catch(() => null)
             : null;
+
+        // Личного сообщения такому менеджеру не идёт (задач из плана у него не
+        // было), но услышанный отказ всё равно должен снять клиента с ритма.
+        if (settings.refusalRule && review?.refusals?.length) {
+            await applyRefusals({
+                refusals: review.refusals,
+                today,
+                seasonDays: settings.refusalSeasonDays,
+                yearDays: settings.refusalYearDays,
+                dryRun: opts.dryRun,
+            }).catch(() => []);
+        }
         ownerRows.push({
             managerName: name,
             tasksTotal: 0,

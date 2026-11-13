@@ -48,7 +48,7 @@ async function main() {
     const rule = cfg.get('tender_duplicate_rule') as TenderDuplicateRule;
     const notOur = cfg.get('not_our_product_rule') as NotOurProductRule;
     const reasonField: string = cfg.get('cancel_reason_field').code;
-    const reqStatus: string = cfg.get('request_duplicate_rule').duplicate_status;
+    const reqStatuses: string[] = cfg.get('request_duplicate_rule').duplicate_statuses;
     const excludedStatuses: string[] = cfg.get('conversion_excluded_statuses');
     const sourceExclusions: string[] = cfg.get('source_exclusions');
     const closing: string = cfg.get('closing_status').code;
@@ -108,7 +108,7 @@ async function main() {
     // Существование эталонов для «дублей заявки» (там достаточно факта наличия заказа).
     const reqRefNumbers = new Set<string>();
     for (const o of all) {
-        if (String(o.status ?? '') !== reqStatus) continue;
+        if (!reqStatuses.includes(String(o.status ?? ''))) continue;
         const num = extractReferencedNumber(o.raw_payload?.managerComment);
         if (num) reqRefNumbers.add(num);
     }
@@ -135,14 +135,14 @@ async function main() {
             continue;
         }
         if (!o.manager_id) continue;
-        if (st === reqStatus) {
+        if (reqStatuses.includes(st)) {
             // Ветка «дубль заявки» — правило прежнее, но в знаменателе учитывать надо
             // одинаково с RPC, иначе итог не сойдётся.
             const num = extractReferencedNumber(o.raw_payload?.managerComment);
             const v = evaluateRequestDuplicate(
                 { status: st, managerComment: o.raw_payload?.managerComment ?? null },
                 num ? refExists.has(num) : false,
-                { duplicate_status: reqStatus },
+                { duplicate_statuses: reqStatuses },
             );
             if (!v.excluded) tsDenominator++;
             continue;
@@ -204,7 +204,7 @@ async function main() {
 
     const rpc = await client.query(
         `select sum(incoming)::int total from public.salary_incoming_counts($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-        [START, END, sourceExclusions, rule.duplicate_status, rule.reference_statuses, reqStatus,
+        [START, END, sourceExclusions, rule.duplicate_status, rule.reference_statuses, reqStatuses,
          excludedStatuses, rule.duplicate_cancel_reasons, notOur.statuses, notOur.cancel_reasons, reasonField, closing],
     );
 

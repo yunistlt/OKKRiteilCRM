@@ -241,6 +241,22 @@ export function taskFor(order: PresaleOrder, today: string, t: Thresholds): Task
         weight: order.amount * (WIN_RATE[order.statusCode] ?? 0.05),
     });
 
+    // Дата контакта в будущем — это решение человека: клиент попросил вернуться
+    // в ноябре, менеджер так и записал. Такой заказ мы не трогаем ничем: ни
+    // «счёт на оплате», ни «сделка стоит», ни «крупный молчит» здесь не
+    // применимы — он не стоит, он ждёт назначенного срока.
+    //
+    // Инцидент 01.09.2026: заказ №53971 с датой 20.11 попал в план по правилу
+    // «согласование без движения», и простановка даты затёрла ноябрь сегодняшним
+    // числом. Стёрлась договорённость с клиентом, а менеджер получил заказ
+    // обратно на два месяца раньше срока.
+    //
+    // Ирина Гордеева 03.11.2026 (доработка №77): «опять стоит задача №1 по
+    // заказу 54013, хотя был обработан». Охрана стояла ниже правила «счёт
+    // выставлен, оплаты нет», и у заказов на оплате будущая дата не защищала
+    // ничего: созвон назначен на пятницу, а задача приходила каждое утро.
+    if (contactIn !== null && contactIn < 0) return null;
+
     if (order.statusCode === 'prepayed' && (silence ?? 0) >= t.invoiceStaleDays) {
         return make('invoice_stale', `счёт выставлен, оплаты нет ${days(silence ?? 0)} — узнать, когда платят`);
     }
@@ -258,17 +274,6 @@ export function taskFor(order: PresaleOrder, today: string, t: Thresholds): Task
         return make('contact_today', 'сегодня по плану звонок клиенту');
     }
 
-    // Дата контакта в будущем — это решение человека: клиент попросил вернуться
-    // в ноябре, менеджер так и записал. Такой заказ мы не трогаем ничем: ни
-    // «сделка стоит», ни «крупный молчит» здесь не применимы — он не стоит, он
-    // ждёт назначенного срока.
-    //
-    // Инцидент 01.09.2026: заказ №53971 с датой 20.11 попал в план по правилу
-    // «согласование без движения», и простановка даты затёрла ноябрь сегодняшним
-    // числом. Стёрлась договорённость с клиентом, а менеджер получил заказ
-    // обратно на два месяца раньше срока.
-    if (contactIn !== null && contactIn < 0) return null;
-
     if (
         ['na-soglasovanii', 'raschet', 'availability', 'v-proscete', 'ozidanie-tz'].includes(order.statusCode) &&
         (silence ?? 0) >= t.dealStaleDays
@@ -283,22 +288,15 @@ export function taskFor(order: PresaleOrder, today: string, t: Thresholds): Task
     return null;
 }
 
-/** План на день: по задаче на заказ, не больше N на менеджера, дорогое — первым. */
-export function buildPlan(
-    orders: PresaleOrder[],
-    today: string,
-    t: Thresholds,
-    /** Сколько новых заявок в день приходит менеджеру — их разбирают до плана. */
-    intakeByManager: Map<number | null, number> = new Map(),
-    /**
-     * Личный множитель нагрузки поверх общего.
-     *
-     * Общий коэффициент поднимал нагрузку всему отделу сразу, а люди разные: у
-     * одной день не заполнен, у другой четырнадцать своих звонков. Пусто —
-     * значит как у отдела.
-     */
-    loadByManager: Map<number | null, number> = new Map(),
-): Map<number | null, Task[]> {
+/**
+ * Кандидаты на день: по задаче на заказ, отсортированные по приоритету.
+ *
+ * Отбор отделён от дозировки, потому что решающих стало двое. Код режет список
+ * нормой дня (buildPlan ниже), а ИИ-РОП получает весь пул и выбирает сам
+ * (lib/sales-rop/chief.ts). Кандидаты у них одни и те же: иначе два решения
+ * нельзя сравнить, а сравнивать их придётся каждый день.
+ */
+export function buildCandidates(orders: PresaleOrder[], today: string, t: Thresholds): Map<number | null, Task[]> {
     const byManager = new Map<number | null, Task[]>();
 
     for (const order of orders) {
@@ -309,27 +307,96 @@ export function buildPlan(
         byManager.set(task.managerId, list);
     }
 
-    for (const [managerId, list] of Array.from(byManager.entries())) {
-        list.sort(compareByPriority);
+    for (const list of Array.from(byManager.values())) list.sort(compareByPriority);
+    return byManager;
+}
 
+/** Сколько работы посильно менеджеру сегодня. */
+export type DayCapacity = {
+    /** Норма дня с личным множителем. */
+    dailyTarget: number;
+    /** Потолок того, что бот добавляет сверх собственного плана менеджера. */
+    perManager: number;
+    /** Сколько новых заявок придёт — место под них резервируется первым. */
+    intake: number;
+    /** Сколько наших задач влезает после собственных звонков и заявок. */
+    room: number;
+};
+
+/**
+ * Норма дня одного человека.
+ *
+ * Общий коэффициент поднимал нагрузку всему отделу сразу, а люди разные: у
+ * одной день не заполнен, у другой четырнадцать своих звонков. Пусто — значит
+ * как у отдела. Границы те же, что у общего: десятикратная нагрузка на одного
+ * человека — это не решение руководителя, а опечатка.
+ *
+ * Считается в одном месте: по этой норме и код режет список, и ИИ-РОП получает
+ * предел, выше которого его решение не принимается.
+ */
+export function dayCapacity(params: {
+    managerId: number | null;
+    t: Thresholds;
+    /** Собственные звонки менеджера на сегодня: они норму занимают, но не режутся. */
+    ownCount: number;
+    intakeByManager?: Map<number | null, number>;
+    loadByManager?: Map<number | null, number>;
+}): DayCapacity {
+    const { t, managerId, ownCount } = params;
+    // Заявки приходят каждый день и ждать не могут, поэтому место под них
+    // резервируется до всего остального.
+    const intake = Math.round(params.intakeByManager?.get(managerId) ?? 0);
+    const personal = Math.min(2, Math.max(0.5, params.loadByManager?.get(managerId) ?? 1));
+    const dailyTarget = Math.max(1, Math.round(t.dailyTarget * personal));
+    const perManager = Math.max(1, Math.round(t.tasksPerManager * personal));
+    const budget = dailyTarget - ownCount - intake;
+    return { dailyTarget, perManager, intake, room: Math.max(t.minAlways, Math.min(perManager, budget)) };
+}
+
+/** Задачи, которые менеджер назначил себе сам: лимитом они не режутся никогда. */
+export function ownTasks(list: Task[]): Task[] {
+    return list.filter((x: Task) => x.reasonCode === 'contact_today');
+}
+
+/** Работа вдолгую: развитие, реактивация, отношения. */
+export function longPlayTasks(list: Task[]): Task[] {
+    return list.filter(
+        (x: Task) =>
+            x.reasonCode === 'development' || x.reasonCode === 'reactivation' || x.reasonCode === 'client_touch',
+    );
+}
+
+/**
+ * Сколько работы вдолгую даём в день.
+ *
+ * Обычно это малая доза сверх плана. Но у менеджера с сухим портфелем день
+ * нечем наполнить, и тогда работа вдолгую добирает его до нормы — ровно так же,
+ * как это делает код правил. Иначе один путь дал бы человеку девятнадцать дел,
+ * а другой пять, и состав дня зависел бы от того, кто его собрал.
+ */
+export function longPlayRoom(params: { cap: DayCapacity; ownCount: number; base: number }): number {
+    return Math.max(params.base, params.cap.dailyTarget - params.ownCount - params.cap.intake);
+}
+
+/** План на день: по задаче на заказ, не больше N на менеджера, дорогое — первым. */
+export function buildPlan(
+    orders: PresaleOrder[],
+    today: string,
+    t: Thresholds,
+    /** Сколько новых заявок в день приходит менеджеру — их разбирают до плана. */
+    intakeByManager: Map<number | null, number> = new Map(),
+    /** Личный множитель нагрузки поверх общего. */
+    loadByManager: Map<number | null, number> = new Map(),
+): Map<number | null, Task[]> {
+    const byManager = buildCandidates(orders, today, t);
+
+    for (const [managerId, list] of Array.from(byManager.entries())) {
         // То, что менеджер сам назначил на сегодня, не режется лимитом никогда.
         // Это его собственный план из CRM, и если наш отбор его вытеснит, человек
         // решит, что работать надо только по присланному, — и свои договорённости
         // с клиентами пропустит.
-        const own = list.filter((x: Task) => x.reasonCode === 'contact_today');
-
-        // Сколько наших задач добавить: остаток от нормы дня после собственных
-        // звонков и разбора новых заявок. Заявки приходят каждый день и ждать не
-        // могут, поэтому место под них резервируется до всего остального.
-        const intake = Math.round(intakeByManager.get(managerId) ?? 0);
-        // Нормы уже умножены на общий коэффициент отдела; личный идёт поверх.
-        // Границы те же, что у общего: десятикратная нагрузка на одного
-        // человека — это не решение руководителя, а опечатка.
-        const personal = Math.min(2, Math.max(0.5, loadByManager.get(managerId) ?? 1));
-        const dailyTarget = Math.max(1, Math.round(t.dailyTarget * personal));
-        const perManager = Math.max(1, Math.round(t.tasksPerManager * personal));
-        const budget = dailyTarget - own.length - intake;
-        const room = Math.max(t.minAlways, Math.min(perManager, budget));
+        const own = ownTasks(list);
+        const cap = dayCapacity({ managerId, t, ownCount: own.length, intakeByManager, loadByManager });
 
         const live = list
             .filter(
@@ -340,16 +407,11 @@ export function buildPlan(
                     x.reasonCode !== 'client_touch' &&
                     x.reasonCode !== 'contact_today',
             )
-            .slice(0, room);
+            .slice(0, cap.room);
         // Развитие идёт сверх дневного лимита: это работа вдолгую, и если её
         // резать первой, она не делается никогда — а цель в 300 постоянных
         // клиентов достигается только ею.
-        const dev = list.filter(
-            (x: Task) =>
-                x.reasonCode === 'development' ||
-                x.reasonCode === 'reactivation' ||
-                x.reasonCode === 'client_touch',
-        );
+        const dev = longPlayTasks(list);
 
         // Остывшими добираем день до нормы. У одного менеджера четырнадцать
         // своих звонков и добавлять нечего, у другого четыре — и его день
@@ -357,7 +419,7 @@ export function buildPlan(
         // такая же потеря, как перегруз.
         //
         // Дорогое вперёд: если разбирать остывшую базу, то начиная с крупных.
-        const shortfall = Math.max(0, dailyTarget - own.length - intake - live.length);
+        const shortfall = Math.max(0, cap.dailyTarget - own.length - cap.intake - live.length);
 
         // День уже полон собственными звонками и разбором заявок — остывших не
         // добавляем вовсе. Норма существует, чтобы её соблюдать в обе стороны:
@@ -375,4 +437,17 @@ export function buildPlan(
     }
 
     return byManager;
+}
+
+/**
+ * Ключ работы на день: один заказ — одна строка, клиент без заказа — по имени.
+ *
+ * Лежит здесь, а не рядом с записью в базу, потому что по этому же ключу
+ * ИИ-РОП называет выбранные задачи, а код проверяет, что он не выдумал работу,
+ * которой в пуле не было.
+ */
+export function taskKey(t: Task): string {
+    return Number(t.orderId) > 0
+        ? `order:${Number(t.orderId)}`
+        : `client:${t.managerId ?? '-'}:${String(t.client ?? '').trim().toLowerCase()}`;
 }

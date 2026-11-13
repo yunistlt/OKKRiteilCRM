@@ -17,6 +17,7 @@ import { supabase } from '@/utils/supabase';
 import { buildOrderContext, renderTemplate } from '@/lib/templates/render';
 import { writeLetter } from '@/lib/templates/ai-letter';
 import { sendOrderEmail, stripOrderThreadTag } from '@/lib/email';
+import { senderSignature, withSignature } from '@/lib/templates/signature';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -119,6 +120,20 @@ export async function POST(request: Request) {
                 results.push({ number, ok: false, reason: 'письмо не собралось' });
                 continue;
             }
+
+            /**
+             * Подпись и кнопка каталога — как в письме по одному заказу.
+             *
+             * Рассылка уходила вовсе без подписи: клиент получал текст без
+             * имени и телефона, и было непонятно, кто написал (доработка 81,
+             * 05.11.2026). Подписывает того, КТО ШЛЁТ: по отгрузкам пишет
+             * логист, и звонить клиент должен ему, а не менеджеру заказа.
+             */
+            const signature = await senderSignature(
+                session.user?.retail_crm_manager_id ?? null,
+                order.manager_id ?? order.managerId ?? null,
+            );
+            letterHtml = withSignature(letterHtml, signature, true);
 
             if (preview) {
                 previews.push({

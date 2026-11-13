@@ -53,7 +53,11 @@ export async function GET() {
         const map = (rows: any[] | null) => (rows ?? []).map((r) => ({ code: r.item_code, name: r.item_name }));
         return NextResponse.json({
             statuses: statuses
-                .map((row) => ({ code: row.code, name: row.name }))
+                // Снятые с работы статусы в списке нужны (ими подписаны старые
+                // заказы, и правила на закрытые периоды обязаны их видеть), но
+                // подписаны: иначе два «Дубля заявки» — старый и наш — в списке
+                // неразличимы.
+                .map((row) => ({ code: row.code, name: row.active ? row.name : `${row.name} (снят с работы)` }))
                 .sort((a, b) => a.name.localeCompare(b.name, 'ru')),
             orderMethods: map(methodsRes.data),
             categories: map(catsRes.data),

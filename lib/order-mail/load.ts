@@ -1,6 +1,6 @@
 import { supabase } from '@/utils/supabase';
+import { htmlToPlainText } from '@/lib/email/html-text';
 import { buildThreads, parseReferences, type MailMessage, type MailThread } from './thread';
-import { htmlToPlainText } from '@/lib/html-entities';
 
 /**
  * Письма заказа из всех трёх источников — и сразу тредами.
@@ -15,18 +15,10 @@ import { htmlToPlainText } from '@/lib/html-entities';
  * `outgoing_emails` — одно и то же письмо дважды. Склеиваем по `message_id`.
  */
 
-/**
- * Текст письма из HTML — общими правилами проекта (`lib/html-entities.ts`).
- * Своя копия знала шесть названий кодов и ни одного числового, поэтому письма
- * от отправителей вроде Ruselt читались как «&#1047;&#1076;&#1088;…»
- * (доработка №91, Ирина Гордеева 10.11.2026, заказ 900475).
- */
-const textFromHtml = (html: unknown): string => htmlToPlainText(html);
-
 const bodyOf = (row: { body_text?: unknown; body_html?: unknown }): string | null => {
     const plain = String(row.body_text ?? '').trim();
     if (plain) return plain;
-    const fromHtml = textFromHtml(row.body_html);
+    const fromHtml = htmlToPlainText(row.body_html);
     return fromHtml || null;
 };
 

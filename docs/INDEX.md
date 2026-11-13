@@ -30,7 +30,7 @@
 | Модуль | Статус | Основные документы | Ответственный |
 |--------|--------|-----------------|---------|
 | **ОКК (контроль качества)** | 🟢 Production | [docs/okk/OVERVIEW.md](okk/OVERVIEW.md) | Team ОКК |
-| **ОКК Консультант (Семён)** | 🟢 Production | [docs/okk-consultant/](okk-consultant/) | Team ОКК |
+| **ОКК Консультант (Семён)** | 🟢 Production | [docs/okk-consultant/OVERVIEW.md](okk-consultant/OVERVIEW.md) | Team ОКК |
 | **Юридические ИИ (Лев, Дарья, Борис, Григорий)** | 🟡 4 спринта | [docs/legal-ai/](legal-ai/) | Team Legal |
 | **Корпоративный мессенджер** | 🟡 92% ready | [docs/messenger/](messenger/) | Team Messenger |
 | **Lead Catcher (Елена)** | 🟢 Реализован | [docs/lead-catcher/](lead-catcher/) | Team Sales |
@@ -66,6 +66,7 @@
 - [transcription/CHECKLIST.md](transcription/CHECKLIST.md) — Транскрибация (✅ готово)
 
 ### 📖 Документация и справочники
+- [sales-rop/OVERVIEW.md](sales-rop/OVERVIEW.md) — Бот-РОП Роман: как собирается день (as-built)
 - [knowledge-base/DOCS.md](knowledge-base/DOCS.md) — Документация VoC KB
 - [messenger/ACCESS_MODEL.md](messenger/ACCESS_MODEL.md) — Модель доступа
 - [ai-team/STAFF_ROLES.md](ai-team/STAFF_ROLES.md) — Штатное расписание ИИ-команды
@@ -130,7 +131,7 @@
 
 Начните отсюда:
 1. 📖 [ai-team/STAFF_ROLES.md](ai-team/STAFF_ROLES.md) — познакомьтесь с командой ИИ
-2. 🎯 [okk-consultant/README.md](okk-consultant/README.md) — обзор консультанта
+2. 🎯 [okk-consultant/OVERVIEW.md](okk-consultant/OVERVIEW.md) — Семён как сделано (as-built)
 3. 📚 Выберите свой модуль из таблицы выше
 
 ---

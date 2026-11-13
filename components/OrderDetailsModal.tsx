@@ -19,8 +19,11 @@ import { clientTime } from '@/lib/own-crm/phone-timezone';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { STANDARD_CONTRACT_TERMS } from '@/lib/legal/contract-terms';
 import { priceSourceLabel } from '@/lib/format';
-import { itemTotalWithDiscount, orderTotals } from '@/lib/own-crm/discount';
+import { itemPriceWithDiscount, itemTotalWithDiscount, orderTotals } from '@/lib/own-crm/discount';
 import { uniquePhones } from '@/lib/own-crm/phones';
+
+/** Где помним, что менеджер свернул блок расчётов из калькулятора. */
+const CALC_HIDDEN_KEY = 'order-card:calc-hidden';
 import { useBreadcrumbs } from '@/components/ui/BreadcrumbsContext';
 import { siteSearchUrl } from '@/lib/own-crm/site-link';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
@@ -502,6 +505,31 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
      */
     const [calcItems, setCalcItems] = useState<Array<{ type: string; id: string; title: string; price: number; quantity: number; weightKg: number | null; author: string | null; createdAt: string | null; params: string; inOrder: boolean; site: { publishedUrl: string; productId: string | null; name: string | null; url: string | null } | null }>>([]);
     const [calcNote, setCalcNote] = useState<string | null>(null);
+    /**
+     * Свёрнут ли блок расчётов. Ирина Гордеева 28.10.2026 (доработка №61):
+     * «можно добавить кнопку "скрыть" расчёт из калькулятора? в корзину
+     * добавлено и занимает много места». Выбор запоминаем на этом компьютере —
+     * иначе сворачивать пришлось бы в каждом заказе заново.
+     */
+    const [calcHidden, setCalcHidden] = useState(false);
+    useEffect(() => {
+        try {
+            setCalcHidden(localStorage.getItem(CALC_HIDDEN_KEY) === '1');
+        } catch {
+            // Приватное окно или запрет на хранение — блок просто останется раскрытым.
+        }
+    }, []);
+    const toggleCalc = () => {
+        setCalcHidden((v) => {
+            const next = !v;
+            try {
+                localStorage.setItem(CALC_HIDDEN_KEY, next ? '1' : '0');
+            } catch {
+                // Не сохранилось — на этой сессии всё равно работает.
+            }
+            return next;
+        });
+    };
     const [calcTaking, setCalcTaking] = useState<string | null>(null);
     // Что ответил каталог: «не подключён», «не ответил», «цены из витрины».
     // Молчать нельзя — пустой список человек читает как «товара нет».
@@ -1489,11 +1517,25 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                         {(
                             <div className="border-b border-gray-200 px-6 py-4">
                                 <div className="mb-2 flex items-baseline justify-between gap-3">
-                                    <h4 className="text-sm font-semibold text-gray-900">Расчёты из калькулятора</h4>
-                                    <span className="text-xs text-gray-500">по номеру заказа {data?.order?.number ?? orderId}</span>
+                                    <h4 className="text-sm font-semibold text-gray-900">
+                                        Расчёты из калькулятора
+                                        {calcHidden && calcItems.length > 0 && (
+                                            <span className="ml-2 font-normal text-gray-500">· {calcItems.length}</span>
+                                        )}
+                                    </h4>
+                                    <div className="flex items-baseline gap-3">
+                                        <span className="text-xs text-gray-500">по номеру заказа {data?.order?.number ?? orderId}</span>
+                                        <button
+                                            type="button"
+                                            onClick={toggleCalc}
+                                            className="text-xs font-semibold text-blue-700 hover:underline"
+                                        >
+                                            {calcHidden ? 'Показать' : 'Скрыть'}
+                                        </button>
+                                    </div>
                                 </div>
-                                {calcNote && <p className="mb-2 text-xs text-amber-800">{calcNote}</p>}
-                                {calcItems.map((item) => (
+                                {!calcHidden && calcNote && <p className="mb-2 text-xs text-amber-800">{calcNote}</p>}
+                                {!calcHidden && calcItems.map((item) => (
                                     <div key={`${item.type}:${item.id}`} className="flex flex-wrap items-center gap-3 border border-gray-200 px-3 py-2 text-sm">
                                         <div className="min-w-0 flex-1">
                                             <div className="text-gray-900">{item.title}</div>
@@ -1548,7 +1590,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                         )}
                                     </div>
                                 ))}
-                                {calcItems.length === 0 && !calcNote && (
+                                {!calcHidden && calcItems.length === 0 && !calcNote && (
                                     <p className="text-xs text-gray-500">
                                         Расчётов с этим номером заказа нет. Посчитайте изделие в калькуляторе
                                         «Бот-Инженер» и впишите там в поле «Номер заказа» номер{' '}
@@ -1682,6 +1724,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                         {/* Под рубли и проценты сразу: в 8 рем поле
                                             скидки схлопывалось (12.10.2026). */}
                                         <th className="w-48 px-3 py-3 text-right">Скидка</th>
+                                        {/* Цена одной штуки со скидкой: её считали
+                                            на бумажке, а клиенты переспрашивали
+                                            (Евгения Матвеева, Ирина Гордеева
+                                            05.11.2026). */}
+                                        <th className="w-32 px-3 py-3 text-right">Со скидкой за 1 шт.</th>
                                         <th className="w-36 px-3 py-3 text-right">Стоимость</th>
                                         <th className="w-10 px-3 py-3"></th>
                                     </tr>
@@ -1689,7 +1736,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 <tbody className="divide-y">
                                     {draftItems.length === 0 ? (
                                         <tr>
-                                            <td colSpan={8} className="py-10 text-center text-gray-500">
+                                            <td colSpan={9} className="py-10 text-center text-gray-500">
                                                 Позиций нет — найдите товар на сайте или добавьте руками.
                                             </td>
                                         </tr>
@@ -1816,6 +1863,17 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                                     />
                                                     <span className="text-xs text-gray-400">%</span>
                                                 </div>
+                                            </td>
+                                            {/* Считает тот же модуль, что и стоимость
+                                                строки, КП и счёт: рубли и процент
+                                                скидки складываются. */}
+                                            <td className="px-3 py-2 text-right text-gray-900">
+                                                {formatCurrency(itemPriceWithDiscount({
+                                                    price: row.price,
+                                                    quantity: row.quantity,
+                                                    discountAmount: row.discount,
+                                                    discountPercent: row.discountPercent,
+                                                }))}
                                             </td>
                                             <td className="px-3 py-2 text-right font-semibold text-gray-900">
                                                 {formatCurrency(itemTotalWithDiscount({

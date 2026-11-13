@@ -8,16 +8,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
-
-type Item = {
-    id: string;
-    kind: 'mail' | 'task' | 'call';
-    at: string;
-    text: string;
-    note: string | null;
-    orderNumber: string | null;
-    read: boolean;
-};
+import { itemAccent, itemLabel, type NotificationItem as Item, type TaskSource } from '@/lib/notifications/items';
 
 const KINDS: Array<{ code: '' | Item['kind']; label: string }> = [
     { code: '', label: 'Все' },
@@ -26,11 +17,21 @@ const KINDS: Array<{ code: '' | Item['kind']; label: string }> = [
     { code: 'call', label: 'Звонки' },
 ];
 
-const KIND_LABEL: Record<Item['kind'], string> = { mail: 'Письмо', task: 'Задача', call: 'Звонок' };
+/**
+ * Отбор внутри вкладки «Задачи»: свои задачи отдельно от тех, что ставит сама
+ * система (просьба Елены Парфёновой 28.10.2026). Задачи коллег в этот отбор не
+ * попадают — они видны во «Всех».
+ */
+const TASK_SOURCES: Array<{ code: '' | TaskSource; label: string }> = [
+    { code: '', label: 'Все задачи' },
+    { code: 'mine', label: 'Мои' },
+    { code: 'system', label: 'Системные' },
+];
 
 export default function NotificationsClient() {
     const [items, setItems] = useState<Item[]>([]);
     const [kind, setKind] = useState<'' | Item['kind']>('');
+    const [taskSource, setTaskSource] = useState<'' | TaskSource>('');
     const [onlyUnread, setOnlyUnread] = useState(false);
     const [loading, setLoading] = useState(true);
 
@@ -61,6 +62,7 @@ export default function NotificationsClient() {
 
     const shown = items
         .filter((item) => (kind ? item.kind === kind : true))
+        .filter((item) => (kind === 'task' && taskSource ? item.taskSource === taskSource : true))
         .filter((item) => (onlyUnread ? !item.read : true));
 
     const unread = items.filter((item) => !item.read).length;
@@ -79,7 +81,7 @@ export default function NotificationsClient() {
                     <button
                         key={k.code || 'all'}
                         type="button"
-                        onClick={() => setKind(k.code)}
+                        onClick={() => { setKind(k.code); setTaskSource(''); }}
                         className={`px-3 py-1.5 text-sm font-semibold ${
                             kind === k.code ? 'bg-gray-900 text-white' : 'border border-gray-200 bg-white text-gray-700'
                         }`}
@@ -101,6 +103,25 @@ export default function NotificationsClient() {
                 </button>
             </div>
 
+            {kind === 'task' && (
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                    {TASK_SOURCES.map((t) => (
+                        <button
+                            key={t.code || 'all'}
+                            type="button"
+                            onClick={() => setTaskSource(t.code)}
+                            className={`px-3 py-1.5 text-sm ${
+                                taskSource === t.code
+                                    ? 'bg-amber-500 font-semibold text-white'
+                                    : 'border border-gray-200 bg-white text-gray-700'
+                            }`}
+                        >
+                            {t.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+
             {loading && <p className="text-sm text-gray-500">Загружаю…</p>}
             {!loading && shown.length === 0 && (
                 <p className="bg-white px-4 py-6 text-sm text-gray-500">Оповещений нет.</p>
@@ -111,10 +132,10 @@ export default function NotificationsClient() {
                     <div
                         key={item.id}
                         onClick={() => !item.read && markRead([item.id])}
-                        className={`cursor-pointer border-b border-gray-100 px-4 py-3 ${item.read ? 'bg-white' : 'bg-blue-50'}`}
+                        className={`cursor-pointer border-b border-gray-100 px-4 py-3 ${item.read ? 'bg-white' : 'bg-blue-50'} ${itemAccent(item)}`}
                     >
                         <div className="flex items-baseline justify-between gap-2 text-[11px] text-gray-500">
-                            <span>{KIND_LABEL[item.kind]}</span>
+                            <span className={item.taskSource === 'mine' ? 'font-semibold text-amber-700' : ''}>{itemLabel(item)}</span>
                             <span>{new Date(item.at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}</span>
                         </div>
                         <div className="mt-0.5 text-sm text-gray-900">{item.text}</div>

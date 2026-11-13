@@ -16,6 +16,7 @@ import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 import { recordOpenAiOk, recordOpenAiQuotaError } from '@/lib/openai-health';
+import { decodeHtmlEntities } from '@/lib/email/html-text';
 
 export const SECRETARY_PROMPT_KEY = 'email_secretary_classifier';
 
@@ -87,13 +88,14 @@ export function stripHtml(html?: string | null): string {
         .replace(/<br\s*\/?>/gi, '\n')
         .replace(/<\/(p|div|tr|li|h[1-6]|table)>/gi, '\n')
         .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/gi, ' ')
-        .replace(/&amp;/gi, '&')
-        .replace(/&lt;/gi, '<')
-        .replace(/&gt;/gi, '>')
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;|&rsquo;|&lsquo;/gi, "'")
-        .replace(/&[a-z#0-9]+;/gi, ' ')
+        // Сущности разбирает общий модуль: своим списком из шести штук мы
+        // выкидывали кириллицу, записанную числом (`&#1047;`), и модель читала
+        // письмо без слов (заказ 900475, 06.11.2026).
+        .replace(/&[a-z]+;/gi, (whole) => {
+            const decoded = decodeHtmlEntities(whole);
+            return decoded === whole ? ' ' : decoded;
+        })
+        .replace(/&#x?[0-9a-f]+;/gi, (whole) => decodeHtmlEntities(whole))
         .replace(/[^\S\n]+/g, ' ')
         .replace(/\n{3,}/g, '\n\n')
         .trim();

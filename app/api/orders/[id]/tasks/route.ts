@@ -81,7 +81,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             title: body.title,
             due_date: body.dueDate || null,
             due_time: body.dueTime || null,
+            // По имени своего автора не узнать: оно пишется текстом и у одного
+            // человека успело смениться с почты на фамилию. Пишем и того, кто
+            // поставил, и то, что задачу поставил человек, а не система.
+            source: 'manager',
             created_by: author,
+            created_by_user_id: String(session.user.id),
         })
         .select()
         .single();

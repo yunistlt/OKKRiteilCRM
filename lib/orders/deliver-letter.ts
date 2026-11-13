@@ -12,6 +12,7 @@ import { sendOrderEmail } from '@/lib/email';
 import { recordOrderEmailSend } from '@/lib/order-email-log';
 import { buildOrderDocumentPdf, loadOrderDocumentData } from '@/lib/own-crm/order-document-pdf';
 import { safeStorageSegment } from '@/lib/storage-path';
+import { isNoReplyAddress } from '@/lib/order-mail/recipients';
 
 /** Письмо отправить нельзя, и человеку надо сказать почему. */
 export class LetterProblem extends Error {
@@ -111,6 +112,21 @@ export async function nextThreadSeq(orderNumber: string): Promise<number> {
 
 /** Собрать вложения, отправить письмо и записать его в журнал. */
 export async function deliverOrderLetter(body: LetterToDeliver, actor: string | null) {
+    /**
+     * Письмо на ящик-автоответчик не доходит никуда, а менеджер видит
+     * «отправлено». Так ушёл ответ в треде уведомления сайта: получателем
+     * встал `noreply@webasyst.biz`, клиент не получил ничего (заказ 900454,
+     * 05.11.2026). Останавливаемся до отправки и называем адрес.
+     */
+    if (isNoReplyAddress(body.to)) {
+        throw new LetterProblem(
+            `${body.to} — служебный ящик уведомлений, письма он не принимает. `
+            + 'Поставьте в «Кому» почту клиента из заказа.',
+        );
+    }
+    body.cc = (body.cc || []).filter((address) => !isNoReplyAddress(address));
+    body.bcc = (body.bcc || []).filter((address) => !isNoReplyAddress(address));
+
     const attachments = (body.attachments || []).map((file) => ({
         filename: file.filename,
         content: Buffer.from(file.contentBase64, 'base64'),

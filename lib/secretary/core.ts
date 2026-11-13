@@ -1,7 +1,7 @@
 // Логика AI-секретаря: поиск заказа по номеру, определение «чей клиент» по номеру
 // звонящего и распределение нового заказа по нагрузке.
 import { supabase } from '@/utils/supabase';
-import { normalizePhone } from '@/lib/phone-utils';
+import { findOrdersByPhone } from '@/lib/orders-by-phone';
 
 export interface FoundOrder {
     id: number;
@@ -80,26 +80,18 @@ async function managerRow(id: number | null | undefined) {
  * Чей клиент звонит. Порядок — владелец карточки клиента, затем менеджер последнего
  * заказа по этому номеру (закон «раздаём клиентами»: хозяин карточки главнее).
  * Телефон ищем в заказах: clients.phones заполнена у сотни карточек из двадцати тысяч,
- * живой источник номеров — сами заказы. Сравниваем по последним 7 цифрам
- * (orders.phone_tail7 / additional_phone_tail7) — это переживает +7/8, добавочные
- * в хвосте и разделители: у 864 заказов телефон записан как «+7-906-708-28-04»,
- * и поиск подстрокой их не находил.
+ * живой источник номеров — сами заказы. Сам поиск общий на всю систему
+ * (`lib/orders-by-phone.ts`): по хвосту из семи цифр, что переживает +7/8,
+ * добавочные и разделители.
  * Возвращаем только того, на кого разрешён перевод; иначе null — звонок идёт в очередь ОП.
  */
 export async function findOwnerByCallerPhone(phone: string): Promise<CallerOwner | null> {
-    const normalized = normalizePhone(phone);
-    if (!normalized) return null;
-    const suffix = normalized.slice(-7);
-    if (suffix.length < 7) return null;
+    const orders = await findOrdersByPhone(phone, {
+        columns: 'id, manager_id, customer, created_at',
+        limit: 10,
+    });
 
-    const { data: orders } = await supabase
-        .from('orders')
-        .select('id, manager_id, customer, created_at')
-        .or(`phone_tail7.eq.${suffix},additional_phone_tail7.eq.${suffix}`)
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-    const rows = (orders || []) as Array<{ manager_id: number | null; customer: { id?: number } | null }>;
+    const rows = orders as Array<{ manager_id: number | null; customer: { id?: number } | null }>;
     if (!rows.length) return null;
 
     // 1. Владелец карточки клиента последнего заказа.

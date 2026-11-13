@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { pickTier, round2 } from '@/lib/salary/blocks/tiers';
 import { tierLines, thresholdLine } from '@/lib/salary/blocks/tariff';
-import { fullFill, type BonusBlock } from '@/lib/salary/blocks/types';
+import { fullFill, type BlockOrderRef, type BonusBlock } from '@/lib/salary/blocks/types';
 
 // ============================================================================
 // Ядровые блоки (Фаза 1). В сумме под пресетом «Продавец» воспроизводят текущую
@@ -92,12 +92,32 @@ const premiaCategorii: BonusBlock<{ rows: { category: string; mode: 'sum' | 'pct
         const catName = (code: string) => ctx.categoryNames?.[code] ?? code;
         let amount = 0;
         const parts: string[] = [];
+        /**
+         * Заказы, из которых сложилась премия.
+         *
+         * Ирина Гордеева 30.10.2026 (доработка №68): «можно добавить номера
+         * заказов, чтобы было видно, какой именно заказ посчитала система?».
+         * В блоке стояло только «категория: 3×4 000 ₽» — проверить это нечем.
+         * Любое число должно раскладываться до исходных данных (закон).
+         */
+        const orders: BlockOrderRef[] = [];
         for (const r of p.rows) {
+            if (!r.category) continue;
+            const ofCategory = m.countedOrders.filter((o) => o.category === r.category);
             if (r.mode === 'sum') {
                 const cnt = m.countsByCategory[r.category] ?? 0;
                 if (cnt > 0) {
                     amount += cnt * r.value;
                     parts.push(`${catName(r.category)}: ${cnt}×${rub(r.value)}`);
+                    for (const o of ofCategory) {
+                        orders.push({
+                            id: o.orderId,
+                            number: o.number,
+                            clientName: o.clientName,
+                            note: catName(r.category),
+                            amount: r.value,
+                        });
+                    }
                 }
             } else {
                 const rev = m.revenueByCategory[r.category] ?? 0;
@@ -105,11 +125,22 @@ const premiaCategorii: BonusBlock<{ rows: { category: string; mode: 'sum' | 'pct
                     const a = (rev * r.value) / 100;
                     amount += a;
                     parts.push(`${catName(r.category)}: ${round2(r.value)}% от ${rub(rev)} = ${rub(a)}`);
+                    for (const o of ofCategory) {
+                        orders.push({
+                            id: o.orderId,
+                            number: o.number,
+                            clientName: o.clientName,
+                            note: `${catName(r.category)}, ${round2(r.value)}% от ${rub(o.revenueNoVat)}`,
+                            amount: round2((o.revenueNoVat * r.value) / 100),
+                        });
+                    }
                 }
             }
         }
+        orders.sort((a, b) => a.id - b.id);
         return {
             amount: round2(amount),
+            orders,
             explain: parts.length ? `${parts.join(' + ')} = ${rub(amount)}` : 'Нет заявок по заданным категориям',
             tariff: p.rows
                 .filter((r) => r.category)
@@ -141,16 +172,28 @@ const coefCategorii: BonusBlock<{ rows: { category: string; coef: number }[] }> 
         const catName = (code: string) => ctx.categoryNames?.[code] ?? code;
         let mult = 1;
         const parts: string[] = [];
+        // Заказы, из-за которых коэффициент включился — та же просьба №68.
+        const orders: BlockOrderRef[] = [];
         for (const r of p.rows) {
             const cnt = m.countsByCategory[r.category] ?? 0;
             if (cnt > 0) {
                 mult *= r.coef;
                 parts.push(`${catName(r.category)} (${cnt} шт.) ×${r.coef}`);
+                for (const o of m.countedOrders.filter((x) => x.category === r.category)) {
+                    orders.push({
+                        id: o.orderId,
+                        number: o.number,
+                        clientName: o.clientName,
+                        note: `${catName(r.category)} → ×${r.coef}`,
+                    });
+                }
             }
         }
+        orders.sort((a, b) => a.id - b.id);
         return {
             multiplier: mult,
             amount: 0,
+            orders,
             explain: parts.length ? parts.join(', ') : 'Нет заявок по заданным категориям → ×1',
             tariff: p.rows
                 .filter((r) => r.category)

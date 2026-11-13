@@ -31,6 +31,10 @@ export interface IncomingOrderBrief {
     source: string | null; // имя источника заявки (orderMethod) из справочника RetailCRM
     createdAt: string;
     sum: number;
+    // Статус заявки человеческим именем с доски: по строке не понять, почему
+    // заказ не продан, если не видно, где он стоит (просьба Евгении Матвеевой,
+    // доработка №66).
+    statusName?: string | null;
     // Дубль на тендер или смета: excluded — заказ исключён из знаменателя
     // конверсии; dupNote — причина (русская) для пометки в ведомости.
     excluded?: boolean;
@@ -282,7 +286,7 @@ export async function buildIncomingByManager(
     for (const o of (data as any[]) ?? []) {
         const st = String(o.status ?? '');
         const isDup = isTenderDuplicate(dupInputOf(o), rule);
-        if (!isDup && st !== reqRule.duplicate_status) continue;
+        if (!isDup && !reqRule.duplicate_statuses.includes(st)) continue;
         const num = extractReferencedNumber(o.raw_payload?.managerComment);
         if (num) pending.add(num);
     }
@@ -354,6 +358,11 @@ export async function buildIncomingByManager(
     // Карточки клиентов на все заявки месяца — имя покупателя в ведомость.
     const clientCards = await loadClientCards(((data as any[]) ?? []).map((o) => Number(o.customer_id)));
 
+    // Имена статусов — с доски «Статусы и переходы», кодов в интерфейсе нет (закон).
+    const statusName = await statusNamesByCode(
+        ((data as any[]) ?? []).map((o) => String(o.status ?? '')),
+    );
+
     const byManager: Record<number, IncomingOrderBrief[]> = {};
     for (const o of (data as any[]) ?? []) {
         const om = String(o.raw_payload?.orderMethod ?? '');
@@ -388,6 +397,7 @@ export async function buildIncomingByManager(
                 source: om ? methodName.get(om) || om : null,
                 createdAt: o.created_at,
                 sum: Number(o.totalsumm ?? 0) || 0,
+                statusName: statusName.get(st) || null,
                 excluded: estimate.excluded,
                 dupNote: estimate.reason,
             });
@@ -396,7 +406,7 @@ export async function buildIncomingByManager(
         const num = extractReferencedNumber(o.raw_payload?.managerComment);
         const seed = num ? refByNumber.get(num) ?? null : null;
         const verdict =
-            st === reqRule.duplicate_status
+            reqRule.duplicate_statuses.includes(st)
                 ? evaluateRequestDuplicate(
                       { status: st, managerComment: o.raw_payload?.managerComment ?? null },
                       !!seed,
@@ -414,6 +424,7 @@ export async function buildIncomingByManager(
             source: om ? methodName.get(om) || om : null,
             createdAt: o.created_at,
             sum: Number(o.totalsumm ?? 0) || 0,
+            statusName: statusName.get(st) || null,
             excluded: verdict.excluded,
             dupNote: verdict.reason,
         });

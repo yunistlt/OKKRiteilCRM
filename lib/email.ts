@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer';
 import MailComposer from 'nodemailer/lib/mail-composer';
 import { randomUUID } from 'crypto';
 import { linkifyHtml } from '@/lib/html-links';
+import { htmlToPlainText } from '@/lib/email/html-text';
 import { brandAttachment, wrapInBrand } from '@/lib/email-brand';
 import { appendToSentFolder } from './email/imap';
 
@@ -92,8 +93,7 @@ export async function sendAppEmail({ to, subject, html, fromName = 'OKKRiteil CR
 // ── Письма по заказу (переписка, привязанная к заказу RetailCRM) ──────────────
 
 /** Текст письма из его HTML — для текстовой части MIME и для ленты переписки. */
-export { htmlToPlainText } from '@/lib/html-entities';
-import { htmlToPlainText } from '@/lib/html-entities';
+export { htmlToPlainText };
 
 /**
  * Служебный тег RetailCRM в теме письма: `[#N/NNNNN]`, где NNNNN — номер заказа,

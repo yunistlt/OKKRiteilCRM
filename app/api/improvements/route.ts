@@ -12,7 +12,12 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { safeStorageSegment } from '@/lib/storage-path';
-import { sendNotification } from '@/lib/notify/send';
+import {
+    closeImprovement,
+    reopenImprovement,
+    notifyAuthor,
+    IMPROVEMENT_FIELDS,
+} from '@/lib/improvements/close';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -24,9 +29,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 /** Ссылка на скриншот живёт минуту: столько же, сколько в мессенджере. */
 const LINK_TTL_SECONDS = 60;
 
-const FIELDS = 'id, text, section, order_number, screenshot_bucket, screenshot_path, screenshot_name,'
-    + ' author_email, author_name, author_manager_id, created_at, done_at, done_by, done_note, done_build,'
-    + ' clarify_note, clarify_at, clarify_by, pinned_at, pinned_by, edited_at, edited_by';
+const FIELDS = IMPROVEMENT_FIELDS;
 
 /** Имя человека для реестра: фамилия и имя, иначе логин. */
 function personName(user: { first_name: string | null; last_name: string | null; username: string | null }): string | null {
@@ -301,25 +304,18 @@ export async function PATCH(request: Request) {
     /** Пояснение к отметке и сборка, в которой правка уехала на прод. */
     const note = String((body as any)?.note ?? '').trim() || null;
     const build = String((body as any)?.build ?? '').trim() || null;
+    const by = personName(session.user) || session.user.email || null;
 
-    const { data, error } = await supabase
-        .from('improvements')
-        .update(done
-            ? {
-                done_at: new Date().toISOString(),
-                done_by: personName(session.user) || session.user.email || null,
-                done_note: note,
-                done_build: build,
-            }
-            : { done_at: null, done_by: null, done_note: null, done_build: null })
-        .eq('id', id)
-        .select(FIELDS)
-        .maybeSingle();
+    let data: any;
+    try {
+        data = done
+            ? await closeImprovement(id, { note, build, by })
+            : await reopenImprovement(id);
+    } catch (err) {
+        return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    }
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!data) return NextResponse.json({ error: 'Доработка не найдена' }, { status: 404 });
-
-    if (done) await tellAuthor(data);
 
     return NextResponse.json({ ok: true, improvement: await toRow(data, session.user) });
 }
@@ -342,42 +338,4 @@ async function askAuthor(row: any): Promise<void> {
         String(row.clarify_note ?? '').trim(),
     ];
     await notifyAuthor(row, lines.join('\n'), 'improvements.clarify');
-}
-
-async function tellAuthor(row: any): Promise<void> {
-    const lines = [
-        `Доработка №${row.id} выполнена.`,
-        '',
-        `Вы писали: ${String(row.text ?? '').trim()}`,
-    ];
-    if (row.done_note) lines.push('', `Пояснение: ${row.done_note}`);
-    if (row.done_build) lines.push('', `Сборка: ${row.done_build}`);
-    await notifyAuthor(row, lines.join('\n'), 'improvements.done');
-}
-
-/**
- * Сообщение автору доработки — в чат с Семёном (туда, где человек работает),
- * Telegram запасным путём. Молчание здесь не ошибка: у автора может не быть
- * номера менеджера, и отметку в реестре это ломать не должно.
- */
-async function notifyAuthor(row: any, text: string, code: string): Promise<void> {
-    try {
-        let managerId = row.author_manager_id ? Number(row.author_manager_id) : null;
-
-        // Доработки, написанные до 22.10.2026, номера менеджера не хранят —
-        // добираем его по почте или логину автора.
-        if (!managerId && row.author_email) {
-            const { data: user } = await supabase
-                .from('users')
-                .select('retail_crm_manager_id')
-                .or(`email.eq.${row.author_email},username.eq.${row.author_email}`)
-                .maybeSingle();
-            managerId = (user as any)?.retail_crm_manager_id ? Number((user as any).retail_crm_manager_id) : null;
-        }
-
-        if (!managerId) return;
-        await sendNotification(code, text, { managerId });
-    } catch (err) {
-        console.error('[improvements] сообщение автору не ушло:', err);
-    }
 }

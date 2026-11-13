@@ -27,6 +27,19 @@ export type ConsultantKnowledgeHit = {
     similarity: number;
 };
 
+/**
+ * Настройки по умолчанию. Боевые значения живут в таблице `ai_prompts`, но
+ * скрипт засева (`npm run okk:consultant-seed-kb`) переписывает их отсюда —
+ * поэтому модель меняем в обоих местах, иначе следующий засев тихо вернёт
+ * прежнюю.
+ *
+ * Модель: до 02.11.2026 Семён работал на gpt-4o-mini с потолком ответа в 420
+ * токенов. Он не связывал вопрос с данными, путал годы и пересказывал первое
+ * подвернувшееся. Переведён на рассуждающую модель по решению владельца —
+ * сначала думает, откуда брать ответ, потом отвечает. Вызов дороже примерно в
+ * полсотни раз; при нынешних двух-трёх десятках вопросов в день это доллары в
+ * месяц, а не десятки.
+ */
 export const DEFAULT_CONSULTANT_PROMPTS: Record<ConsultantPromptKey, ConsultantPromptConfig> = {
     okk_consultant_main_chat: {
         key: 'okk_consultant_main_chat',
@@ -57,9 +70,9 @@ export const DEFAULT_CONSULTANT_PROMPTS: Record<ConsultantPromptKey, ConsultantP
             'Контекст заказа:',
             '{{order_context}}',
         ].join('\n'),
-        model: 'gpt-4o-mini',
+        model: 'gpt-5.5',
         temperature: 0.05,
-        maxTokens: 420,
+        maxTokens: 2500,
         metadata: { owner: 'okk_consultant', stage: 'production' },
     },
     okk_consultant_style_guardrail: {
@@ -99,9 +112,9 @@ export const DEFAULT_CONSULTANT_PROMPTS: Record<ConsultantPromptKey, ConsultantP
             'История диалога:',
             '{{history_context}}',
         ].join('\n'),
-        model: 'gpt-4o-mini',
+        model: 'gpt-5.5',
         temperature: 0.05,
-        maxTokens: 420,
+        maxTokens: 2500,
         metadata: { owner: 'okk_consultant', stage: 'production', scope: 'project-wide' },
     },
 };
@@ -143,11 +156,25 @@ export function renderConsultantTemplate(template: string, values: Record<string
     return template.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_, key: string) => values[key] || '—');
 }
 
+/**
+ * Насколько близко кусок знаний должен подходить вопросу, чтобы пойти в ответ.
+ *
+ * Было 0.58, и разговорный вопрос до порога не дотягивал: «поиск не находит
+ * нужный шкаф» давало 0.56, «как отличить свою задачу от системной» — 0.54,
+ * «что за задача про ИНН, я её не ставила» — 0.45. Нужный раздел при этом
+ * всегда стоял первым: дело было не в знаниях, а в отсечке — Семён молчал,
+ * имея ответ под рукой (замер и решение владельца 02.11.2026).
+ *
+ * Порог один на всех, кто спрашивает базу знаний: и чат Семёна, и помощник
+ * бота-РОПа, и ответы по товару.
+ */
+export const CONSULTANT_KNOWLEDGE_THRESHOLD = 0.5;
+
 export async function searchConsultantKnowledge(
     query: string,
     sectionKey?: ConsultantSectionKey | string | null,
     matchCount: number = 4,
-    threshold: number = 0.58,
+    threshold: number = CONSULTANT_KNOWLEDGE_THRESHOLD,
 ): Promise<ConsultantKnowledgeHit[]> {
     if (!query.trim()) return [];
 
@@ -171,7 +198,7 @@ export async function searchConsultantKnowledge(
 // --- Product FAQ knowledge retrieval ---
 // Если intent 'product_faq', ищем ответ в базе знаний
 export async function getProductFaqAnswer(question: string): Promise<string | null> {
-  const hits = await searchConsultantKnowledge(question, null, 3, 0.58);
+  const hits = await searchConsultantKnowledge(question, null, 3);
   if (hits.length === 0) {
     return 'Извините, по вашему вопросу пока нет ответа в базе знаний. Ваш запрос будет передан для доработки.';
   }

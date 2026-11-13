@@ -2,6 +2,7 @@
 
 import { FormEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import PendingActions from '@/components/assistant/PendingActions';
 import { getConsultantSectionByPath } from '@/lib/okk-consultant';
 import { useConsultantScreen } from '@/components/consultant/ConsultantScreenContext';
 
@@ -92,15 +93,19 @@ function getDefaultDesktopWidth(): number {
 export default function OKKConsultantPanel({
     selectedOrder,
     stacked = false,
+    onConversationChange,
 }: {
     selectedOrder: PanelOrder | null;
     /** Над панелью открыт план дня: занимаем нижнюю треть колонки, а не всю высоту. */
     stacked?: boolean;
+    /** Человек взялся за разговор — оболочка ужимает план дня в плашку. */
+    onConversationChange?: (active: boolean) => void;
 }) {
     const pathname = usePathname();
     const section = useMemo(() => getConsultantSectionByPath(pathname), [pathname]);
     const { screenHint } = useConsultantScreen();
     const [input, setInput] = useState('');
+    const [inputFocused, setInputFocused] = useState(false);
     const [loading, setLoading] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
     const [threadId, setThreadId] = useState<string | null>(null);
@@ -155,6 +160,14 @@ export default function OKKConsultantPanel({
             window.removeEventListener('pointerup', stopResize);
         };
     }, []);
+
+    // Разговор идёт, если в ветке уже есть сообщения или человек встал в поле
+    // ввода: место под чат нужно до первого ответа, а не после.
+    const conversationActive = messages.length > 0 || inputFocused || input.trim().length > 0;
+
+    useEffect(() => {
+        onConversationChange?.(conversationActive);
+    }, [conversationActive, onConversationChange]);
 
     useEffect(() => {
         setThreads((prev) => {
@@ -480,13 +493,31 @@ export default function OKKConsultantPanel({
                 <div ref={messagesEndRef} />
             </div>
 
+            {/* Письмо и звонок Семён готовит, а отправляет человек. Карточка с
+                кнопкой стоит прямо над полем ввода: раньше её можно было найти
+                только в телефонной панели, и подготовленное письмо висело
+                незамеченным (решение владельца 02.11.2026 — подтверждает тот,
+                кто просил написать). */}
+            <PendingActions />
+
             <form onSubmit={handleSubmit} className="border-t border-slate-800 bg-[#111b21] px-2 py-2">
                 <div className="flex items-end gap-2">
                     <textarea
                         value={input}
                         onChange={(event) => setInput(event.target.value)}
+                        onFocus={() => setInputFocused(true)}
+                        onBlur={() => setInputFocused(false)}
+                        onKeyDown={(event) => {
+                            // Enter отправляет, Shift+Enter переносит строку — как в
+                            // мессенджере. Без этого вопрос оставался в поле, и люди
+                            // считали, что Семён молчит (жалоба ОП 02.11.2026).
+                            if (event.key === 'Enter' && !event.shiftKey) {
+                                event.preventDefault();
+                                void ask(input);
+                            }
+                        }}
                         rows={3}
-                        placeholder="Спросите про алгоритмы ОКК, поля, критерии или источники данных..."
+                        placeholder="Спросите про алгоритмы ОКК, поля, критерии или источники данных. Enter — отправить"
                         className="min-h-[76px] flex-1 resize-none border border-slate-800 bg-[#0b141a] px-3 py-2 text-[14px] leading-6 text-slate-100 outline-none placeholder:text-slate-500 focus:border-emerald-500/40"
                     />
                     <button

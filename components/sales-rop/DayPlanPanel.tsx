@@ -51,7 +51,16 @@ const BLOCKS: Array<{ key: PlanTask['block']; title: string }> = [
     { key: 'development', title: 'Развитие клиента' },
 ];
 
-export default function DayPlanPanel({ onClose }: { onClose?: () => void }) {
+export default function DayPlanPanel({
+    onClose,
+    collapsed = false,
+    onExpand,
+}: {
+    onClose?: () => void;
+    /** Идёт разговор с Семёном: план ужимается в плашку, чтобы чат занял колонку. */
+    collapsed?: boolean;
+    onExpand?: () => void;
+}) {
     const [plan, setPlan] = useState<Plan | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -83,6 +92,37 @@ export default function DayPlanPanel({ onClose }: { onClose?: () => void }) {
 
     // Оба блока в плане — значит их надо разделить шапками.
     const splitBlocks = new Set(tasks.map((task) => task.block ?? 'active')).size > 1;
+
+    // Разговор с Семёном: план сворачивается в одну строку, чат забирает
+    // освободившуюся высоту (просьба ОП 02.11.2026 — «окно диалога неудобное»).
+    // Цифры дня при этом остаются перед глазами, план возвращается одним щелчком.
+    if (collapsed) {
+        return (
+            <section
+                data-ui-audit-zone="day-plan"
+                className="shrink-0 border-b border-slate-700 bg-gray-900"
+            >
+                <button
+                    type="button"
+                    onClick={onExpand}
+                    title="Развернуть план"
+                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-gray-800"
+                >
+                    <span className="min-w-0 truncate text-[10px] font-black uppercase tracking-widest text-gray-400">
+                        {plan?.scope === 'department' ? 'План отдела на день' : 'План на день'}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2 text-xs text-gray-300">
+                        {plan && tasks.length > 0 && (
+                            <span>
+                                Осталось <b className="text-white">{left}</b> из {plan.total}
+                            </span>
+                        )}
+                        <span className="font-bold text-gray-400">▾</span>
+                    </span>
+                </button>
+            </section>
+        );
+    }
 
     return (
         <section

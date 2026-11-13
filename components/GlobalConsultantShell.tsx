@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import OKKConsultantPanel from '@/components/OKKConsultantPanel';
 import { ConsultantSelectionProvider, useConsultantSelection } from '@/components/consultant/ConsultantSelectionContext';
@@ -39,6 +40,16 @@ function GlobalConsultantShellContent({ children }: { children: React.ReactNode 
     // Ширину правой колонки человек тянет сам и она запоминается.
     const { width, startResize } = useColumnWidth();
     const hideConsultant = hideConsultantPath(pathname);
+    // Разговор с Семёном ужимает план дня в плашку: в узкой колонке чат и план
+    // не помещаются оба (просьба ОП 02.11.2026). Развернул план руками —
+    // оставляем развёрнутым, пока сам не свернёт обратно.
+    const [chatActive, setChatActive] = useState(false);
+    const [planPinned, setPlanPinned] = useState(false);
+    const planCollapsed = chatActive && !planPinned;
+    const handleConversationChange = useCallback((active: boolean) => {
+        setChatActive(active);
+        if (!active) setPlanPinned(false);
+    }, []);
 
     if (hideConsultant) {
         return <>{children}</>;
@@ -66,9 +77,13 @@ function GlobalConsultantShellContent({ children }: { children: React.ReactNode 
                     onPointerDown={startResize}
                     aria-hidden="true"
                 />
-                <DayPlanPanel />
+                <DayPlanPanel collapsed={planCollapsed} onExpand={() => setPlanPinned(true)} />
                 <div className="flex min-h-0 flex-1 flex-col">
-                    <OKKConsultantPanel selectedOrder={selectedOrder} stacked />
+                    <OKKConsultantPanel
+                        selectedOrder={selectedOrder}
+                        stacked
+                        onConversationChange={handleConversationChange}
+                    />
                 </div>
             </div>
 

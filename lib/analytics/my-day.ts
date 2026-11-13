@@ -101,7 +101,22 @@ export type MyDay = {
         soldOrders: number;
     };
     funnel: Array<{ name: string; color: string | null; count: number; amount: number }>;
-    metrics: { callsToday: number; talksToday: number; ordersMonth: number; revenueMonth: number };
+    metrics: {
+        callsToday: number;
+        talksToday: number;
+        ordersMonth: number;
+        revenueMonth: number;
+        /** Разговоры, из которых сложилось «Звонков сегодня»: число должно раскладываться. */
+        calls: Array<{
+            at: string;
+            direction: string;
+            durationSec: number;
+            phone: string | null;
+            orderNumber: string | null;
+            orderGuessed: boolean;
+            answered: boolean;
+        }>;
+    };
 };
 
 const money = (value: unknown) => Number(value ?? 0) || 0;
@@ -130,6 +145,40 @@ function weigh(params: { amount: number; kind: ActionKind; slaLeftMinutes: numbe
     const silenceWeight = Math.min(params.daysSilent, 30);
 
     return Math.round(moneyWeight + kindWeight + slaWeight + silenceWeight);
+}
+
+/**
+ * Зависший заказ: сколько дней по нему нет движения.
+ *
+ * null — заказ в план не идёт: либо его трогали недавно, либо он ждёт
+ * назначенного клиенту срока.
+ *
+ * Ирина Гордеева 03.11.2026 (доработка №76): «Указано, что нет движения
+ * 6 дней, дозвон был вчера т.е 02.11 и стоит созвон на пятницу 06.11». Здесь
+ * было две ошибки, и обе в одном месте:
+ *
+ *   1. Молчание считалось по времени в статусе (`status_since`). Звонок,
+ *      письмо и комментарий статус не меняют — работа по заказу счётчик не
+ *      сбрасывала. Считаем по последнему касанию, как бот-РОП.
+ *   2. Дата следующего контакта не смотрелась вовсе, хотя по закону она
+ *      неприкосновенна: заказ с созвоном в пятницу не зависший, он ждёт срока,
+ *      и в план дня до пятницы не попадает.
+ */
+export function staleSilence(params: {
+    lastTouchAt: string | null | undefined;
+    contactDate: string | null | undefined;
+    today: Date;
+    staleDays: number;
+}): number | null {
+    // Дата контакта в будущем — решение человека, заказ до неё не трогаем.
+    if (params.contactDate) {
+        const contact = new Date(`${String(params.contactDate).slice(0, 10)}T23:59:59`);
+        if (Number.isFinite(contact.getTime()) && contact.getTime() > params.today.getTime()) return null;
+    }
+
+    if (!params.lastTouchAt) return null;
+    const silent = daysBetween(params.lastTouchAt, params.today);
+    return silent >= params.staleDays ? silent : null;
 }
 
 function daysBetween(from: string | null | undefined, to = new Date()): number {
@@ -237,18 +286,25 @@ async function loadFunnel(managerId: number, today: Date) {
         .map(({ ordering, ...rest }) => rest);
 }
 
-/** Сегодняшние звонки менеджера — из того же источника, что и отчёты: RetailCRM. */
+/**
+ * Сегодняшние звонки менеджера — из того же источника, что и отчёты.
+ *
+ * Берём ровно тот срез, который вечером показывает бот-РОП
+ * (`sales_rop_call_day`): одно число на всю систему, и сойтись с отчётом оно
+ * обязано. Раньше здесь читалась `retailcrm_calls` напрямую, и с 09.10.2026 —
+ * с отвязки от RetailCRM — у всех менеджеров тут стояли нули при живой
+ * телефонии. Мёртвая таблица отвечает пустотой, а пустота выглядит как
+ * «звонков не было», поэтому поломка месяц никого не разбудила.
+ */
 async function loadMetrics(managerId: number, today: Date) {
-    const dayStart = `${today.toISOString().slice(0, 10)}T00:00:00`;
+    const date = today.toISOString().slice(0, 10);
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
 
-    const [{ data: calls }, { count: ordersMonth }] = await Promise.all([
-        supabase
-            .from('retailcrm_calls')
-            .select('duration_sec, is_missed')
-            .eq('manager_rc_id', String(managerId))
-            .gte('call_date', dayStart)
-            .limit(500),
+    const [{ data: dayCalls }, { count: ordersMonth }] = await Promise.all([
+        // Тот же список, который вечером разбирает бот-РОП. Счётчик считается по
+        // нему, а не отдельным запросом: число и список, из которого оно
+        // сложилось, тогда не могут разойтись.
+        supabase.rpc('sales_rop_day_calls', { p_date: date, p_manager: String(managerId) }),
         supabase
             .from('orders')
             .select('order_id', { count: 'exact', head: true })
@@ -257,14 +313,26 @@ async function loadMetrics(managerId: number, today: Date) {
             .gte('created_at', monthStart),
     ]);
 
-    const rows = (calls ?? []) as any[];
+    const rows = (dayCalls ?? []) as any[];
 
     return {
         callsToday: rows.length,
-        // Разговором считаем состоявшийся звонок: гудки работой не являются.
-        talksToday: rows.filter((c) => !c.is_missed && Number(c.duration_sec ?? 0) >= 20).length,
+        // Разговором считаем тот звонок, где дозвонились: гудки работой не
+        // являются. Правило одно на систему — `public.call_answered`.
+        talksToday: rows.filter((row) => row.answered).length,
         ordersMonth: Number(ordersMonth ?? 0),
         revenueMonth: 0,
+        // Расшифровку в интерфейс не отдаём: она тут не нужна, а весит.
+        calls: rows.map((row) => ({
+            at: String(row.call_at),
+            direction: String(row.direction ?? ''),
+            durationSec: Number(row.duration_sec ?? 0),
+            phone: row.phone ? String(row.phone) : null,
+            orderNumber: row.order_number ? String(row.order_number) : null,
+            /** Привязка установлена или номер заказа угадан по телефону клиента. */
+            orderGuessed: String(row.order_source ?? '') === 'telefon',
+            answered: Boolean(row.answered),
+        })),
     };
 }
 
@@ -375,6 +443,11 @@ async function loadQueue(managerId: number, today: Date): Promise<NextAction[]> 
 
     // Зависшие деньги: сделка в работе, а движения нет. Отдельной аналитики для
     // этого не нужно — это такие же действия в общей очереди.
+    //
+    // Время в статусе здесь только предварительный отбор, и он честный: смена
+    // статуса — тоже касание, поэтому заказ, который трогали за последние
+    // STALE_DAYS, в статусе столько не стоит. Зависший он или нет, решает
+    // последнее касание — ниже, после `orders_last_touch`.
     const { data: stale } = await supabase
         .from('orders')
         .select('order_id, number, totalsumm, status, status_since, raw_payload')
@@ -385,13 +458,33 @@ async function loadQueue(managerId: number, today: Date): Promise<NextAction[]> 
         .order('totalsumm', { ascending: false })
         .limit(50);
 
-    for (const row of ((stale ?? []) as any[])) {
-        const orderId = Number(row.order_id);
-        if (seen.has(orderId)) continue;
-        seen.add(orderId);
+    const staleRows = ((stale ?? []) as any[]).filter((row) => !seen.has(Number(row.order_id)));
 
-        const silent = daysBetween(row.status_since, today);
+    // Когда эти заказы последний раз трогали — одной выборкой и одним
+    // определением касания на систему (`orders_last_touch`).
+    const touchAt = new Map<number, string>();
+    if (staleRows.length) {
+        const { data: touches } = await supabase.rpc('orders_last_touch', {
+            p_order_ids: staleRows.map((row) => Number(row.order_id)),
+        });
+        for (const row of ((touches ?? []) as any[])) {
+            if (row.last_touch_at) touchAt.set(Number(row.order_id), String(row.last_touch_at));
+        }
+    }
+
+    for (const row of staleRows) {
+        const orderId = Number(row.order_id);
         const payload = row.raw_payload ?? {};
+
+        const silent = staleSilence({
+            lastTouchAt: touchAt.get(orderId) ?? row.status_since,
+            contactDate: payload?.customFields?.[CUSTOM_FIELD_CODES.nextContact],
+            today,
+            staleDays: STALE_DAYS,
+        });
+        if (silent === null) continue;
+
+        seen.add(orderId);
 
         actions.push({
             orderId,
@@ -452,7 +545,7 @@ export async function loadMyDay(managerId: number | null, today = new Date()): P
             counts: { urgent: 0, next: 0, planned: 0, development: 0, total: 0, done: 0 },
             plan: { target: 0, fact: 0, forecast: 0, factPct: 0, forecastPct: 0, workdaysLeft: 0, perDay: 0, computedAt: null, soldOrders: 0 },
             funnel: [],
-            metrics: { callsToday: 0, talksToday: 0, ordersMonth: 0, revenueMonth: 0 },
+            metrics: { callsToday: 0, talksToday: 0, ordersMonth: 0, revenueMonth: 0, calls: [] },
         };
     }
 

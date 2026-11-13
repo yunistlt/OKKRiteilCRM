@@ -104,6 +104,11 @@ export default function OrdersClient() {
     // sum = null значит «не посчитано» (старая сборка или сбой запроса) — ноль
     // здесь врал бы, а ноль у суммы заказов встречается только по-настоящему.
     const [totals, setTotals] = useState<{ count: number; sum: number | null }>({ count: 0, sum: null });
+    /**
+     * Отбор по количеству штук упёрся в потолок: заказов с таким количеством
+     * больше, чем показано. Молчать нельзя — человек решит, что других нет.
+     */
+    const [itemQtyCapped, setItemQtyCapped] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     // В адресе держим НОМЕР заказа (закон: номер — всегда ссылка), в карточку
     // отдаём идентификатор. У заказов из RetailCRM они совпадают, у своих нет:
@@ -315,6 +320,7 @@ export default function OrdersClient() {
                 totalCount: data.pagination?.totalCount ?? 0,
                 totalPages: data.pagination?.totalPages ?? 1,
             });
+            setItemQtyCapped(data.itemQtyCapped ?? null);
             setTotals({
                 count: Number(data.totals?.count ?? data.pagination?.totalCount ?? 0),
                 sum: data.totals?.sum === undefined || data.totals?.sum === null ? null : Number(data.totals.sum),
@@ -595,7 +601,37 @@ export default function OrdersClient() {
                             {loading ? (
                                 <tr><td colSpan={columns.length + 1} className="px-4 py-8 text-gray-500">Загружаем заказы…</td></tr>
                             ) : orders.length === 0 ? (
-                                <tr><td colSpan={columns.length + 1} className="px-4 py-8 text-gray-500">Под этот фильтр заказов нет.</td></tr>
+                                <tr>
+                                    <td colSpan={columns.length + 1} className="px-4 py-8 text-gray-500">
+                                        {/*
+                                          Искали обозначение изделия и не нашли — говорим об этом прямо и
+                                          даём разобрать его на части одним нажатием. Поиск по обозначению
+                                          частей не ищет (доработка №71), и без этой подписи пустой экран
+                                          читается как поломка.
+                                        */}
+                                        {filter.itemName.trim() && !filter.itemName.trim().includes(' ') ? (
+                                            <>
+                                                Заказов с обозначением «{filter.itemName.trim()}» нет.{' '}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const loose = filter.itemName.trim().replace(/[^a-zа-яё0-9]+/gi, ' ').trim();
+                                                        const next = { ...draftRef.current, itemName: loose };
+                                                        draftRef.current = next;
+                                                        setFilter(next);
+                                                        setPage(1);
+                                                    }}
+                                                    className="font-semibold text-blue-700 hover:underline"
+                                                >
+                                                    Искать по частям
+                                                </button>{' '}
+                                                — найдёт и похожие изделия.
+                                            </>
+                                        ) : (
+                                            'Под этот фильтр заказов нет.'
+                                        )}
+                                    </td>
+                                </tr>
                             ) : (
                                 orders.map((order) => (
                                     <tr
@@ -664,6 +700,12 @@ export default function OrdersClient() {
                             снять выделение
                         </button>
                     </div>
+                )}
+
+                {itemQtyCapped && (
+                    <span className="border border-amber-300 bg-amber-50 px-2 py-0.5 text-amber-800">
+                        По этому количеству показаны первые {itemQtyCapped.toLocaleString('ru-RU')} заказов — уточните наименование товара
+                    </span>
                 )}
 
                 <span className="ml-auto text-gray-600">

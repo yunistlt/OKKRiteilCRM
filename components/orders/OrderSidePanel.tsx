@@ -650,15 +650,22 @@ function TasksList({ orderNumber, onChanged }: { orderNumber: string; onChanged?
                     className="cursor-pointer border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none"
                 />
                 {/* Время срока: «перезвонить в 14:30», а не «сегодня» (просьба
-                    Ирины Гордеевой 05.10.2026). Без даты время смысла не имеет. */}
+                    Ирины Гордеевой 05.10.2026). Без даты время смысла не имеет.
+
+                    Список часов и минут по клику не открываем: Ирина Гордеева
+                    28.10.2026 (доработка №62) — «поставьте, пожалуйста, чтобы
+                    время можно было вносить вручную, а не выбирать из списка
+                    часов и минут, неудобно». Клик теперь ставит курсор, время
+                    набирается с клавиатуры; кому нужен список — есть иконка
+                    часов в самом поле. У даты календарь оставляем: там выбор
+                    мышью быстрее набора. */}
                 <input
                     type="time"
                     value={dueTime}
                     onChange={(e) => setDueTime(e.target.value)}
-                    onClick={openPickerOnClick}
                     disabled={!due}
-                    title={due ? 'Во сколько' : 'Сначала выберите дату'}
-                    className="cursor-pointer border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none disabled:cursor-default disabled:bg-gray-100 disabled:text-gray-400"
+                    title={due ? 'Во сколько — можно набрать с клавиатуры' : 'Сначала выберите дату'}
+                    className="border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none disabled:cursor-default disabled:bg-gray-100 disabled:text-gray-400"
                 />
                 <button
                     onClick={add}
@@ -707,10 +714,9 @@ function TasksList({ orderNumber, onChanged }: { orderNumber: string; onChanged?
                                             type="time"
                                             value={editTime}
                                             onChange={(e) => setEditTime(e.target.value)}
-                                            onClick={openPickerOnClick}
                                             disabled={!editDue}
-                                            title={editDue ? 'Во сколько' : 'Сначала выберите дату'}
-                                            className="cursor-pointer border border-gray-300 px-2 py-1 text-sm focus:border-blue-600 focus:outline-none disabled:cursor-default disabled:bg-gray-100 disabled:text-gray-400"
+                                            title={editDue ? 'Во сколько — можно набрать с клавиатуры' : 'Сначала выберите дату'}
+                                            className="border border-gray-300 px-2 py-1 text-sm focus:border-blue-600 focus:outline-none disabled:cursor-default disabled:bg-gray-100 disabled:text-gray-400"
                                         />
                                     </div>
                                     <div className="mt-1 flex gap-3">
