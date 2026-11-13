@@ -54,6 +54,8 @@ const StatusSchema = z.object({
     isWorking: z.boolean().optional(),
     /** Перевод в этот статус требует причины словами. */
     requiresReason: z.boolean().optional(),
+    /** Код шаблона письма клиенту при входе в статус; пусто — письма нет. */
+    clientEmailTemplate: z.string().trim().max(60).nullable().optional(),
     active: z.boolean().optional(),
 });
 
@@ -124,6 +126,7 @@ export async function PUT(req: Request) {
         if (body.normDays !== undefined) row.norm_days = body.normDays;
         if (body.isWorking !== undefined) row.is_working = body.isWorking;
         if (body.requiresReason !== undefined) row.requires_reason = body.requiresReason;
+        if (body.clientEmailTemplate !== undefined) row.client_email_template = body.clientEmailTemplate || null;
         if (body.active !== undefined) row.active = body.active;
 
         if (body.id) {

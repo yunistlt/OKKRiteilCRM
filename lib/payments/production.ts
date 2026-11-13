@@ -2,6 +2,7 @@ import { supabase } from '@/utils/supabase';
 import { loadStatusPalette } from '@/lib/own-crm/status-code';
 import { editOrder } from '@/lib/own-crm/edit-order';
 import { queueOrderForProduction } from '@/lib/own-crm/tseh-outbox';
+import { queueStatusClientLetter } from '@/lib/own-crm/status-client-letter';
 
 // Перевод заказа в «Передано в производство» после поступления оплаты.
 // Код статуса берётся из справочника (slug RetailCRM), с возможностью override через env.
@@ -89,6 +90,9 @@ export async function moveOrderToProductionAfterPayment(
 
     // Заказ встал в очередь, из которой ЦехУспех забирает его сам.
     await queueOrderForProduction(orderId);
+    // И клиент узнаёт о производстве письмом, если у статуса назначен шаблон
+    // (доработка №94). Оплату робот увидел сам — менеджера рядом может не быть.
+    await queueStatusClientLetter(Number((row as any).id), PRODUCTION_STATUS);
     return { moved: true, statusName: prodName };
   } catch (e: any) {
     return { moved: false, notMovedReason: `сбой перевода: ${String(e?.message || e).slice(0, 150)}` };

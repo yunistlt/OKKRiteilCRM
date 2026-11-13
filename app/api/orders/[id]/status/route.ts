@@ -10,6 +10,7 @@ import { appendOrderNote, editOrder } from '@/lib/own-crm/edit-order';
 import { getResolvedConfig } from '@/lib/salary/config';
 import { writeOwnHistory } from '@/lib/own-crm/history-write';
 import { findStatus, statusCodeOf, statusMatches } from '@/lib/own-crm/status-code';
+import { queueStatusClientLetter } from '@/lib/own-crm/status-client-letter';
 
 export const dynamic = 'force-dynamic';
 
@@ -251,6 +252,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         console.error('[status] пометка про ИНН не записалась:', err);
     }
 
+    /**
+     * Письмо клиенту о смене статуса — если у статуса назначен шаблон.
+     *
+     * Доработка №94: в RetailCRM письмо «оплата поступила, передали в
+     * производство» слал триггер. Какой статус и каким шаблоном пишет клиенту
+     * — настройка статуса, а не список в коде.
+     */
+    const letter = await queueStatusClientLetter(Number((order as any).id), body.status);
+
     // Руками поставили «Передано в производство» — заказ так же встаёт в
     // очередь на отправку в ЦехУспех.
     let productionNote: string | null = null;
@@ -263,5 +273,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         else if (queued.warning) productionNote = queued.warning;
     }
 
-    return NextResponse.json({ ok: true, status: body.status, own: Boolean((order as any).is_own), productionNote });
+    return NextResponse.json({
+        ok: true,
+        status: body.status,
+        own: Boolean((order as any).is_own),
+        productionNote,
+        // Карточке есть что сказать менеджеру: письмо клиенту ушло в очередь.
+        clientLetterTo: letter.queued ? letter.to : null,
+    });
 }

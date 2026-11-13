@@ -15,6 +15,8 @@ interface CrmStatus {
     is_working: boolean;
     /** Нельзя перевести заказ сюда, не написав причину словами. */
     requires_reason: boolean;
+    /** Код шаблона письма клиенту при входе заказа в этот статус. */
+    client_email_template: string | null;
     active: boolean;
     external_code: string | null;
 }
@@ -360,6 +362,20 @@ function StatusModal({ status, groups, onClose, onSaved }: {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const isNew = !status.id;
+    // Шаблоны писем для выбора «что отправить клиенту». Берём только готовые
+    // тексты: письмо от ИИ уходит без человека, вычитать его некому.
+    const [letterTemplates, setLetterTemplates] = useState<Array<{ code: string; name: string }>>([]);
+
+    useEffect(() => {
+        fetch('/api/settings/templates?kind=email&active=true')
+            .then((r) => r.json())
+            .then((d) => setLetterTemplates(
+                ((d?.email ?? []) as any[])
+                    .filter((t) => t.mode !== 'ai')
+                    .map((t) => ({ code: String(t.code), name: String(t.name) })),
+            ))
+            .catch(() => setLetterTemplates([]));
+    }, []);
 
     const save = async () => {
         if (!draft.name?.trim()) { setError('Название обязательно.'); return; }
@@ -380,6 +396,7 @@ function StatusModal({ status, groups, onClose, onSaved }: {
                     normDays: draft.norm_days ?? null,
                     isWorking: draft.is_working ?? true,
                     requiresReason: draft.requires_reason ?? false,
+                    clientEmailTemplate: draft.client_email_template || null,
                     active: draft.active ?? true,
                 }),
             });
@@ -462,6 +479,28 @@ function StatusModal({ status, groups, onClose, onSaved }: {
                     галочка, а не зашитый в код список статусов. */}
                 <Check label="Спрашивать причину словами — без неё в статус не пустим" checked={draft.requires_reason ?? false} onChange={(v) => setDraft({ ...draft, requires_reason: v })} />
                 <Check label="Используется" checked={draft.active ?? true} onChange={(v) => setDraft({ ...draft, active: v })} />
+            </div>
+
+            {/* Доработка №94 (Лена Парфёнова): в RetailCRM письмо «оплата
+                поступила, передали в производство» слал триггер. У себя это
+                настройка статуса, а не список в коде. */}
+            <div className="mt-4">
+                <Labeled label="Письмо клиенту при входе в статус">
+                    <select
+                        value={draft.client_email_template ?? ''}
+                        onChange={(e) => setDraft({ ...draft, client_email_template: e.target.value || null })}
+                        className="w-full border border-gray-300 px-3 py-2 text-sm"
+                    >
+                        <option value="">Не отправлять</option>
+                        {letterTemplates.map((t) => (
+                            <option key={t.code} value={t.code}>{t.name}</option>
+                        ))}
+                    </select>
+                </Labeled>
+                <p className="mt-1.5 text-xs text-gray-500">
+                    Письмо уходит само, без менеджера: на почту, по которой уже переписывались
+                    по заказу, с подписью менеджера заказа. По одному заказу — один раз.
+                </p>
             </div>
 
             {draft.external_code && (
