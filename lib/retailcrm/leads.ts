@@ -318,37 +318,29 @@ ${historyLog.split('\n').slice(-10).join('\n')}
 }
 
 /**
- * Создать заявку по входящему звонку (AI-секретарь Телфина).
+ * Заявка по телефонному звонку — общая часть секретаря Телфина и ИИ-РОПа.
  * Статус всегда «Новая» (novyi-1). Менеджера выбирает общее правило всех потоков
  * (`ensureManager` → указанный, хозяин клиента по телефону, поровну по нагрузке).
- * Возвращает id заказа, номер (для озвучки клиенту) и назначенного менеджера —
- * на него же секретарь переводит звонок.
  */
-export async function createSecretaryLead(params: {
+async function createPhoneLead(params: {
     phone: string;
-    name?: string;
-    summary?: string;            // распознанная суть запроса (voice_navigator_STT)
-    managerId?: number | null;   // если поток уже знает менеджера
+    name?: string | null;
+    comment: string;
+    source: string;
+    managerId?: number | null;
     fieldHints?: LeadFieldHints;
 }): Promise<{ id: number; number: string; managerId: number }> {
     // Клиент всегда корпоративный (B2B). Карточку найдёт или заведёт запись
     // заказа: по звонку известен только телефон, по нему и ищем.
     const existingCustomerHint = await existingClientHint({ phone: params.phone });
 
-    const comment = `📞 Заявка принята AI-секретарём (входящий звонок)
-
-📱 Телефон: ${params.phone || 'не определён'}
-
-📝 Суть запроса (распознано):
-${params.summary?.trim() || 'не распознано — уточнить у клиента'}`;
-
     const orderData: any = {
         status: 'novyi-1', // всегда «Новая»
         firstName: sanitizeClientName(params.name) || 'Лид',
         phone: params.phone,
-        customerComment: comment,
+        customerComment: params.comment,
         ...(existingCustomerHint ? { managerComment: existingCustomerHint } : {}),
-        source: { source: 'telphin-secretary' },
+        source: { source: params.source },
         // Обязательные поля карточки: без них менеджер не сохранит заказ.
         customFields: await buildLeadOrderCustomFields(params.fieldHints),
     };
@@ -359,4 +351,64 @@ ${params.summary?.trim() || 'не распознано — уточнить у �
 
     const number = (orderResult.order && orderResult.order.number) || orderResult.number || String(orderResult.id);
     return { id: orderResult.id as number, number: String(number), managerId: Number(orderData.managerId) };
+}
+
+/**
+ * Создать заявку по входящему звонку (AI-секретарь Телфина).
+ * Возвращает id заказа, номер (для озвучки клиенту) и назначенного менеджера —
+ * на него же секретарь переводит звонок.
+ */
+export async function createSecretaryLead(params: {
+    phone: string;
+    name?: string;
+    summary?: string;            // распознанная суть запроса (voice_navigator_STT)
+    managerId?: number | null;   // если поток уже знает менеджера
+    fieldHints?: LeadFieldHints;
+}): Promise<{ id: number; number: string; managerId: number }> {
+    const comment = `📞 Заявка принята AI-секретарём (входящий звонок)
+
+📱 Телефон: ${params.phone || 'не определён'}
+
+📝 Суть запроса (распознано):
+${params.summary?.trim() || 'не распознано — уточнить у клиента'}`;
+
+    return createPhoneLead({
+        phone: params.phone,
+        name: params.name,
+        comment,
+        source: 'telphin-secretary',
+        managerId: params.managerId,
+        fieldHints: params.fieldHints,
+    });
+}
+
+/**
+ * Заявка, которую завёл ИИ-РОП по расшифровке разговора: звонок с незнакомого
+ * номера, менеджер поговорил, а заказ не завёл. Менеджер — тот, кто говорил.
+ */
+export async function createCallLead(params: {
+    phone: string;
+    managerId: number | null;
+    callStartedAt: string;
+    summary: string;
+    clientName?: string | null;
+    company?: string | null;
+}): Promise<{ id: number; number: string; managerId: number }> {
+    const when = new Date(params.callStartedAt).toLocaleString('ru-RU', {
+        timeZone: 'Europe/Moscow', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+    });
+    const comment = `📞 Заказ завёл ИИ-РОП по входящему звонку ${when} (МСК): разговор был, заказ не заведён.
+
+📱 Телефон: ${params.phone}${params.company ? `\n🏢 Компания: ${params.company}` : ''}
+
+📝 Что хотел клиент (по расшифровке):
+${params.summary.trim() || 'уточнить у клиента — запись разговора в карточке'}`;
+
+    return createPhoneLead({
+        phone: params.phone,
+        name: params.clientName,
+        comment,
+        source: 'call-ai',
+        managerId: params.managerId,
+    });
 }

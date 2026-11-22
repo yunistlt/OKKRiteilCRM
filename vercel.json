@@ -21,6 +21,10 @@
       "schedule": "*/5 4-17 * * 1-6"
     },
     {
+      "path": "/api/cron/rop-call-lead",
+      "schedule": "*/10 5-19 * * *"
+    },
+    {
       "path": "/api/cron/rop-bind",
       "schedule": "*/10 4-15 * * 1-5"
     },
