@@ -65,7 +65,8 @@
   │     → находим заказ по номеру → менеджер → SetVar добавочный + TTS → перевод
   └─ новая заявка → AI секретарь квалифицирует (STT)
         → Интерактивная обработка → /api/telphin/secretary?mode=new
-        → createSecretaryLead (статус всегда «Новая» novyi-1) + выбор менеджера по нагрузке
+        → createSecretaryLead (статус всегда «Новая» novyi-1); менеджера выбирает общее
+          правило всех потоков (assignManagerForNewOrder), звонок переводится на него же
         → SetVar добавочный + TTS «Заявка создана» → перевод
 ```
 
@@ -96,7 +97,8 @@
 ## Код
 
 - `app/api/telphin/secretary/route.ts` — эндпоинт (GET+POST, XML-ответ, защита `?token=`).
-- `lib/secretary/core.ts` — `findOrderByNumber`, `getManagerById`, `pickLeastLoadedManager`.
+- `lib/secretary/core.ts` — `findOrderByNumber`, `getManagerById`, `findOwnerByCallerPhone`,
+  `transferTargetById` (можно ли перевести звонок на менеджера: активен, добавочный, галочка).
 - `lib/secretary/telphin-xml.ts` — построение XML-ответа.
 - `lib/retailcrm/leads.ts` → `createSecretaryLead` — создание заявки (novyi-1) + назначение менеджера.
 - `middleware.ts` — `/api/telphin` в публичных префиксах.
@@ -135,6 +137,21 @@
 не узнать — только по наличию записи разговора (та же болячка у обратного звонка и
 софтфона, см. `docs/softphone/OVERVIEW.md`).
 
-`pickLeastLoadedManager` (ветка «новая заявка») запрашивает у `managers` колонки
-`max_load` и `rating`, которых в таблице нет — запрос падает, кандидатов нет, и ветка
-всегда уходит в резервный добавочный. Ветка by_caller этим кодом не пользуется.
+**Боевой Телфин эндпоинт пока не вызывает** (проверка 22.11.2026): в `secretary_calls`
+только 12 тестовых строк с dev-сервера от 14.10.2026, ни одной `mode=new`/`existing`, и
+заказов с источником `telphin-secretary` нет. Пока в схеме Телфина не настроены узлы
+из чеклиста выше, секретарь не работает ни в одной ветке.
+
+## Ветка «новая заявка»: кто менеджер
+
+Свой выбор «по нагрузке» (`pickLeastLoadedManager`) удалён 22.11.2026: он просил у
+`managers` несуществующие `max_load`/`rating`, падал, и звонок всегда уходил в очередь,
+а заказ получал другого менеджера по общему правилу. Теперь:
+
+1. `createSecretaryLead` назначает менеджера общим правилом всех потоков
+   (`ensureManager` → `assignManagerForNewOrder`: хозяин клиента по телефону, иначе
+   поровну по пулу из настроек приёма заявок) и возвращает его.
+2. Звонок переводится на него же, если на него разрешён перевод (`transferTargetById`:
+   те же условия, что у by_caller) → решение `created_new`.
+3. Перевод не разрешён → заказ всё равно с менеджером, звонок в очередь ОП
+   (`TELPHIN_FALLBACK_EXTENSION`) → решение `created_no_transfer`.

@@ -6,7 +6,7 @@
 //       «Перевод на номер из переменной» (имя переменной — TELPHIN_TRANSFER_VAR).
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { findOrderByNumber, getManagerById, pickLeastLoadedManager, findOwnerByCallerPhone } from '@/lib/secretary/core';
+import { findOrderByNumber, getManagerById, findOwnerByCallerPhone, transferTargetById } from '@/lib/secretary/core';
 import { createSecretaryLead } from '@/lib/retailcrm/leads';
 import { buildResponse, xmlSetVar, xmlTTS } from '@/lib/secretary/telphin-xml';
 
@@ -117,18 +117,22 @@ async function handle(req: NextRequest): Promise<NextResponse> {
                     : 'Заказ с таким номером не найден. Соединяю с оператором.');
             }
         } else if (mode === 'new') {
-            const picked = await pickLeastLoadedManager();
-            const created = await createSecretaryLead({ phone: caller, summary: stt, managerId: picked?.id ?? null });
+            // Менеджера выбирает общее правило всех потоков заявок, звонок
+            // переводим на того же человека, что стал хозяином заказа.
+            const created = await createSecretaryLead({ phone: caller, summary: stt });
             orderNumber = created.number;
             orderId = created.id;
-            if (picked) {
+            managerId = created.managerId;
+            const target = await transferTargetById(created.managerId);
+            if (target) {
                 decision = 'created_new';
-                managerId = picked.id;
-                extension = picked.extension;
-                actions = [xmlSetVar(TRANSFER_VAR, picked.extension), xmlTTS(`Заявка создана. Соединяю вас с менеджером ${picked.name}.`)];
+                extension = target.extension;
+                actions = [xmlSetVar(TRANSFER_VAR, target.extension), xmlTTS(`Заявка создана. Соединяю вас с менеджером${target.name ? ` ${target.name}` : ''}.`)];
             } else {
-                decision = 'created_no_manager';
-                actions = fallback('Заявка создана. Свободных менеджеров сейчас нет, соединяю с оператором.');
+                // Хозяин заказа назначен, но перевод на него не разрешён
+                // (нет добавочного или галочки «принимает перевод») — в очередь ОП.
+                decision = 'created_no_transfer';
+                actions = fallback('Заявка создана. Соединяю вас с отделом продаж.');
             }
         } else {
             return xmlResponse(buildResponse([xmlTTS('Извините, произошла ошибка маршрутизации.')]));

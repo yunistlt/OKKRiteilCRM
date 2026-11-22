@@ -1,5 +1,7 @@
 // Логика AI-секретаря: поиск заказа по номеру, определение «чей клиент» по номеру
-// звонящего и распределение нового заказа по нагрузке.
+// звонящего и проверка, можно ли перевести звонок на менеджера.
+// Кому отдать НОВУЮ заявку, здесь не решаем: это общее правило всех потоков
+// (`assignManagerForNewOrder`), его вызывает `createSecretaryLead`.
 import { supabase } from '@/utils/supabase';
 import { findOrdersByPhone } from '@/lib/orders-by-phone';
 
@@ -11,7 +13,8 @@ export interface FoundOrder {
     phone: string | null;
 }
 
-export interface PickedManager {
+/** На кого можно перевести звонок: живой менеджер с добавочным и галочкой «принимает перевод». */
+export interface TransferTarget {
     id: number;
     name: string;
     extension: string;
@@ -39,10 +42,7 @@ export async function getManagerById(id: number) {
     return data as { id: number; first_name: string | null; last_name: string | null; telphin_extension: string | null } | null;
 }
 
-export interface CallerOwner {
-    id: number;
-    name: string;
-    extension: string;
+export interface CallerOwner extends TransferTarget {
     /** Откуда узнали хозяина: карточка клиента или последний заказ по этому номеру. */
     by: 'client' | 'order';
 }
@@ -56,14 +56,18 @@ function isTransferTarget(m: {
     return Boolean(m.active && m.accepts_call_transfer && String(m.telphin_extension || '').trim());
 }
 
-function managerAsTarget(m: any, by: CallerOwner['by']): CallerOwner | null {
+function asTarget(m: any): TransferTarget | null {
     if (!m || !isTransferTarget(m)) return null;
     return {
         id: Number(m.id),
         name: `${m.first_name || ''} ${m.last_name || ''}`.trim(),
         extension: String(m.telphin_extension).trim(),
-        by,
     };
+}
+
+function managerAsTarget(m: any, by: CallerOwner['by']): CallerOwner | null {
+    const target = asTarget(m);
+    return target ? { ...target, by } : null;
 }
 
 async function managerRow(id: number | null | undefined) {
@@ -120,55 +124,10 @@ export async function findOwnerByCallerPhone(phone: string): Promise<CallerOwner
 }
 
 /**
- * Выбрать наименее загруженного менеджера для новой заявки.
- * Кандидаты: активные менеджеры с заданным добавочным Телфина.
- * Нагрузка = число заказов в рабочих статусах (status_settings.is_working).
- * Тай-брейк — выше рейтинг. Менеджеры на пределе (>= max_load) пропускаются.
+ * Можно ли перевести звонок на этого менеджера, и куда. Те же условия, что у
+ * ветки by_caller: активен, есть добавочный, стоит галочка «принимает перевод»
+ * в /settings/managers. Нельзя — null, звонок уходит в очередь ОП.
  */
-export async function pickLeastLoadedManager(): Promise<PickedManager | null> {
-    const { data: workingSettings } = await supabase
-        .from('status_settings')
-        .select('code')
-        .eq('is_working', true);
-    const workingCodes = (workingSettings || []).map((s: { code: string }) => s.code);
-
-    const { data: managers } = await supabase
-        .from('managers')
-        .select('id, first_name, last_name, telphin_extension, max_load, rating, active');
-
-    const candidates = (managers || []).filter(
-        (m: { active?: boolean; telphin_extension?: string | null }) =>
-            m.active && m.telphin_extension && String(m.telphin_extension).trim(),
-    );
-    if (!candidates.length) return null;
-
-    let best: any = null;
-    let bestLoad = Infinity;
-
-    for (const m of candidates) {
-        let load = 0;
-        if (workingCodes.length) {
-            const { count } = await supabase
-                .from('orders')
-                .select('id', { count: 'exact', head: true })
-                .eq('manager_id', m.id)
-                .in('status', workingCodes);
-            load = count || 0;
-        }
-        const max = m.max_load || 20;
-        if (load >= max) continue;
-
-        const better = load < bestLoad || (load === bestLoad && (m.rating || 0) > (best?.rating || 0));
-        if (better) {
-            best = m;
-            bestLoad = load;
-        }
-    }
-
-    if (!best) return null;
-    return {
-        id: best.id,
-        name: `${best.first_name || ''} ${best.last_name || ''}`.trim(),
-        extension: String(best.telphin_extension).trim(),
-    };
+export async function transferTargetById(id: number | null | undefined): Promise<TransferTarget | null> {
+    return asTarget(await managerRow(id));
 }

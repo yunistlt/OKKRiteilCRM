@@ -319,16 +319,18 @@ ${historyLog.split('\n').slice(-10).join('\n')}
 
 /**
  * Создать заявку по входящему звонку (AI-секретарь Телфина).
- * Статус всегда «Новая» (novyi-1). Менеджер назначается сразу, если передан.
- * Возвращает id заказа и его номер (для озвучки клиенту).
+ * Статус всегда «Новая» (novyi-1). Менеджера выбирает общее правило всех потоков
+ * (`ensureManager` → указанный, хозяин клиента по телефону, поровну по нагрузке).
+ * Возвращает id заказа, номер (для озвучки клиенту) и назначенного менеджера —
+ * на него же секретарь переводит звонок.
  */
 export async function createSecretaryLead(params: {
     phone: string;
     name?: string;
     summary?: string;            // распознанная суть запроса (voice_navigator_STT)
-    managerId?: number | null;   // выбранный по нагрузке менеджер
+    managerId?: number | null;   // если поток уже знает менеджера
     fieldHints?: LeadFieldHints;
-}): Promise<{ id: number; number: string }> {
+}): Promise<{ id: number; number: string; managerId: number }> {
     // Клиент всегда корпоративный (B2B). Карточку найдёт или заведёт запись
     // заказа: по звонку известен только телефон, по нему и ищем.
     const existingCustomerHint = await existingClientHint({ phone: params.phone });
@@ -356,5 +358,5 @@ ${params.summary?.trim() || 'не распознано — уточнить у �
     const orderResult = await routeNewOrder(orderData);
 
     const number = (orderResult.order && orderResult.order.number) || orderResult.number || String(orderResult.id);
-    return { id: orderResult.id as number, number: String(number) };
+    return { id: orderResult.id as number, number: String(number), managerId: Number(orderData.managerId) };
 }
