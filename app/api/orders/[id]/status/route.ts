@@ -5,6 +5,7 @@ import { supabase } from '@/utils/supabase';
 import { resolveOrderRef } from '@/lib/own-crm/order-ref';
 import { PRODUCTION_STATUS } from '@/lib/payments/production';
 import { queueOrderForProduction } from '@/lib/own-crm/tseh-outbox';
+import { productionFilesMissing } from '@/lib/own-crm/production-files-reminder';
 import { INN_GATE_MESSAGE, INN_PURCHASE_NOTE, INN_REQUIRED_STATUSES, ensureInnTask, orderInn } from '@/lib/own-crm/inn-gate';
 import { appendOrderNote, editOrder } from '@/lib/own-crm/edit-order';
 import { getResolvedConfig } from '@/lib/salary/config';
@@ -264,6 +265,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // Руками поставили «Передано в производство» — заказ так же встаёт в
     // очередь на отправку в ЦехУспех.
     let productionNote: string | null = null;
+    let productionFilesNeeded = false;
     if (body.status === PRODUCTION_STATUS) {
         const queued = await queueOrderForProduction(Number((order as any).order_id ?? (order as any).id));
         // Статус менять не мешаем, но причину говорим сразу: иначе менеджер
@@ -271,6 +273,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         if (!queued.queued) productionNote = queued.reason;
         // Заказ ушёл, но часть позиций производство не опознает — об этом тоже говорим.
         else if (queued.warning) productionNote = queued.warning;
+
+        // Ушёл в цех без единого файла — карточка сразу попросит приложить
+        // ТЗ и чертежи (доработка №85).
+        if (queued.queued) {
+            productionFilesNeeded = await productionFilesMissing(String((order as any).number ?? '')).catch(() => false);
+        }
     }
 
     return NextResponse.json({
@@ -278,6 +286,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         status: body.status,
         own: Boolean((order as any).is_own),
         productionNote,
+        productionFilesMissing: productionFilesNeeded,
         // Карточке есть что сказать менеджеру: письмо клиенту ушло в очередь.
         clientLetterTo: letter.queued ? letter.to : null,
     });

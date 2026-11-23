@@ -41,6 +41,29 @@ export const OWN_NUMBER_BASE = 900_000;
 export const OWN_SITE = 'zmktlt-ru';
 
 /**
+ * Юрлицо нового заказа, если менеджер его не выбрал, — из настроек.
+ *
+ * Доработка №95 (Елена Парфёнова 18.11.2026): продажи на ПОБТ в приоритете,
+ * новый заказ должен заводиться на него сам. Решение владельца 23.11.2026 —
+ * переключатель в настройках юрлиц (`legal_entities.default_for_new_orders`),
+ * а не правка кода: приоритет меняется решением.
+ *
+ * `OWN_SITE` остаётся только на случай, когда в настройках не отмечено ни
+ * одно действующее юрлицо, — заказ без юрлица завести нельзя.
+ */
+export async function defaultOrderSite(): Promise<string> {
+    const { data } = await supabase
+        .from('legal_entities')
+        .select('site_code')
+        .eq('default_for_new_orders', true)
+        .eq('active', true)
+        .maybeSingle();
+
+    const site = String((data as any)?.site_code ?? '').trim();
+    return site || OWN_SITE;
+}
+
+/**
  * Номера для позиций, которые добавили мы.
  *
  * `order_items.id` — общий на все заказы первичный ключ, и у позиций RetailCRM
@@ -127,6 +150,9 @@ function itemsTotal(items: any[] | undefined): number {
  */
 export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult> {
     const { number, seq } = await nextOwnOrderNumber();
+    // Юрлицо выбрал менеджер в форме заказа; не выбрал — то, что отмечено
+    // в настройках юрлиц.
+    const site = String(orderData.site ?? '').trim() || await defaultOrderSite();
 
     /**
      * Клиент заказа — карточка в НАШЕЙ базе.
@@ -156,8 +182,7 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         ...orderData,
         id,
         number,
-        // Юрлицо выбрал менеджер в форме заказа; не выбрал — наше по умолчанию.
-        site: orderData.site || OWN_SITE,
+        site,
         // Клиента карточка читает из `customer.id` — закон проекта.
         ...(client
             ? {
@@ -205,7 +230,7 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         id,
         order_id: id,
         number,
-        site: orderData.site || OWN_SITE,
+        site,
         status: orderData.status || 'novyi-1',
         manager_id: orderData.managerId ?? null,
         is_own: true,

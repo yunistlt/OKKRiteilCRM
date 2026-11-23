@@ -35,6 +35,7 @@ import { NumberInput } from '@/components/ui/NumberInput';
 import OrderSidePanel, { PanelKind } from '@/components/orders/OrderSidePanel';
 import { itemNameWithVariant } from '@/lib/own-crm/item-name';
 import OrderStatusSwitcher from '@/components/orders/OrderStatusSwitcher';
+import ProductionFilesReminder from '@/components/orders/ProductionFilesReminder';
 import OwnOrderPayments from '@/components/own-crm/OwnOrderPayments';
 import { decodeEntities } from '@/lib/sales-rop/letter-render';
 
@@ -555,7 +556,14 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         updatedBy: string | null;
         updatedAt: string | null;
         files: Array<{ id: number; fileName: string; contentType: string | null; sizeBytes: number | null; forProduction: boolean }>;
+        /** Заказ в производстве, а файлов для цеха нет (доработка №85). */
+        filesMissing?: boolean;
     } | null>(null);
+    /**
+     * Окно «заказ передан в производство без файлов»: открыто, закрыто
+     * менеджером («Позже») или ещё не показывалось по этому заказу.
+     */
+    const [filesReminder, setFilesReminder] = useState<'open' | 'dismissed' | null>(null);
     const [qualityCalls, setQualityCalls] = useState<any[]>([]);
     const [qualityScore, setQualityScore] = useState<any | null>(null);
     const [qualityCallsLoading, setQualityCallsLoading] = useState(false);
@@ -823,6 +831,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
             setQualityFetched(false);
             setTranscribing(false);
             setCounterpartyScore(null);
+            setProductionData(null);
+            setFilesReminder(null);
         }
     }, [isOpen, orderId, fetchQualityScore]);
 
@@ -2749,11 +2759,22 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
         }
     }, [data?.order?.number, orderId]);
 
-// Содержимое вкладки «Для производства» читаем при переходе на неё, а не
-    // при каждом открытии карточки: на основном экране оно не нужно.
+/**
+     * Содержимое вкладки «Для производства» читаем при открытии карточки.
+     *
+     * Раньше — только при переходе на вкладку: на основном экране оно не было
+     * нужно. С доработкой №85 по нему решается, показать ли окно «заказ в
+     * производстве, а файлов для цеха нет», — а заказ уходит в цех и сам после
+     * оплаты, без менеджера, и окно он увидит, только открыв карточку. Это один
+     * лёгкий запрос по номеру заказа.
+     */
     useEffect(() => {
-        if (isOpen && viewTab === 'production' && !productionData) void loadProduction();
-    }, [isOpen, viewTab, productionData, loadProduction]);
+        if (isOpen && data && !productionData) void loadProduction();
+    }, [isOpen, data, productionData, loadProduction]);
+
+    useEffect(() => {
+        if (productionData?.filesMissing && filesReminder === null) setFilesReminder('open');
+    }, [productionData?.filesMissing, filesReminder]);
 
     const saveProductionNote = async () => {
         const orderNumber = String(data?.order?.number ?? orderId);
@@ -3510,7 +3531,15 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                                 orderId={data?.order?.number ?? orderId}
                                 currentLabel={statusLabel ?? 'Сменить статус'}
                                 color={data?.statusColor ?? null}
-                                onChanged={() => fetchDetails()}
+                                onChanged={(_code, result) => {
+                                    fetchDetails();
+                                    // Перечитываем вкладку производства: отметки
+                                    // и флаг «нет файлов» после смены статуса другие.
+                                    setProductionData(null);
+                                    // Только что передали в цех без файлов —
+                                    // окно сразу, даже если раньше закрывали.
+                                    if (result?.productionFilesMissing) setFilesReminder('open');
+                                }}
                             />
                             <button onClick={onClose} className="shrink-0 border border-gray-300 text-gray-500 hover:bg-gray-50">✕</button>
                         </div>
@@ -3639,6 +3668,13 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose, replyTo, r
                 </footer>
             </div>
         </div>
+        {isOpen && filesReminder === 'open' && (
+            <ProductionFilesReminder
+                orderNumber={String(data?.order?.number ?? orderId)}
+                onAttach={() => { setFilesReminder('dismissed'); setViewTab('production'); }}
+                onLater={() => setFilesReminder('dismissed')}
+            />
+        )}
         </CardSectionsProvider>
         </FieldDirtyContext.Provider>
         </FieldErrorsContext.Provider>

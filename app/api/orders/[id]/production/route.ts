@@ -6,6 +6,7 @@ import {
     saveProductionComment,
     setFileForProduction,
 } from '@/lib/own-crm/tseh-production-notes';
+import { productionFilesMissing } from '@/lib/own-crm/production-files-reminder';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const { id } = await params;
     try {
-        return NextResponse.json(await loadProductionNote(decodeURIComponent(String(id))));
+        const orderNumber = decodeURIComponent(String(id));
+        const [note, filesMissing] = await Promise.all([
+            loadProductionNote(orderNumber),
+            // Карточка по этому флагу показывает окно «заказ в производстве,
+            // а файлов для цеха нет» (доработка №85).
+            productionFilesMissing(orderNumber).catch(() => false),
+        ]);
+        return NextResponse.json({ ...note, filesMissing });
     } catch (e: any) {
         console.error('[production] не прочиталось:', e?.message || e);
         return NextResponse.json({ error: 'Не удалось прочитать данные для производства' }, { status: 500 });

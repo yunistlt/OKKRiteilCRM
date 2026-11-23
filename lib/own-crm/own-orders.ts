@@ -24,7 +24,7 @@ import { orderTotal, validateNewOrder, type NewOrder, type NewOrderItem, type Cr
 import { loadClientRequisites, toOrderContragent } from './client-requisites';
 import { itemDiscountPerUnit, itemPriceWithDiscount, orderTotals } from './discount';
 import { customFieldValueName, itemLabel, managerValue, moneyValue, statusName, statusValue, writeOwnHistory, type HistoryEntry } from './history-write';
-import { OWN_ID_BASE, OWN_SITE, nextOwnOrderNumber, ownItemIds } from './own-order-insert';
+import { OWN_ID_BASE, defaultOrderSite, nextOwnOrderNumber, ownItemIds } from './own-order-insert';
 
 /**
  * Крайние пробелы в текстовых доп. полях режем при сохранении.
@@ -128,7 +128,7 @@ export async function createOwnOrder(order: NewOrder): Promise<CreatedOrder> {
 
     const { number, seq } = await nextOwnOrderNumber();
     const id = OWN_ID_BASE + seq;
-    const site = OWN_SITE;
+    const site = await defaultOrderSite();
     const itemIds = await ownItemIds(order.items.length);
 
     const { error } = await supabase.from('orders').insert({

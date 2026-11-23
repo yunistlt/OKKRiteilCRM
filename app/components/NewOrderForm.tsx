@@ -72,10 +72,16 @@ export default function NewOrderForm() {
     }, []);
 
     // Юрлица — те же, что в карточке заказа: справочник витрин RetailCRM.
+    // Сразу ставим то, что отмечено «по умолчанию» в настройках юрлиц
+    // (доработка №95): менеджер видит, на кого заводится заказ, а не
+    // безликое «по умолчанию». Уже выбранное руками не трогаем.
     useEffect(() => {
         fetch('/api/orders/sellers')
             .then((r) => r.json())
-            .then((payload) => setSellers(payload.sellers || []))
+            .then((payload) => {
+                setSellers(payload.sellers || []);
+                if (payload.defaultSite) setSite((current) => current || payload.defaultSite);
+            })
             .catch(() => setSellers([]));
     }, []);
 

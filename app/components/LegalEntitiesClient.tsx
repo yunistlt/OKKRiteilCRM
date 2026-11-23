@@ -12,6 +12,8 @@ type Entity = {
     kind: string | null;
     active: boolean;
     site_code: string | null;
+    /** На это юрлицо заводится новый заказ, если менеджер не выбрал другое. */
+    default_for_new_orders: boolean;
     vat_percent: number | null;
     signer_name: string | null;
     seal_place: string | null;
@@ -112,6 +114,33 @@ export default function LegalEntitiesClient() {
         }
     };
 
+    /**
+     * Юрлицо для новых заказов (доработка №95): переключает владелец сам.
+     * Сохраняется сразу по нажатию — это не поле карточки, а выбор одного
+     * юрлица из всех.
+     */
+    const [defaultBusy, setDefaultBusy] = useState<number | null>(null);
+
+    const makeDefault = async (entity: Entity) => {
+        setDefaultBusy(entity.id);
+        setNote(null);
+        try {
+            const response = await fetch('/api/settings/legal-entities', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: entity.id }),
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || 'Не удалось переключить');
+            setEntities((prev) => prev.map((e) => ({ ...e, default_for_new_orders: e.id === entity.id })));
+            setNote(`Новые заказы теперь заводятся на ${entity.short_name}`);
+        } catch (e: any) {
+            setNote(e.message);
+        } finally {
+            setDefaultBusy(null);
+        }
+    };
+
     const change = (id: number, patch: Partial<Entity>) => {
         setEntities((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
     };
@@ -182,6 +211,29 @@ export default function LegalEntitiesClient() {
                             >
                                 {saving === entity.id ? 'Сохраняю…' : 'Сохранить'}
                             </button>
+                        </div>
+
+                        {/* Юрлицо для новых заказов — одно на всех (доработка №95). */}
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border border-gray-200 px-2 py-1.5">
+                            {entity.default_for_new_orders ? (
+                                <span className="font-semibold text-emerald-700">✓ Новые заказы заводятся на это юрлицо</span>
+                            ) : (
+                                <span className="text-gray-500">Новые заказы заводятся на другое юрлицо</span>
+                            )}
+                            {!entity.default_for_new_orders && (
+                                <button
+                                    onClick={() => makeDefault(entity)}
+                                    disabled={defaultBusy !== null || !entity.active || !entity.site_code}
+                                    title={!entity.active
+                                        ? 'Юрлицо не действует'
+                                        : !entity.site_code
+                                            ? 'Сначала свяжите юрлицо с магазином ниже и сохраните'
+                                            : 'Новый заказ, где менеджер не выбрал юрлицо, заведётся на это'}
+                                    className="border border-gray-300 px-2 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:text-gray-300"
+                                >
+                                    {defaultBusy === entity.id ? 'Переключаю…' : 'Заводить новые заказы сюда'}
+                                </button>
+                            )}
                         </div>
 
                         <label className="mb-3 block">

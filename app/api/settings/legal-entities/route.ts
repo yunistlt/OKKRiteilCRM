@@ -23,7 +23,7 @@ export async function GET() {
     const [{ data: entities }, sellers] = await Promise.all([
         supabase
             .from('legal_entities')
-            .select('id, short_name, full_name, inn, kind, active, site_code, vat_percent, signer_name, signer_title, seal_place, shipping_address, seal_image_path, signature_image_path, note')
+            .select('id, short_name, full_name, inn, kind, active, site_code, default_for_new_orders, vat_percent, signer_name, signer_title, seal_place, shipping_address, seal_image_path, signature_image_path, note')
             .order('sort_order', { ascending: true }),
         sellerOptions().catch(() => []),
     ]);
@@ -74,6 +74,34 @@ export async function POST(request: Request) {
 
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+}
+
+const defaultSchema = z.object({ id: z.coerce.number().int().positive() });
+
+/**
+ * На какое юрлицо заводится новый заказ, если менеджер не выбрал другое.
+ *
+ * Доработка №95: владелец переключает сам (решение 23.11.2026) — сейчас
+ * продажи на ПОБТ в приоритете, завтра может быть иначе. Снять старое и
+ * поставить новое — одна функция в базе, одной транзакцией.
+ */
+export async function PATCH(request: Request) {
+    const session = await getSession();
+    if (!session?.user || !['admin', 'rop'].includes(session.user.role)) {
+        return NextResponse.json({ error: 'Недостаточно прав' }, { status: 403 });
+    }
+
+    const parsed = defaultSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+        return NextResponse.json({ error: 'Не указано юрлицо' }, { status: 400 });
+    }
+
+    const { error } = await supabase.rpc('set_default_legal_entity', { p_id: parsed.data.id });
+    if (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
     return NextResponse.json({ ok: true });

@@ -23,7 +23,11 @@ interface OrderStatusSwitcherProps {
     currentLabel?: string | null;
     /** Цвет этапа: кнопка статуса окрашивается в него, как в RetailCRM. */
     color?: string | null;
-    onChanged?: (code: string) => void;
+    /**
+     * Статус сменился. `productionFilesMissing` — заказ только что ушёл в
+     * производство без файлов для цеха: карточка покажет напоминание (№85).
+     */
+    onChanged?: (code: string, result?: { productionFilesMissing?: boolean }) => void;
 }
 
 /** Та же краска, подмешанная к белому: фон блока этапа в списке. */
@@ -154,7 +158,7 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, color, onCh
             // Заказ в производство не уедет — говорим сразу, менеджер поправит
             // карточку клиента и передаст заново.
             if (json.productionNote) setError(json.productionNote);
-            onChanged?.(code);
+            onChanged?.(code, { productionFilesMissing: Boolean(json.productionFilesMissing) });
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Не удалось сменить статус');
         } finally {

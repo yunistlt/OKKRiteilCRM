@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { sellerOptions } from '@/lib/own-crm/documents';
+import { defaultOrderSite } from '@/lib/own-crm/own-order-insert';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,5 +19,11 @@ export async function GET() {
         return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
     }
 
-    return NextResponse.json({ sellers: await sellerOptions().catch(() => []) });
+    const [sellers, defaultSite] = await Promise.all([
+        sellerOptions().catch(() => []),
+        // На кого заводится новый заказ, если не выбрать: настройка юрлиц (№95).
+        defaultOrderSite().catch(() => null),
+    ]);
+
+    return NextResponse.json({ sellers, defaultSite });
 }
