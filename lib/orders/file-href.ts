@@ -24,3 +24,13 @@ export function orderFileHref(ref: OrderFileRef): string {
         + `?emailId=${encodeURIComponent(String(ref.emailId))}`
         + `&name=${encodeURIComponent(ref.name)}`;
 }
+
+/**
+ * Вложение входящего письма без заказа — по самому письму.
+ * Письмо с заказом открывает файл через `orderFileHref`: там вложение заодно
+ * ложится в файлы заказа.
+ */
+export function emailFileHref(ref: { emailId: string | number; name: string }): string {
+    return `/api/emails/attachment?emailId=${encodeURIComponent(String(ref.emailId))}`
+        + `&name=${encodeURIComponent(ref.name)}`;
+}

@@ -9,42 +9,14 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
-import { fetchEmailContentByUid, isImapConfigured } from '@/lib/email/imap';
-import { fileContentType, isViewableInBrowser } from '@/lib/file-type';
+import { ATTACHMENT_BUCKET, fileHeaders, loadLetterAttachment, safeStorageName } from '@/lib/email/attachment-file';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const BUCKET = 'okk-assets';
-
-/**
- * Заголовки показа файла.
- *
- * Тип считаем по самому файлу, а не по записи в базе: у вложений, долитых из
- * RetailCRM, тип не был известен и лёг «просто байтами», с которыми браузер
- * всегда скачивает, даже когда мы просим `inline`. Что показать во вкладке, а
- * что отдать на сохранение, решает уже тип: картинку и PDF человек хочет
- * увидеть, таблицу — открыть у себя.
- */
-function fileHeaders(fileName: string, bytes: Uint8Array, storedType?: string | null): HeadersInit {
-    const known = String(storedType ?? '').trim();
-    const contentType = known && known !== 'application/octet-stream'
-        ? known
-        : fileContentType(fileName, bytes);
-
-    const how = isViewableInBrowser(contentType) ? 'inline' : 'attachment';
-
-    return {
-        'Content-Type': contentType,
-        'Content-Disposition': `${how}; filename*=UTF-8''${encodeURIComponent(fileName)}`,
-        'Cache-Control': 'private, max-age=600',
-    };
-}
-
-/** Путь в хранилище: заказ → письмо → файл. Латиницу имени не трогаем, остальное чистим. */
+/** Путь в хранилище: заказ → письмо → файл. */
 function storagePath(orderNumber: string, emailId: string, filename: string): string {
-    const safe = filename.replace(/[^\w.\-]+/g, '_').slice(-120) || 'file';
-    return `order-files/${orderNumber}/${emailId}/${safe}`;
+    return `order-files/${orderNumber}/${emailId}/${safeStorageName(filename)}`;
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -120,51 +92,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }
 
     const path = storagePath(orderNumber, emailId, filename);
+    const loaded = await loadLetterAttachment(letter as any, filename, path);
+    if (!loaded.ok) return loaded.response;
 
-    // 1) Уже скачивали — отдаём из хранилища.
-    const cached = await supabase.storage.from(BUCKET).download(path);
-    if (cached.data) {
-        const bytes = new Uint8Array(await cached.data.arrayBuffer());
-        return new NextResponse(bytes, {
-            headers: fileHeaders(filename, bytes, cached.data.type),
-        });
-    }
-
-    // 2) Иначе качаем из ящика по UID письма.
-    if (!isImapConfigured() || !(letter as any).imap_uid) {
-        return NextResponse.json(
-            { error: 'Файл остался в почте, а доступ к ящику не настроен — открыть нельзя' },
-            { status: 409 },
-        );
-    }
-
-    try {
-        const mail = await fetchEmailContentByUid(
-            Number((letter as any).imap_uid),
-            String((letter as any).folder || 'INBOX'),
-        );
-        const attachment = (mail?.attachments ?? []).find(
-            (a) => String(a.filename ?? '').trim() === filename.trim(),
-        ) ?? (mail?.attachments ?? [])[0];
-
-        if (!attachment?.content) {
-            return NextResponse.json({ error: 'В письме такого вложения уже нет' }, { status: 404 });
-        }
-
-        const contentType = attachment.contentType || 'application/octet-stream';
-        await supabase.storage
-            .from(BUCKET)
-            .upload(path, attachment.content, { contentType, upsert: true })
-            .catch(() => undefined);
-
-        /**
-         * Вложение письма становится файлом заказа.
-         *
-         * Раньше оно оседало только в хранилище: открыть по ссылке можно, а во
-         * вкладке «Файлы» его нет — значит нельзя ни приложить к ответу
-         * галочкой, ни отправить в цех. Присланный клиентом чертёж — такой же
-         * файл заказа, как загруженный руками.
-         */
+    /**
+     * Вложение письма становится файлом заказа.
+     *
+     * Раньше оно оседало только в хранилище: открыть по ссылке можно, а во
+     * вкладке «Файлы» его нет — значит нельзя ни приложить к ответу
+     * галочкой, ни отправить в цех. Присланный клиентом чертёж — такой же
+     * файл заказа, как загруженный руками.
+     */
+    if (loaded.fromMailbox) {
         const { data: known } = await supabase
             .from('order_files')
             .select('id')
@@ -176,23 +115,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             await supabase.from('order_files').insert({
                 order_number: orderNumber,
                 file_name: filename,
-                content_type: contentType,
-                size_bytes: attachment.content.length,
-                storage_bucket: BUCKET,
+                content_type: loaded.contentType,
+                size_bytes: loaded.bytes.length,
+                storage_bucket: ATTACHMENT_BUCKET,
                 storage_path: path,
                 note: 'из письма клиента',
                 uploaded_by: null,
                 // В списке файлов показываем дату письма, а не момент докачки.
-                source_at: mail?.receivedAt ?? null,
+                source_at: loaded.receivedAt,
             });
         }
-
-        const bytes = new Uint8Array(attachment.content);
-        return new NextResponse(bytes, {
-            headers: fileHeaders(filename, bytes, contentType),
-        });
-    } catch (e: any) {
-        console.error('[order-files/download] не смог забрать вложение:', e.message);
-        return NextResponse.json({ error: `Не удалось забрать файл из почты: ${e.message}` }, { status: 502 });
     }
+
+    return new NextResponse(loaded.bytes, {
+        headers: fileHeaders(filename, loaded.bytes, loaded.contentType),
+    });
 }

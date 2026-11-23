@@ -12,7 +12,7 @@ import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import TextWithOrderLinks from '@/components/ui/TextWithOrderLinks';
 import AttachmentList from '@/components/orders/AttachmentList';
 import ViewSettingsModal from '@/components/orders/ViewSettingsModal';
-import { orderFileHref } from '@/lib/orders/file-href';
+import { emailFileHref, orderFileHref } from '@/lib/orders/file-href';
 import { formatIntRu } from '@/lib/format';
 import type { ViewItem } from '@/lib/orders-view';
 import ClearFiltersButton from '@/components/ui/ClearFiltersButton';
@@ -752,19 +752,21 @@ export default function EmailsClient() {
 
                             {/* Вложения письма: PDF и картинки открываются всплывающим
                                 окном, остальное скачивается (решение владельца 05.10.2026).
-                                Письмо без заказа — только имена: доступ к файлу проверяется
-                                по заказу. */}
+                                Письмо с заказом открывает файл через заказ (файл ложится в
+                                файлы заказа), без заказа — по самому письму. */}
                             {mail.attachmentList?.length ? (
                                 <div className="border-t border-gray-100 px-4 py-2">
                                     <AttachmentList
                                         files={mail.attachmentList}
-                                        href={mail.orderNumber && mail.emailId
-                                            ? (name: string) => orderFileHref({
-                                                orderNumber: String(mail.orderNumber),
-                                                emailId: String(mail.emailId),
-                                                name,
-                                            })
-                                            : null}
+                                        href={!mail.emailId
+                                            ? null
+                                            : mail.orderNumber
+                                                ? (name: string) => orderFileHref({
+                                                    orderNumber: String(mail.orderNumber),
+                                                    emailId: String(mail.emailId),
+                                                    name,
+                                                })
+                                                : (name: string) => emailFileHref({ emailId: String(mail.emailId), name })}
                                     />
                                 </div>
                             ) : null}
